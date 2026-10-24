@@ -537,8 +537,11 @@ class PaymentModeAndExplorerTests(SimpleTestCase):
             self.assertEqual(stellar.payment_mode(), "direct")
 
     def test_native_asset_refuses_escrow_mode_with_a_warning(self):
+        stellar._native_fallback_warned = False  # the fallback is logged once per process
         with override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k", STELLAR_ASSET_CODE="XLM", STELLAR_ASSET_ISSUER=""):
             with self.assertLogs("payments.stellar", level="WARNING") as logs:
+                self.assertEqual(stellar.payment_mode(), "direct")
+            with self.assertNoLogs("payments.stellar", level="WARNING"):  # second call: silent
                 self.assertEqual(stellar.payment_mode(), "direct")
         self.assertIn("native", logs.output[0])
         with override_settings(LOWBID_PAYMENT_MODE="direct", STELLAR_ASSET_CODE="XLM", STELLAR_ASSET_ISSUER=""):

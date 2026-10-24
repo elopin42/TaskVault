@@ -4,7 +4,7 @@
   <div class="ui-panel-head">
     <div>
       <h2 class="ui-panel-title" id="task-form-title"><i class="fa-solid fa-plus" style="color: var(--brand-500)" aria-hidden="true"></i> Ajouter une tâche</h2>
-      <p class="ui-panel-sub">Un livrable, un prix fixe en USDC, jusqu’à 3 compétences. Modifiable tant que le projet n’est pas financé.</p>
+      <p class="ui-panel-sub">Un livrable, un prix fixe en {{ asset_code }}, jusqu’à 3 compétences. Modifiable tant que le projet n’est pas financé.</p>
     </div>
   </div>
   <form id="task-form" class="ui-form-grid" novalidate>
@@ -19,7 +19,7 @@
     </div>
     <div class="ui-field">
       <label for="task-price" class="ui-label">Prix</label>
-      <div class="ui-input-group"><input id="task-price" name="price" class="ui-input" type="number" inputmode="decimal" step="0.01" min="0.01" required placeholder="300"><span class="ui-input-addon">USDC</span></div>
+      <div class="ui-input-group"><input id="task-price" name="price" class="ui-input" type="number" inputmode="decimal" step="0.01" min="0.01" required placeholder="300"><span class="ui-input-addon">{{ asset_code }}</span></div>
       <span class="ui-error" data-error-for="price" hidden></span>
     </div>
     <div class="ui-field">

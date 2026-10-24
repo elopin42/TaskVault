@@ -29,7 +29,7 @@
 </div>
 
 <section class="ui-kpi-band mb-6" aria-label="Chiffres clés">
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Prix fixe</span><span class="ui-kpi-value">{{ task.price|usdc:"" }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if payment_mode == 'direct' %}payé à la validation{% else %}bloqué en escrow, libéré à la validation{% endif %}</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Prix fixe</span><span class="ui-kpi-value">{{ task.price|usdc:"" }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if pay_mode == 'direct' %}payé à la validation{% else %}bloqué en escrow, libéré à la validation{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Candidats</span><span class="ui-kpi-value" data-kpi-count>{{ rows|length }}</span><span class="ui-kpi-hint ui-meta">{% if task_open %}l’entreprise choisit{% else %}candidatures closes{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Projet</span><span class="ui-kpi-value text-base"><a href="{% url 'projects:project_detail' project.pk %}" class="ui-link">{{ project.title|truncatechars:28 }}</a></span><span class="ui-kpi-hint ui-meta">{{ project.paid_count }}/{{ project.tasks_count }} tâche{{ project.tasks_count|pluralize }} payée{{ project.paid_count|pluralize }}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Étape</span><span class="ui-kpi-value text-base">{{ task.status_label }}</span><span class="ui-kpi-hint ui-meta">{% if task.status == 'open' %}candidatures ouvertes{% elif task.status == 'taken' %}livraison attendue{% elif task.status == 'delivered' %}validation attendue{% else %}payée {% if task.paid_at %}le {{ task.paid_at|date:"d/m" }}{% endif %}{% endif %}</span></div>
@@ -173,6 +173,7 @@
       validate: "{% url 'projects:task_validate' task.pk %}",
       pay: "{% url 'payments:task_pay' task.pk %}"
     },
+    payMode: "{{ pay_mode|escapejs }}",
     payAction: {% if pay_action %}{"step": "{{ pay_action.step|escapejs }}", "mine": {{ pay_action.mine|yesno:"true,false" }}, "prepareUrl": "{{ pay_action.prepare_url|default:''|escapejs }}"}{% else %}null{% endif %}
   };
 </script>

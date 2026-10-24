@@ -300,6 +300,7 @@ def task_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "is_assignee": task.is_assignee(wallet),
             "rating": rating,
             "pay_action": payments.next_action(task, wallet),
+            "pay_mode": payments.effective_mode(payments.get_escrow(task)),
             "candidates_url": reverse("projects:task_candidates_json", kwargs={"pk": task.pk}),
             "siblings": list(task.project.tasks.exclude(pk=task.pk).order_by("position", "pk")[:8]),
         }

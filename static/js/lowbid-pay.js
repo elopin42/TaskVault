@@ -262,7 +262,7 @@
 
     /* Generic [data-pay-step] driver: (confirm) -> prepare -> sign -> send -> chain `next` -> reload/redirect. */
     runStep: function (btn) {
-      if (!btn || btn.dataset.busy === "1") return Promise.resolve();
+      if (!btn || btn.dataset.busy === "1" || btn.dataset.pending === "1") return Promise.resolve();
       var prepareUrl = btn.getAttribute("data-prepare-url");
       if (!prepareUrl) {
         showError(btn, "Bouton mal configuré (data-prepare-url manquant).");
@@ -277,7 +277,9 @@
           icon: "fa-truck-fast"
         });
       }
+      btn.dataset.pending = "1"; // a second click while the confirm dialog is open must not start a second run
       return ask.then(function (ok) {
+        delete btn.dataset.pending;
         if (!ok) return;
         showError(btn, "");
         setLoading(btn, true);

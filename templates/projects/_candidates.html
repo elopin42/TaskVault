@@ -21,7 +21,7 @@ viewer_is_company, task_open, can_choose. ({# #} comments are single-line in Dja
       {% if r.app.message %}<p class="mt-1 break-words text-sm">{{ r.app.message }}</p>{% endif %}
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
         {% if r.tags %}<span class="flex flex-wrap gap-1">{% for t in r.tags %}<span class="ui-tag{% if t.match %} is-match{% endif %}">{{ t.name }}</span>{% endfor %}</span>{% endif %}
-        <span class="ui-meta">{% if r.history.paid_count %}{{ r.history.paid_count }} tâche{{ r.history.paid_count|pluralize }} payée{{ r.history.paid_count|pluralize }} avec vous{% else %}première collaboration{% endif %}{% if r.history.avg_note is not None %} · <i class="fa-solid fa-star text-[10px]" aria-hidden="true"></i> {{ r.history.avg_note|stringformat:".1f" }}/5{% endif %}</span>
+        <span class="ui-meta">{% if r.history.paid_count %}{{ r.history.paid_count }} tâche{{ r.history.paid_count|pluralize }} payée{{ r.history.paid_count|pluralize }} {% if viewer_is_company %}avec vous{% else %}avec cette entreprise{% endif %}{% else %}première collaboration{% endif %}{% if r.history.avg_note is not None %} · <i class="fa-solid fa-star text-[10px]" aria-hidden="true"></i> {{ r.history.avg_note|stringformat:".1f" }}/5{% endif %}</span>
         <span class="ui-timeline-time"><span data-time-ago="{{ r.app.created_at|date:'c' }}">{{ r.app.created_at|date:"d/m H:i" }}</span></span>
       </div>
       <div class="flex items-center gap-2 mt-2" title="Historique {{ r.fmt.history }} · Notes {{ r.fmt.rating }} · Compétences {{ r.fmt.tags }}">

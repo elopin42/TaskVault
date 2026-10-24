@@ -46,11 +46,14 @@ def score_parts(task_tags, applicant_tags, history: dict) -> dict:
     avg = history.get("avg_note")
     rating_part = (avg * RATING_FACTOR) if avg is not None else Decimal("0")
     tags_part = TAGS_POINTS * tag_ratio(task_tags, applicant_tags)
-    total = (history_part + rating_part + tags_part).quantize(ONE_PLACE, rounding=ROUND_HALF_UP)
+    rating_part = rating_part.quantize(ONE_PLACE, rounding=ROUND_HALF_UP)
+    tags_part = tags_part.quantize(ONE_PLACE, rounding=ROUND_HALF_UP)
+    # Sum of the DISPLAYED parts, so the score bar segments always add up to the printed total.
+    total = history_part + rating_part + tags_part
     return {
         "history_part": history_part,
-        "rating_part": rating_part.quantize(ONE_PLACE, rounding=ROUND_HALF_UP),
-        "tags_part": tags_part.quantize(ONE_PLACE, rounding=ROUND_HALF_UP),
+        "rating_part": rating_part,
+        "tags_part": tags_part,
         "total": min(total, Decimal("100.0")),
     }
 

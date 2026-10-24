@@ -107,6 +107,9 @@ def asset() -> Asset:
     return Asset(asset_code(), asset_issuer())
 
 
+_native_fallback_warned = False
+
+
 def payment_mode() -> str:
     """THE mode switch: "escrow" (Trustless Work, one escrow per task) or "direct" (one payment op).
     A native asset cannot be escrowed through Trustless Work v1 → "direct" with a logged warning."""
@@ -116,7 +119,10 @@ def payment_mode() -> str:
 
         mode = "escrow" if is_configured() else "direct"
     if mode == "escrow" and is_native():
-        logger.warning("stellar: escrow mode refused for the native asset (Trustless Work needs an issuer) — falling back to direct")
+        global _native_fallback_warned
+        if not _native_fallback_warned:  # payment_mode() runs on every request: log the fallback once per process
+            _native_fallback_warned = True
+            logger.warning("stellar: escrow mode refused for the native asset (Trustless Work needs an issuer) — falling back to direct")
         return "direct"
     return mode
 

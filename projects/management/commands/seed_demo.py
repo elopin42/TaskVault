@@ -22,6 +22,7 @@ from django.utils import timezone
 from stellar_sdk import Keypair
 
 from accounts.models import WalletUser
+from payments import services as payment_services
 from payments import stellar
 from payments.models import Escrow
 from projects import services
@@ -101,6 +102,7 @@ class Command(BaseCommand):
         services.validate(t1, company, 5, "Impeccable, pixel-perfect et en avance.")  # Rating only: payments pays
         Escrow.objects.filter(pk=escrow.pk).update(status=Escrow.Status.PAID, payment_tx_hash=_demo_hash(f"t1-{t1.pk}"), released_at=now)
         services.mark_paid(t1)
+        payment_services.sync_project_status(t1.project)  # what confirm_direct_pay / confirm_release do live
         services.apply(t2, a, "J’ai déjà branché Freighter et Horizon sur un back-office Django.", ["stellar"])
         services.apply(t2, b, "Spécialiste Stellar/JS : SEP-53, trustlines, Soroban.", ["stellar", "js"])
 

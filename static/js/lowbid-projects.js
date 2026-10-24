@@ -228,7 +228,7 @@
       r.addEventListener("change", function () { if (help) help.textContent = LABELS[r.value] || ""; });
     });
     var validating = false;
-    var isDirect = (window.LOWBID && window.LOWBID.paymentMode) === "direct";
+    var isDirect = (cfg.payMode || (window.LOWBID && window.LOWBID.paymentMode)) === "direct";
 
     /* After the rating is saved but a signature failed / was declined: swap the form for the pending
        step so the company can resume without a reload (the server keeps the same `next`). */

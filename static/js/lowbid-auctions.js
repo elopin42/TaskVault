@@ -1,6 +1,7 @@
 /* Lowbid auctions: countdowns on every page + the need-detail behaviour
-   (bid form, 5 s polling of encheres.json, client sliders, choose / close / cancel).
-   Server-side values arrive through window.LOWBID_NEED (set in need_detail.html). */
+   (bid form, polling of encheres.json through Lowbid.poll, client sliders, choose / close / cancel
+   behind Lowbid.confirm). Depends on lowbid-base.js + lowbid-ui.js (Lowbid.setBusy / confirm / poll /
+   refreshUI). Server-side values arrive through window.LOWBID_NEED (set in need_detail.html). */
 (function () {
   "use strict";
 
@@ -85,16 +86,7 @@
     return msg;
   }
 
-  function setBusy(btn, on, label) {
-    if (!btn) return;
-    if (on) {
-      btn.dataset.label = btn.innerHTML; btn.disabled = true; btn.classList.add("is-loading");
-      btn.innerHTML = '<i class="fa-solid fa-spinner" aria-hidden="true"></i> ' + (label || "…");
-    } else {
-      btn.disabled = false; btn.classList.remove("is-loading");
-      if (btn.dataset.label) btn.innerHTML = btn.dataset.label;
-    }
-  }
+  var setBusy = Lowbid.setBusy;
 
   /* ----- client-side re-ranking from the data-* ratios (no round-trip) ----- */
   function applyWeights() {
@@ -161,10 +153,9 @@
   var reset = document.querySelector("[data-weights-reset]");
   if (reset) reset.addEventListener("click", function () { W = [40, 30, 30]; renderWeights(); applyWeights(); });
 
-  /* ----- polling: swap the list when the server fingerprint changes ----- */
-  var polling = true;
+  /* ----- polling: swap the list (and the price history) when the server fingerprint changes ----- */
+  var poller = null;
   function refresh() {
-    if (!polling || document.hidden) return Promise.resolve();
     var url = cfg.urls.bids + "?wp=" + W[0] + "&wd=" + W[1] + "&ws=" + W[2];
     return Lowbid.api(url).then(function (data) {
       if (!data || !data.ok) return;
@@ -174,18 +165,24 @@
         list.innerHTML = data.html;
         list.dataset.fingerprint = data.fingerprint;
         applyWeights();
+        Lowbid.refreshUI(list);
+        var history = document.querySelector("[data-history]");
+        if (history && typeof data.history_html === "string") { history.innerHTML = data.history_html; Lowbid.refreshUI(history); }
+        var hcount = document.querySelector("[data-history-count]");
+        if (hcount && typeof data.history_count === "number") hcount.textContent = data.history_count + " offre" + (data.history_count > 1 ? "s" : "");
         var count = document.querySelector("[data-kpi-count]"); if (count) count.textContent = String(data.count);
         var best = document.querySelector("[data-kpi-best]");
         if (best && data.best_price) best.innerHTML = Lowbid.escapeHtml(Lowbid.formatUsdc(data.best_price, "")) + '<span class="ui-price-unit">USDC</span>';
         updatePriceCap(data.best_price || data.budget_max);
       }
     }).catch(function (err) {
-      if (err && err.status === 404) { polling = false; }
+      if (err && err.status === 404 && poller) { poller.stop(); }
+      throw err; // Lowbid.poll backs off on errors
     });
   }
-  setInterval(refresh, 5000);
+  poller = Lowbid.poll(refresh, { interval: 5000, maxInterval: 60000 });
   document.addEventListener("lowbid:countdown-end", function (ev) {
-    if (ev.target.hasAttribute("data-countdown-main")) setTimeout(refresh, 1200);
+    if (ev.target.hasAttribute("data-countdown-main")) setTimeout(function () { poller.now(); }, 1200);
   });
 
   /* ----- bid form ----- */
@@ -259,7 +256,7 @@
         var msg = toastError(err, "Offre refusée.");
         showError(CODE_FIELD[code] || "_", msg);
         if (code === "closed") setTimeout(function () { location.reload(); }, 1500);
-        if (code === "not_lower") refresh();
+        if (code === "not_lower") poller.now();
       });
     });
   }
@@ -269,32 +266,50 @@
     var choose = ev.target.closest("[data-choose]");
     if (choose) {
       var label = choose.dataset.chooseLabel || "cette offre";
-      if (!window.confirm("Retenir l’offre " + label + " ?\nLes autres offres passeront en « Non retenue ».")) return;
-      setBusy(choose, true, "…");
-      Lowbid.api(AWARD_URL.replace(/\/0\/$/, "/" + choose.dataset.choose + "/"), { method: "POST" }).then(function (data) {
-        Lowbid.toast(data.message || "Offre retenue.", "success", { title: "Choix" });
-        setTimeout(function () { location.reload(); }, 500);
-      }).catch(function (err) { setBusy(choose, false); toastError(err, "Choix impossible."); });
+      Lowbid.confirm({
+        title: "Retenir cette offre ?",
+        message: label + "\nLes autres offres passeront en « Non retenue ». Vous pourrez ensuite bloquer les fonds en escrow.",
+        confirmLabel: "Retenir l’offre", icon: "fa-trophy"
+      }).then(function (ok) {
+        if (!ok) return;
+        setBusy(choose, true, "…");
+        Lowbid.api(AWARD_URL.replace(/\/0\/$/, "/" + choose.dataset.choose + "/"), { method: "POST" }).then(function (data) {
+          Lowbid.toast(data.message || "Offre retenue.", "success", { title: "Choix" });
+          setTimeout(function () { location.reload(); }, 500);
+        }).catch(function (err) { setBusy(choose, false); toastError(err, "Choix impossible."); });
+      });
       return;
     }
     var close = ev.target.closest("[data-need-close]");
     if (close) {
-      if (!window.confirm("Clôturer les enchères maintenant ? Plus aucune offre ne sera acceptée.")) return;
-      setBusy(close, true, "Clôture…");
-      Lowbid.api(cfg.urls.close, { method: "POST" }).then(function (data) {
-        Lowbid.toast(data.message || "Enchères clôturées.", "success");
-        setTimeout(function () { location.reload(); }, 400);
-      }).catch(function (err) { setBusy(close, false); toastError(err, "Clôture impossible."); });
+      Lowbid.confirm({
+        title: "Clôturer les enchères maintenant ?",
+        message: "Plus aucune offre ne sera acceptée. Vous choisirez parmi les offres déjà reçues.",
+        confirmLabel: "Clôturer", icon: "fa-flag-checkered"
+      }).then(function (ok) {
+        if (!ok) return;
+        setBusy(close, true, "Clôture…");
+        Lowbid.api(cfg.urls.close, { method: "POST" }).then(function (data) {
+          Lowbid.toast(data.message || "Enchères clôturées.", "success");
+          setTimeout(function () { location.reload(); }, 400);
+        }).catch(function (err) { setBusy(close, false); toastError(err, "Clôture impossible."); });
+      });
       return;
     }
     var cancel = ev.target.closest("[data-need-cancel]");
     if (cancel) {
-      if (!window.confirm("Annuler ce besoin ? Cette action est définitive.")) return;
-      setBusy(cancel, true, "Annulation…");
-      Lowbid.api(cfg.urls.cancel, { method: "POST" }).then(function (data) {
-        Lowbid.toast(data.message || "Besoin annulé.", "success");
-        setTimeout(function () { location.reload(); }, 400);
-      }).catch(function (err) { setBusy(cancel, false); toastError(err, "Annulation impossible."); });
+      Lowbid.confirm({
+        title: "Annuler ce besoin ?",
+        message: "Cette action est définitive : les offres reçues seront abandonnées.",
+        confirmLabel: "Annuler le besoin", cancelLabel: "Garder", danger: true
+      }).then(function (ok) {
+        if (!ok) return;
+        setBusy(cancel, true, "Annulation…");
+        Lowbid.api(cfg.urls.cancel, { method: "POST" }).then(function (data) {
+          Lowbid.toast(data.message || "Besoin annulé.", "success");
+          setTimeout(function () { location.reload(); }, 400);
+        }).catch(function (err) { setBusy(cancel, false); toastError(err, "Annulation impossible."); });
+      });
     }
   });
 

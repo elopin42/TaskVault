@@ -5,21 +5,24 @@
     <h2 class="text-base font-semibold leading-snug min-w-0">
       <a href="{% url 'auctions:need_detail' need.pk %}" class="text-strong hover:underline">{{ need.title }}</a>
     </h2>
-    <span class="ui-badge {{ need.badge_class }}">{{ need.effective_status_label }}</span>
+    {% include "components/status_badge.html" with need=need %}
   </div>
-  {% if need.tags %}
-    <div class="flex flex-wrap gap-1.5">
-      {% for t in need.tags %}<a href="{% url 'auctions:need_list' %}?tag={{ t|urlencode }}" class="ui-tag">{{ t }}</a>{% endfor %}
-    </div>
-  {% endif %}
+  {% include "components/tags.html" with tags=need.tags linked=True %}
   <dl class="grid grid-cols-2 gap-x-3 gap-y-2">
     <div class="min-w-0"><dt class="ui-label mb-0.5">Budget max</dt><dd class="ui-num text-sm">{{ need.budget_max|usdc }}</dd></div>
     <div class="min-w-0"><dt class="ui-label mb-0.5">Meilleure offre</dt><dd class="ui-price text-sm">{% if need.best_price is not None %}{{ need.best_price|usdc }}{% else %}<span class="text-muted font-normal">aucune</span>{% endif %}</dd></div>
     <div class="min-w-0"><dt class="ui-label mb-0.5">Enchères</dt><dd class="ui-num text-sm">{{ need.bids_count }} · délai max {{ need.delay_max_days }} j</dd></div>
-    <div class="min-w-0"><dt class="ui-label mb-0.5">Temps restant</dt><dd class="text-sm"><span class="ui-countdown" data-ends-at="{{ need.bidding_ends_at|date:'c' }}" data-status="{{ need.effective_status }}">…</span></dd></div>
+    <div class="min-w-0"><dt class="ui-label mb-0.5">Temps restant</dt><dd class="text-sm">{% include "components/countdown.html" with need=need %}</dd></div>
   </dl>
+  {% if need.best_price is not None %}
+    {% widthratio need.best_price need.budget_max 100 as ratio %}
+    <div class="flex items-center gap-2" title="Meilleure offre à {{ ratio }} % du budget max">
+      <div class="ui-progress flex-1" aria-hidden="true"><span style="width: {{ ratio }}%"></span></div>
+      <span class="ui-meta ui-num whitespace-nowrap">{{ ratio|add:"-100" }} %</span>
+    </div>
+  {% endif %}
   <div class="ui-meta flex items-center justify-between gap-2 mt-auto pt-1">
-    <span>Client <span class="font-mono">{{ need.client.stellar_address|short_addr }}</span></span>
+    {% include "components/wallet.html" with address=need.client.stellar_address label="Client" %}
     <a href="{% url 'auctions:need_detail' need.pk %}" class="ui-link">Voir <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
   </div>
 </article>

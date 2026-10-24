@@ -7,31 +7,38 @@
 <div class="ui-page-header">
   <div class="min-w-0">
     <p class="ui-meta mb-1"><a href="{% url 'auctions:need_list' %}" class="ui-link"><i class="fa-solid fa-arrow-left text-[10px]" aria-hidden="true"></i> Besoins</a> · #{{ need.pk }}</p>
-    <h1 class="ui-page-title flex flex-wrap items-center gap-2">{{ need.title }} <span class="ui-badge {{ need.badge_class }} align-middle" data-status-badge>{{ need.effective_status_label }}</span></h1>
+    <h1 class="ui-page-title flex flex-wrap items-center gap-2">{{ need.title }} {% include "components/status_badge.html" with need=need live=True %}</h1>
     <p class="ui-page-sub flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span><i class="fa-solid fa-user" aria-hidden="true"></i> Client <span class="font-mono text-strong" title="{{ need.client.stellar_address }}">{{ need.client.stellar_address|short_addr }}</span>{% if viewer_is_client %} <span class="ui-badge ui-badge-neutral">vous</span>{% endif %}</span>
-      <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> publié le {{ need.created_at|date:"d/m/Y à H:i" }}</span>
+      {% include "components/wallet.html" with address=need.client.stellar_address label="Client" you=viewer_is_client %}
+      <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> publié <span data-time-ago="{{ need.created_at|date:'c' }}">le {{ need.created_at|date:"d/m/Y à H:i" }}</span></span>
       <span><i class="fa-regular fa-clock" aria-hidden="true"></i> délai max {{ need.delay_max_days }} jour{{ need.delay_max_days|pluralize }}</span>
     </p>
-    {% if need.tags %}<p class="flex flex-wrap gap-1.5 mt-2">{% for t in need.tags %}<a href="{% url 'auctions:need_list' %}?tag={{ t|urlencode }}" class="ui-tag">{{ t }}</a>{% endfor %}</p>{% endif %}
+    {% include "components/tags.html" with tags=need.tags linked=True class="mt-2" %}
   </div>
-  {% if can_close or can_cancel %}
   <div class="ui-page-actions">
     {% if can_close %}<button type="button" class="ui-btn" data-need-close><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i> Clôturer les enchères maintenant</button>{% endif %}
     {% if can_cancel %}<button type="button" class="ui-btn ui-btn-danger" data-need-cancel><i class="fa-solid fa-ban" aria-hidden="true"></i> Annuler</button>{% endif %}
+    <details class="ui-menu">
+      <summary class="ui-btn" aria-label="Plus d’actions" title="Partager"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span class="hidden sm:inline"> Partager</span></summary>
+      <div class="ui-menu-panel">
+        <button type="button" class="ui-menu-item" data-share="{{ request.build_absolute_uri }}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Partager ce besoin</button>
+        <button type="button" class="ui-menu-item" data-copy="{{ request.build_absolute_uri }}"><i class="fa-regular fa-copy" aria-hidden="true"></i> Copier le lien</button>
+        <div class="ui-menu-sep"></div>
+        <a href="{% url 'dashboard:profile' need.client.stellar_address %}" class="ui-menu-item"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Profil du client</a>
+      </div>
+    </details>
   </div>
-  {% endif %}
 </div>
 
 <section class="ui-kpi-band mb-6" aria-label="Chiffres clés">
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Budget max</span><span class="ui-kpi-value">{{ need.budget_max|usdc:"" }}<span class="ui-price-unit">USDC</span></span><span class="ui-kpi-hint ui-meta">prix plafond</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Meilleure offre</span><span class="ui-kpi-value" data-kpi-best>{% if need.best_price is not None %}{{ need.best_price|usdc:"" }}<span class="ui-price-unit">USDC</span>{% else %}—{% endif %}</span><span class="ui-kpi-hint ui-meta">{% if bidding_open %}la prochaine doit être inférieure{% else %}offre la moins chère{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Enchères</span><span class="ui-kpi-value" data-kpi-count>{{ rows|length }}</span><span class="ui-kpi-hint ui-meta">offres en lice</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Temps restant</span><span class="ui-kpi-value"><span class="ui-countdown" data-ends-at="{{ need.bidding_ends_at|date:'c' }}" data-status="{{ status }}" data-countdown-main>…</span></span><span class="ui-kpi-hint ui-meta">fin {{ need.bidding_ends_at|date:"d/m à H:i" }}</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Temps restant</span><span class="ui-kpi-value">{% include "components/countdown.html" with need=need main=True %}</span><span class="ui-kpi-hint ui-meta">fin {{ need.bidding_ends_at|date:"d/m à H:i" }}</span></div>
 </section>
 
-<div class="grid gap-5 lg:grid-cols-5">
-  <div class="lg:col-span-3 space-y-5 min-w-0">
+<div class="ui-split">
+  <div class="ui-stack">
     <section class="ui-panel">
       <div class="ui-panel-head"><h2 class="ui-panel-title">Le besoin</h2></div>
       <p class="whitespace-pre-line leading-relaxed">{{ need.description }}</p>
@@ -43,21 +50,34 @@
           <h2 class="ui-panel-title">Offres{% if show_recommended %} classées{% endif %}</h2>
           <p class="ui-panel-sub">{% if bidding_open %}Mise à jour automatique toutes les 5 s. Le score (prix {{ weights.0 }} · délai {{ weights.1 }} · compétences {{ weights.2 }}) n’est qu’indicatif tant que les enchères sont ouvertes.{% elif status == 'closed' %}Score sur 100 : prix {{ weights.0 }} · délai {{ weights.1 }} · compétences {{ weights.2 }}. La première est recommandée, le client décide.{% else %}Classement figé à la clôture.{% endif %}</p>
         </div>
-        <span class="ui-meta whitespace-nowrap" data-live-dot hidden><span class="ui-dot inline-block" style="color: var(--success)"></span> live</span>
+        <span class="ui-live whitespace-nowrap" data-live-dot hidden><span class="ui-live-dot" aria-hidden="true"></span> live</span>
       </div>
       <div id="bids-list" data-fingerprint="{{ fingerprint }}">
         {% include "auctions/_bids_list.html" %}
       </div>
     </section>
+
+    <section class="ui-panel" id="history-panel">
+      <div class="ui-panel-head">
+        <div>
+          <h2 class="ui-panel-title">Historique des prix</h2>
+          <p class="ui-panel-sub">Chaque offre, dans l’ordre où elle est arrivée — les offres remplacées comprises.</p>
+        </div>
+        <span class="ui-meta whitespace-nowrap" data-history-count>{{ history|length }} offre{{ history|length|pluralize }}</span>
+      </div>
+      <div data-history>
+        {% include "auctions/_history.html" %}
+      </div>
+    </section>
   </div>
 
-  <aside class="lg:col-span-2 space-y-5 min-w-0">
+  <aside class="ui-stack">
     {% if status == 'cancelled' %}
       <div class="ui-alert ui-alert-attn"><i class="fa-solid fa-ban" aria-hidden="true"></i><span>Ce besoin a été annulé par le client.</span></div>
 
     {% elif bidding_open %}
       {% if can_bid %}
-        <section class="ui-panel" id="bid-form-panel">
+        <section class="ui-panel ui-form-scope" id="bid-form-panel">
           <div class="ui-panel-head">
             <div>
               <h2 class="ui-panel-title">{% if my_bid %}Améliorer mon offre{% else %}Faire une offre{% endif %}</h2>
@@ -87,9 +107,11 @@
               <label for="bid-message" class="ui-label">Message <span class="normal-case font-normal">(optionnel)</span></label>
               <textarea id="bid-message" name="message" class="ui-textarea" rows="3" maxlength="280" placeholder="Un mot sur votre approche…" style="min-height: 84px"></textarea>
             </div>
-            <div class="ui-field-wide flex items-center justify-between gap-3">
+            <div class="ui-field-wide">
               <span class="ui-error" data-error-for="_" hidden></span>
-              <button type="submit" class="ui-btn ui-btn-primary ms-auto" data-bid-submit><i class="fa-solid fa-gavel" aria-hidden="true"></i> {% if my_bid %}Remplacer mon offre{% else %}Envoyer mon offre{% endif %}</button>
+              <div class="ui-sticky-actions">
+                <button type="submit" class="ui-btn ui-btn-primary" data-bid-submit><i class="fa-solid fa-gavel" aria-hidden="true"></i> {% if my_bid %}Remplacer mon offre{% else %}Envoyer mon offre{% endif %}</button>
+              </div>
             </div>
           </form>
         </section>
@@ -140,11 +162,11 @@
       {% if winning_bid %}
         <section class="ui-panel" style="border-color: var(--brand-600)">
           <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-trophy" style="color: var(--brand-500)" aria-hidden="true"></i> Offre retenue</h2><p class="ui-panel-sub">choisie le {{ need.awarded_at|date:"d/m/Y à H:i" }}</p></div></div>
-          <div class="flex flex-wrap items-baseline justify-between gap-2">
-            <span class="font-mono text-sm" title="{{ winning_bid.freelancer.stellar_address }}">{{ winning_bid.freelancer.stellar_address|short_addr }}</span>
-            <span class="ui-price text-xl">{{ winning_bid.price|usdc:"" }}<span class="ui-price-unit">USDC</span></span>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            {% include "components/wallet.html" with address=winning_bid.freelancer.stellar_address name=winning_bid.freelancer.display_name size="lg" %}
+            {% include "components/price.html" with amount=winning_bid.price size="text-xl" %}
           </div>
-          <p class="ui-meta mt-1">Livraison en {{ winning_bid.delay_days }} jour{{ winning_bid.delay_days|pluralize }}{% if winning_bid.tags %} · {{ winning_bid.tags|join:", " }}{% endif %}</p>
+          <p class="ui-meta mt-2">Livraison en {{ winning_bid.delay_days }} jour{{ winning_bid.delay_days|pluralize }}{% if winning_bid.tags %} · {{ winning_bid.tags|join:", " }}{% endif %}</p>
         </section>
       {% endif %}
       {% escrow_panel need wallet %}
@@ -158,8 +180,8 @@
   window.LOWBID_NEED = {
     id: {{ need.pk }},
     status: "{{ status|escapejs }}",
-    budgetMax: "{{ need.budget_max|escapejs }}",
-    bestPrice: {% if need.best_price is not None %}"{{ need.best_price|escapejs }}"{% else %}null{% endif %},
+    budgetMax: "{{ need.budget_max|plain|escapejs }}",
+    bestPrice: {% if need.best_price is not None %}"{{ need.best_price|plain|escapejs }}"{% else %}null{% endif %},
     weights: [{{ weights.0 }}, {{ weights.1 }}, {{ weights.2 }}],
     isClient: {{ viewer_is_client|yesno:"true,false" }},
     canChoose: {{ can_choose|yesno:"true,false" }},

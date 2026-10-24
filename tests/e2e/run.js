@@ -118,7 +118,10 @@ async function noHorizontalScroll(page, label) {
 async function shot(page, name, opts) {
   await pageSane(page, "screenshot " + name);
   await page.waitForTimeout(250); // let countdowns / fonts settle
-  await page.screenshot(Object.assign({ path: path.join(SHOTS, name + ".png"), fullPage: true }, opts || {}));
+  // Phone shots are viewport-only: a full-page capture would paint the fixed tab bar / sticky
+  // action bar in the middle of the image instead of at the bottom of the screen.
+  const vp = page.viewportSize() || DESKTOP;
+  await page.screenshot(Object.assign({ path: path.join(SHOTS, name + ".png"), fullPage: vp.width > 600 }, opts || {}));
 }
 /* The app confirms destructive actions in its own <dialog id="lb-confirm"> (Lowbid.confirm), not window.confirm. */
 async function acceptConfirm(page, label) {
@@ -146,7 +149,7 @@ async function postNeed(page, need) {
   await page.fill("#id_budget_max", String(need.budget));
   await page.fill("#id_delay_max_days", String(need.delay));
   await page.fill("#id_tags", need.tags);
-  if (need.duration) await page.selectOption("#id_duration", need.duration);
+  if (need.duration) { await page.click(`label[for="id_duration_${need.duration}"]`); assert(await page.isChecked("#id_duration_" + need.duration), "duration radio checked"); } // .seg-radio group (inputs are visually hidden)
   await Promise.all([page.waitForURL(/\/besoins\/\d+\/$/), page.click("#need-form button[type=submit]")]);
   return Number(page.url().match(/\/besoins\/(\d+)\//)[1]);
 }
@@ -212,8 +215,13 @@ async function main() {
       await cp.locator(".lb-hero-title").waitFor();
       assert(await cp.locator(".lb-hero [data-wallet-connect]").count() === 1, "hero has the connect button");
       await connect(cp, client, ".lb-hero [data-wallet-connect]");
-      assert(new URL(cp.url()).pathname === "/", "stays on the landing after connect");
+      await cp.waitForURL(/\/tableau-de-bord\/$/, { timeout: 10000 });
+      await cp.locator("#todo").waitFor();
+      assert(await cp.locator("#activity").count() === 1, "dashboard has the activity section");
+      assert(await cp.locator(".lb-tabbar").count() === 1, "signed-in pages carry the mobile tab bar markup");
+      await cp.goto("/");
       assert((await cp.locator(".lb-hero a.ui-btn-primary").innerText()).includes("Poster un besoin"), "hero CTA switches to Poster un besoin");
+      assert(await cp.locator("[data-landing-stats]").count() === 1, "landing shows the live stats line");
     });
 
     await step("1b. ?next= after connect (wallet_required redirect) and off-site next dropped", async () => {
@@ -474,6 +482,8 @@ async function main() {
       await shot(p2, "07-mes-encheres");
       await noHorizontalScroll(p2, "desktop mes enchères");
       await p1.goto("/mes-encheres/");
+      assert(await p1.locator("tbody tr", { hasText: "Landing page Django" }).count() === 0, "default tab (en cours) hides the lost bid");
+      await p1.goto("/mes-encheres/?tab=all");
       const lostRow = p1.locator("tbody tr", { hasText: "Landing page Django" });
       assert(await lostRow.locator(".ui-badge", { hasText: "Non retenue" }).count() === 1, "f1's bid is Non retenue");
       assert(await p1.locator("tbody tr", { hasText: "450.00" }).locator(".ui-badge", { hasText: "Remplacée" }).count() === 1, "f1's superseded 450 is Remplacée");
@@ -499,6 +509,57 @@ async function main() {
       await mcp.locator("tbody tr").first().waitFor();
       await noHorizontalScroll(mcp, "mobile mes besoins");
       await mc.close();
+    });
+
+    // 6b -----------------------------------------------------------------------------------------
+    await step("6b. dashboard to-do + KPIs, public profile (name edit), list search / sort / chips", async () => {
+      await cp.goto("/tableau-de-bord/");
+      await cp.locator("#todo").waitFor();
+      const todo = cp.locator("[data-todo-list] .ui-next-card");
+      assert(await todo.count() >= 1, "client has at least one to-do (the awarded need's payment)");
+      assert(await cp.locator("[data-todo-list] .ui-next-card.act").count() >= 1, "at least one item needs the client's action");
+      assert(await cp.locator(".ui-kpi-tile").count() >= 4, "dashboard KPI tiles");
+      assert(await cp.locator("#activity .ui-timeline-item").count() >= 1, "activity timeline has entries");
+      await shot(cp, "12-tableau-de-bord");
+      await noHorizontalScroll(cp, "desktop dashboard");
+
+      await p2.goto("/tableau-de-bord/");
+      await p2.locator("#todo").waitFor();
+      assert(await p2.locator("[data-todo-list] .ui-next-card", { hasText: "livraison" }).count() >= 1, "winner's to-do mentions the delivery");
+
+      await p2.goto(`/profil/${f2.address}/`);
+      await p2.locator("#edit-name").waitFor();
+      await p2.fill("#edit-name input#display_name", "Nora");
+      await p2.locator("#edit-name button[type=submit]").click();
+      await p2.locator(".ui-alert-ok").waitFor();
+      assert((await p2.locator(".ui-wallet-name").first().innerText()).includes("Nora"), "display name updated on the profile");
+      await shot(p2, "13-profil");
+      await noHorizontalScroll(p2, "desktop profil");
+      await p1.goto(`/profil/${f2.address}/`);
+      assert(await p1.locator("#edit-name").count() === 0, "another wallet cannot edit the name");
+      assert((await p1.locator(".ui-wallet-name").first().innerText()).includes("Nora"), "public profile shows the new name");
+      const unknown = await p1.goto("/profil/GUNKNOWN/");
+      assert(unknown.status() === 404, `unknown wallet → 404, got ${unknown.status()}`);
+
+      await pa.goto("/besoins/?tab=all&q=Landing");
+      assert(await pa.locator(".need-card").count() >= 1, "search finds the landing-page need");
+      await pa.goto("/besoins/?tab=all&q=zzzzqqqq");
+      assert(await pa.locator(".empty-state").count() === 1, "no match → empty state");
+      await pa.goto("/besoins/?sort=budget");
+      assert(await pa.locator('select[name="sort"]').inputValue() === "budget", "sort select reflects the query");
+      assert(await pa.locator(".ui-chip-row .ui-tag").count() >= 1, "popular tag chips rendered");
+      await pa.locator(".ui-chip-row .ui-tag").first().click();
+      assert(new URL(pa.url()).searchParams.get("tag"), "chip click filters by tag");
+      await noHorizontalScroll(pa, "desktop liste filtrée");
+
+      const md = await mobileClone(browser, ctx.client, client);
+      const mdp = track(await md.newPage(), "mobile dashboard");
+      await mdp.goto("/tableau-de-bord/");
+      await mdp.locator("#todo").waitFor();
+      assert(await mdp.locator(".lb-tabbar").isVisible(), "mobile tab bar visible on the phone");
+      await noHorizontalScroll(mdp, "mobile dashboard");
+      await shot(mdp, "mobile-tableau-de-bord");
+      await md.close();
     });
 
     // 7 ------------------------------------------------------------------------------------------

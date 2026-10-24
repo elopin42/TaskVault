@@ -5,7 +5,10 @@ through `Lowbid.api`. Rules live in services.py; this module only maps codes to 
 import json
 import logging
 
+from collections import Counter
+
 from django.contrib import messages
+from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -26,6 +29,16 @@ from .services import AuctionError, BidError, NeedError, dec_str
 logger = logging.getLogger(__name__)
 
 LIST_TABS = (("open", "Ouverts"), ("closed", "Terminés"), ("all", "Tous"))
+# ?sort= on the list page → (label, ordering). "ending" is the default on the open tab, "newest" elsewhere.
+LIST_SORTS = (
+    ("ending", "Fin la plus proche", ("bidding_ends_at", "-created_at")),
+    ("newest", "Plus récents", ("-created_at",)),
+    ("budget", "Budget le plus élevé", ("-budget_max", "-created_at")),
+    ("bids", "Plus d’enchères", ("-bid_count", "-created_at")),
+)
+LIST_PAGE_SIZE = 24
+POPULAR_TAGS = 8
+MY_TABS = (("active", "En cours"), ("done", "Terminés"), ("all", "Tous"))
 # HTTP status for a refused action, by error code (anything else → 400).
 ERROR_STATUS = {"forbidden": 403, "not_open": 409, "not_closed": 409, "bad_bid": 409, "too_late": 409, "closed": 409}
 
@@ -108,6 +121,23 @@ def _bids_context(need: Need, weights, wallet) -> dict:
     }
 
 
+def _price_history(need: Need) -> list[Bid]:
+    """Every bid ever placed (outbid ones included), oldest first — the price curve of the auction."""
+    return list(need.bids.select_related("freelancer").order_by("created_at", "pk"))
+
+
+def _points(bids: list[Bid]) -> str:
+    """'500,450,400' — the sparkline input (dot decimals, no locale)."""
+    return ",".join(dec_str(b.price) for b in bids)
+
+
+def _savings_pct(need: Need) -> int | None:
+    best = need.best_price
+    if best is None or not need.budget_max:
+        return None
+    return max(0, min(100, int(round(100 * (1 - float(best) / float(need.budget_max))))))
+
+
 def _bid_json(row: dict) -> dict:
     bid: Bid = row["bid"]
     s = row["score"]
@@ -135,6 +165,12 @@ def need_list(request: HttpRequest) -> HttpResponse:
     if tab not in dict(LIST_TABS):
         tab = "open"
     tag = (request.GET.get("tag") or "").strip().lower()[:24]
+    q = (request.GET.get("q") or "").strip()[:80]
+    sort_keys = [k for k, _, _ in LIST_SORTS]
+    sort = request.GET.get("sort") or ("ending" if tab == "open" else "newest")
+    if sort not in sort_keys:
+        sort = "ending" if tab == "open" else "newest"
+    ordering = next(o for k, _, o in LIST_SORTS if k == sort)
 
     qs = Need.objects.with_stats().select_related("client")
     now = timezone.now()
@@ -142,15 +178,37 @@ def need_list(request: HttpRequest) -> HttpResponse:
         qs = qs.filter(status=Need.Status.OPEN, bidding_ends_at__gt=now)
     elif tab == "closed":
         qs = qs.exclude(status=Need.Status.OPEN, bidding_ends_at__gt=now)
-    if tag:  # JSON containment is not portable to SQLite; the demo volume makes a Python filter fine
-        needs = [n for n in qs if tag in (n.tags or [])][:60]
+    if q:
+        # JSON containment is not portable to SQLite: tags are matched on their text repr.
+        qs = qs.filter(Q(title__icontains=q) | Q(description__icontains=q) | Q(tags__icontains=q))
+    qs = qs.order_by(*ordering)
+    if tag:  # the demo volume makes a Python filter fine
+        needs = [n for n in qs if tag in (n.tags or [])]
     else:
-        needs = list(qs[:60])
+        needs = list(qs)
+
+    page = Paginator(needs, LIST_PAGE_SIZE).get_page(request.GET.get("page"))
+    counter = Counter(t for n in Need.objects.open_now().values_list("tags", flat=True) for t in (n or []))
+    popular_tags = [t for t, _ in counter.most_common(POPULAR_TAGS)]
+    if tag and tag not in popular_tags:
+        popular_tags.insert(0, tag)
 
     return render(
         request,
         "auctions/need_list.html",
-        {"needs": needs, "tab": tab, "tabs": LIST_TABS, "tag": tag, "now": now},
+        {
+            "needs": page.object_list,
+            "page": page,
+            "total": page.paginator.count,
+            "tab": tab,
+            "tabs": LIST_TABS,
+            "tag": tag,
+            "q": q,
+            "sort": sort,
+            "sorts": [(k, label) for k, label, _ in LIST_SORTS],
+            "popular_tags": popular_tags,
+            "now": now,
+        },
     )
 
 
@@ -178,9 +236,13 @@ def need_detail(request: HttpRequest, pk: int) -> HttpResponse:
     ctx = _bids_context(need, weights, wallet)
     status = ctx["status"]
     is_client = ctx["viewer_is_client"]
+    history = _price_history(need)
     ctx.update(
         {
             "wallet": wallet,
+            "history": history,
+            "history_points": _points(history),
+            "savings_pct": _savings_pct(need),
             "my_bid": None if is_client else need.active_bid_for(wallet),
             "can_bid": wallet is not None and not is_client and status == Need.Status.OPEN,
             "can_close": is_client and status == Need.Status.OPEN,
@@ -194,38 +256,77 @@ def need_detail(request: HttpRequest, pk: int) -> HttpResponse:
 
 @wallet_required
 def my_bids(request: HttpRequest) -> HttpResponse:
+    from payments import services as payment_services  # payments depends on auctions, not the reverse
+
     Need.objects.close_expired()
     wallet = get_wallet(request)
+    tab = request.GET.get("tab", "active")
+    if tab not in dict(MY_TABS):
+        tab = "active"
     bids = Bid.objects.filter(freelancer=wallet).select_related("need", "need__client").order_by("-created_at")
     rows = []
+    kpis = {"leading": 0, "outbid": 0, "won": 0}
     for bid in bids:
         need = bid.need
         best = need.best_price
+        attention = False
         if bid.status == Bid.Status.ACTIVE:
             if need.effective_status() != Need.Status.OPEN:
                 label, klass = "En attente du choix", "ui-badge-attn"
             elif best is not None and bid.price <= best:
                 label, klass = "En tête", "ui-badge-info"
+                kpis["leading"] += 1
             else:
                 label, klass = "Dépassée", "ui-badge-attn"
+                kpis["outbid"] += 1
+                attention = True
         elif bid.status == Bid.Status.WON:
             label, klass = "Gagnée", "ui-badge-ok"
+            kpis["won"] += 1
+            action = payment_services.next_action(need, wallet)
+            attention = bool(action and action["mine"])
         elif bid.status == Bid.Status.LOST:
             label, klass = "Non retenue", "ui-badge-neutral"
         else:
             label, klass = "Remplacée", "ui-badge-neutral"
-        rows.append({"bid": bid, "need": need, "best_price": best, "label": label, "badge": klass})
-    return render(request, "auctions/my_bids.html", {"rows": rows})
+        done = bid.status in (Bid.Status.LOST, Bid.Status.OUTBID) or (
+            bid.status == Bid.Status.WON and need.effective_status() == Need.Status.RELEASED
+        )
+        if (tab == "active" and done) or (tab == "done" and not done):
+            continue
+        rows.append({"bid": bid, "need": need, "best_price": best, "label": label, "badge": klass, "attention": attention})
+    return render(request, "auctions/my_bids.html", {"rows": rows, "tab": tab, "tabs": MY_TABS, "kpis": kpis})
 
 
 @wallet_required
 def my_needs(request: HttpRequest) -> HttpResponse:
     Need.objects.close_expired()
     wallet = get_wallet(request)
-    needs = Need.objects.filter(client=wallet).with_stats().annotate(
-        active_count=Count("bids", filter=Q(bids__status=Bid.Status.ACTIVE))
+    tab = request.GET.get("tab", "active")
+    if tab not in dict(MY_TABS):
+        tab = "active"
+    all_needs = list(
+        Need.objects.filter(client=wallet)
+        .with_stats()
+        .select_related("winning_bid__freelancer")
+        .annotate(active_count=Count("bids", filter=Q(bids__status=Bid.Status.ACTIVE)))
     )
-    return render(request, "auctions/my_needs.html", {"needs": needs})
+    kpis = {"open": 0, "to_choose": 0, "awarded": 0}
+    needs = []
+    for need in all_needs:
+        status = need.effective_status()
+        need.attention = status == Need.Status.CLOSED and need.bids_count > 0
+        if status == Need.Status.OPEN:
+            kpis["open"] += 1
+        elif status == Need.Status.CLOSED:
+            kpis["to_choose"] += 1 if need.bids_count else 0
+        elif need.is_awarded_or_later:
+            kpis["awarded"] += 1
+        done = status in (Need.Status.RELEASED, Need.Status.CANCELLED)
+        if (tab == "active" and done) or (tab == "done" and not done):
+            continue
+        needs.append(need)
+    return render(request, "auctions/my_needs.html", {"needs": needs, "tab": tab, "tabs": MY_TABS, "kpis": kpis})
 
 
 # --- JSON -------------------------------------------------------------------------
@@ -238,6 +339,8 @@ def need_bids_json(request: HttpRequest, pk: int) -> JsonResponse:
     need = get_object_or_404(Need.objects.select_related("client", "winning_bid__freelancer"), pk=pk)
     wallet = get_wallet(request)
     ctx = _bids_context(need, _weights_from_request(request), wallet)
+    history = _price_history(need)
+    ctx.update({"history": history, "history_points": _points(history), "savings_pct": _savings_pct(need)})
     payload = {
         "ok": True,
         "need": need.pk,
@@ -250,6 +353,9 @@ def need_bids_json(request: HttpRequest, pk: int) -> JsonResponse:
         "fingerprint": ctx["fingerprint"],
         "bids": [_bid_json(r) for r in ctx["rows"]],
         "html": render_to_string("auctions/_bids_list.html", ctx, request=request),
+        "history_points": ctx["history_points"],
+        "history_count": len(history),
+        "history_html": render_to_string("auctions/_history.html", ctx, request=request),
     }
     return JsonResponse(payload)
 

@@ -17,6 +17,21 @@ def safe_next(request: HttpRequest, raw: str | None) -> str:
     return ""
 
 
+def landing_stats() -> dict:
+    """Live figures for the hero: open needs, bids placed, USDC actually paid out (escrow released / direct paid)."""
+    from django.db.models import Sum
+
+    from auctions.models import Bid, Need
+    from payments.models import Escrow
+
+    paid = Escrow.objects.filter(status__in=(Escrow.Status.RELEASED, Escrow.Status.PAID)).aggregate(s=Sum("amount"))["s"]
+    return {
+        "open_needs": Need.objects.open_now().count(),
+        "bids": Bid.objects.count(),
+        "paid_usdc": paid or 0,
+    }
+
+
 def landing(request: HttpRequest) -> HttpResponse:
     from auctions.models import Need  # local import: core must stay importable without the domain apps
 
@@ -24,7 +39,7 @@ def landing(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "core/landing.html",
-        {"next_url": safe_next(request, request.GET.get("next")), "latest_needs": latest_needs},
+        {"next_url": safe_next(request, request.GET.get("next")), "latest_needs": latest_needs, "stats": landing_stats()},
     )
 
 

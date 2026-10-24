@@ -493,8 +493,13 @@ class PageTests(BaseAuctionTest):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(
-            set(data), {"ok", "need", "status", "bidding_ends_at", "budget_max", "best_price", "count", "weights", "fingerprint", "bids", "html"}
+            set(data),
+            {"ok", "need", "status", "bidding_ends_at", "budget_max", "best_price", "count", "weights", "fingerprint", "bids", "html",
+             "history_points", "history_count", "history_html"},
         )
+        self.assertEqual(data["history_points"], "450,400")
+        self.assertEqual(data["history_count"], 2)
+        self.assertIn("ui-sparkline", data["history_html"])
         self.assertEqual(data["status"], "open")
         self.assertEqual(data["count"], 2)
         self.assertEqual(data["best_price"], "400")
@@ -527,12 +532,18 @@ class PageTests(BaseAuctionTest):
 
         self.bid(self.f1, "450")  # will be replaced → "Remplacée"
         self.bid(self.f1, "440")  # leading → "En tête"
-        rows = self.client.get(reverse("auctions:my_bids")).context["rows"]
+        rows = self.client.get(reverse("auctions:my_bids") + "?tab=all").context["rows"]
         self.assertEqual([r["label"] for r in rows], ["En tête", "Remplacée"])
+        rows = self.client.get(reverse("auctions:my_bids")).context["rows"]  # default tab hides the superseded bid
+        self.assertEqual([r["label"] for r in rows], ["En tête"])
         self.bid(self.f2, "400")  # now behind → "Dépassée"
-        rows = self.client.get(reverse("auctions:my_bids")).context["rows"]
+        resp = self.client.get(reverse("auctions:my_bids"))
+        rows = resp.context["rows"]
         self.assertEqual(rows[0]["label"], "Dépassée")
         self.assertEqual(rows[0]["best_price"], Decimal("400"))
+        self.assertTrue(rows[0]["attention"])
+        self.assertEqual(resp.context["kpis"], {"leading": 0, "outbid": 1, "won": 0})
+        self.assertContains(resp, "Surenchérir")
 
         other = make_need(self.owner, title="Autre")
         won = services.place_bid(other, self.f1, "100", 5, [], "")
@@ -543,9 +554,11 @@ class PageTests(BaseAuctionTest):
         labels = [r["label"] for r in resp.context["rows"]]
         self.assertIn("Gagnée", labels)
         self.assertContains(resp, "ui-badge-ok")
+        self.assertEqual(resp.context["kpis"]["won"], 1)
         login(self.client, self.f2)
-        labels = [r["label"] for r in self.client.get(reverse("auctions:my_bids")).context["rows"]]
-        self.assertIn("Non retenue", labels)
+        self.assertEqual([r["label"] for r in self.client.get(reverse("auctions:my_bids")).context["rows"]], ["En tête"])
+        labels = [r["label"] for r in self.client.get(reverse("auctions:my_bids") + "?tab=done").context["rows"]]
+        self.assertEqual(labels, ["Non retenue"])
         self.assertContains(self.client.get(reverse("auctions:my_bids")), 'data-label="Mon prix"')
 
     def test_my_needs_and_nav(self):
@@ -568,3 +581,119 @@ class PageTests(BaseAuctionTest):
         resp = self.client.get(reverse("core:landing"))
         self.assertContains(resp, self.need.title)
         self.assertNotContains(resp, "Fermé")
+
+
+class ListFeatureTests(BaseAuctionTest):
+    """Search, sort, popular tags, pagination (?q= ?sort= ?page= on need_list) and the my_* tabs."""
+
+    def url(self, **params):
+        from urllib.parse import urlencode
+
+        return reverse("auctions:need_list") + ("?" + urlencode(params) if params else "")
+
+    def test_search_matches_title_description_and_tags(self):
+        make_need(self.owner, title="Audit sécurité", description="Pentest d’une API", tags=["rust", "securite"])
+        self.assertEqual([n.title for n in self.client.get(self.url(q="audit")).context["needs"]], ["Audit sécurité"])
+        self.assertEqual([n.title for n in self.client.get(self.url(q="pentest")).context["needs"]], ["Audit sécurité"])
+        self.assertEqual([n.title for n in self.client.get(self.url(q="rust")).context["needs"]], ["Audit sécurité"])
+        resp = self.client.get(self.url(q="zzz-nothing"))
+        self.assertEqual(resp.context["total"], 0)
+        self.assertContains(resp, "Aucun besoin")
+        self.assertContains(resp, 'value="zzz-nothing"')  # the query stays in the search box
+        self.assertContains(resp, "data-search-clear")
+
+    def test_sort_options_and_defaults(self):
+        soon = make_need(self.owner, title="Bientôt fini", budget_max=Decimal("50"), bidding_ends_at=timezone.now() + timedelta(minutes=5))
+        rich = make_need(self.owner, title="Gros budget", budget_max=Decimal("9000"), bidding_ends_at=timezone.now() + timedelta(days=1))
+        services.place_bid(rich, self.f1, "8000", 5, [], "")
+        services.place_bid(rich, self.f2, "7000", 5, [], "")
+        resp = self.client.get(self.url())
+        self.assertEqual(resp.context["sort"], "ending")
+        self.assertEqual(resp.context["needs"][0].pk, soon.pk)
+        self.assertEqual(self.client.get(self.url(sort="budget")).context["needs"][0].pk, rich.pk)
+        self.assertEqual(self.client.get(self.url(sort="bids")).context["needs"][0].pk, rich.pk)
+        self.assertEqual(self.client.get(self.url(sort="newest")).context["needs"][0].pk, rich.pk)
+        self.assertEqual(self.client.get(self.url(tab="all")).context["sort"], "newest")
+        self.assertEqual(self.client.get(self.url(sort="bogus")).context["sort"], "ending")
+        self.assertContains(resp, 'name="sort"')
+        self.assertContains(resp, "data-auto-submit")
+
+    def test_popular_tags_chips(self):
+        for i in range(3):
+            make_need(self.owner, title=f"Rust {i}", tags=["rust"])
+        make_need(self.owner, title="Fermé", tags=["cobol"], bidding_ends_at=timezone.now() - timedelta(minutes=1))
+        resp = self.client.get(self.url())
+        tags = resp.context["popular_tags"]
+        self.assertEqual(tags[0], "rust")
+        self.assertNotIn("cobol", tags)  # only open needs feed the chips
+        self.assertContains(resp, "ui-chip-row")
+        resp = self.client.get(self.url(tag="rust"))
+        self.assertEqual(resp.context["total"], 3)
+        self.assertContains(resp, 'class="ui-tag is-match"')
+        # an active tag absent from the top list is still shown (so it can be removed)
+        resp = self.client.get(self.url(tab="all", tag="cobol"))
+        self.assertIn("cobol", resp.context["popular_tags"])
+
+    def test_pagination_keeps_filters(self):
+        for i in range(30):
+            make_need(self.owner, title=f"Besoin {i:02d}", tags=["pagin"])
+        resp = self.client.get(self.url(tag="pagin", sort="newest"))
+        self.assertEqual(resp.context["total"], 30)
+        self.assertEqual(len(resp.context["needs"]), 24)
+        self.assertContains(resp, 'class="ui-pager"')
+        self.assertContains(resp, "tag=pagin")
+        self.assertContains(resp, "page=2")
+        resp = self.client.get(self.url(tag="pagin", sort="newest", page=2))
+        self.assertEqual(len(resp.context["needs"]), 6)
+        self.assertEqual(resp.context["page"].number, 2)
+        self.assertEqual(self.client.get(self.url(page=99)).context["page"].number, 2)  # out of range → last page
+
+    def test_detail_price_history(self):
+        resp = self.client.get(reverse("auctions:need_detail", args=[self.need.pk]))
+        self.assertContains(resp, "Historique des prix")
+        self.assertEqual(resp.context["history_points"], "")
+        self.assertIsNone(resp.context["savings_pct"])
+        self.bid(self.f1, "450")
+        self.bid(self.f1, "400")  # supersedes 450, which stays in the history
+        self.bid(self.f2, "375.5")
+        resp = self.client.get(reverse("auctions:need_detail", args=[self.need.pk]))
+        self.assertEqual(resp.context["history_points"], "450,400,375.5")
+        self.assertEqual(resp.context["savings_pct"], 25)
+        self.assertContains(resp, 'data-points="450,400,375.5"')
+        self.assertContains(resp, 'data-cap="500"')
+        self.assertContains(resp, "ui-timeline-item is-muted")  # the replaced 450
+        self.assertContains(resp, "−25 %")
+        self.assertContains(resp, "data-share")
+
+    def test_my_needs_tabs_and_kpis(self):
+        login(self.client, self.owner)
+        closed = make_need(self.owner, title="À choisir")  # a bid placed while open, then the timer runs out
+        services.place_bid(closed, self.f1, "100", 5, [], "")
+        closed.bidding_ends_at = timezone.now() - timedelta(minutes=1)
+        closed.save(update_fields=["bidding_ends_at"])
+        cancelled = make_need(self.owner, title="Annulé")
+        services.cancel(cancelled, self.owner)
+        resp = self.client.get(reverse("auctions:my_needs"))
+        self.assertEqual(resp.context["kpis"], {"open": 1, "to_choose": 1, "awarded": 0})
+        titles = [n.title for n in resp.context["needs"]]
+        self.assertIn("À choisir", titles)
+        self.assertNotIn("Annulé", titles)
+        self.assertContains(resp, 'class="is-attn"')
+        self.assertContains(resp, ">Choisir<")
+        done = self.client.get(reverse("auctions:my_needs") + "?tab=done")
+        self.assertEqual([n.title for n in done.context["needs"]], ["Annulé"])
+        self.assertEqual(len(self.client.get(reverse("auctions:my_needs") + "?tab=all").context["needs"]), 3)
+
+    def test_need_form_preview_and_duration_radios(self):
+        login(self.client, self.owner)
+        resp = self.client.get(reverse("auctions:need_create"))
+        self.assertContains(resp, "data-preview")
+        self.assertContains(resp, 'id="id_duration_120"')
+        self.assertContains(resp, 'name="duration"')
+        self.assertContains(resp, "ui-sticky-actions")
+
+    def test_landing_stats(self):
+        self.bid(self.f1, "450")
+        resp = self.client.get(reverse("core:landing"))
+        self.assertEqual(resp.context["stats"], {"open_needs": 1, "bids": 1, "paid_usdc": 0})
+        self.assertContains(resp, "data-landing-stats")

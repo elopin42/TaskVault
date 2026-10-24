@@ -18,17 +18,41 @@
   </div>
 </div>
 
-<div class="flex flex-wrap items-center gap-3 mb-5">
+<form method="get" class="ui-toolbar" role="search" aria-label="Rechercher et filtrer les besoins">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  {% if tag %}<input type="hidden" name="tag" value="{{ tag }}">{% endif %}
+  <div class="ui-search ui-toolbar-grow">
+    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+    <input type="search" name="q" value="{{ q }}" class="ui-input" placeholder="Rechercher un besoin, une compétence…" aria-label="Rechercher" autocomplete="off">
+    {% if q %}<button type="button" class="ui-search-clear" data-search-clear aria-label="Effacer la recherche"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>{% endif %}
+  </div>
   <nav class="seg-tabs" aria-label="Filtrer les besoins">
     {% for key, label in tabs %}
-      <a href="?tab={{ key }}{% if tag %}&tag={{ tag|urlencode }}{% endif %}" class="seg-tab{% if tab == key %} is-active{% endif %}" {% if tab == key %}aria-current="page"{% endif %}>{{ label }}</a>
+      <a href="{% qs tab=key page=None sort=None %}" class="seg-tab{% if tab == key %} is-active{% endif %}" {% if tab == key %}aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
-  {% if tag %}
-    <a href="?tab={{ tab }}" class="ui-tag is-match" title="Retirer le filtre"><i class="fa-solid fa-filter text-[10px]" aria-hidden="true"></i> {{ tag }} <i class="fa-solid fa-xmark text-[10px]" aria-hidden="true"></i></a>
-  {% endif %}
-  <span class="ui-meta ms-auto">{{ needs|length }} besoin{{ needs|length|pluralize }}</span>
+  <div class="ui-toolbar-end">
+    <label class="ui-select-inline">
+      <span class="ui-meta"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i><span class="sr-only">Trier</span></span>
+      <select name="sort" class="ui-select" data-auto-submit aria-label="Trier les besoins">
+        {% for key, label in sorts %}<option value="{{ key }}" {% if sort == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <span class="ui-meta whitespace-nowrap" data-result-count>{{ total }} besoin{{ total|pluralize }}</span>
+  </div>
+</form>
+
+{% if popular_tags %}
+<div class="ui-chip-row mb-5" aria-label="Compétences les plus demandées">
+  {% for t in popular_tags %}
+    {% if t == tag %}
+      <a href="{% qs tag=None page=None %}" class="ui-tag is-match" title="Retirer le filtre"><i class="fa-solid fa-filter text-[10px]" aria-hidden="true"></i> {{ t }} <i class="fa-solid fa-xmark text-[10px]" aria-hidden="true"></i></a>
+    {% else %}
+      <a href="{% qs tag=t page=None %}" class="ui-tag">{{ t }}</a>
+    {% endif %}
+  {% endfor %}
 </div>
+{% endif %}
 
 {% if needs %}
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -36,13 +60,14 @@
       {% include "auctions/_need_card.html" with need=need %}
     {% endfor %}
   </div>
+  {% include "components/pager.html" with page=page %}
 {% else %}
-  <div class="empty-state glass-card">
-    <div class="empty-state-icon"><i class="fa-solid fa-gavel" aria-hidden="true"></i></div>
-    <div class="empty-state-title">{% if tab == 'open' %}Aucun besoin ouvert{% else %}Aucun besoin{% endif %}{% if tag %} pour « {{ tag }} »{% endif %}</div>
-    <p class="empty-state-desc">{% if wallet_address %}Postez le premier besoin : les freelances enchérissent à la baisse jusqu’à la fin du compte à rebours.{% else %}Connectez votre wallet Freighter pour poster un besoin.{% endif %}</p>
-    {% if wallet_address %}<a href="{% url 'auctions:need_create' %}" class="ui-btn ui-btn-primary mt-4"><i class="fa-solid fa-plus" aria-hidden="true"></i> Poster un besoin</a>{% endif %}
-  </div>
+  {% if wallet_address %}
+    {% url 'auctions:need_create' as create_url %}
+    {% include "components/empty_state.html" with icon="fa-gavel" title="Aucun besoin" desc="Postez le premier besoin : les freelances enchérissent à la baisse jusqu’à la fin du compte à rebours." cta_href=create_url cta_label="Poster un besoin" cta_icon="fa-plus" %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="fa-gavel" title="Aucun besoin" desc="Connectez votre wallet Freighter pour poster un besoin." %}
+  {% endif %}
 {% endif %}
 {% endblock %}
 

@@ -5,6 +5,16 @@
 {% block content %}
 {% include "partials/page_header.html" with title="Mes enchères" subtitle="Vos offres, et où elles en sont face à la meilleure offre actuelle." %}
 
+<section class="ui-kpi-band is-3 mb-5" aria-label="Résumé">
+  {% include "components/kpi.html" with label="En tête" value=kpis.leading hint="meilleure offre actuelle" icon="fa-ranking-star" %}
+  {% include "components/kpi.html" with label="Dépassées" value=kpis.outbid hint="une offre plus basse existe" icon="fa-arrow-trend-down" %}
+  {% include "components/kpi.html" with label="Gagnées" value=kpis.won hint="retenues par le client" icon="fa-trophy" %}
+</section>
+
+<nav class="seg-tabs mb-4" aria-label="Filtrer mes enchères">
+  {% for key, label in tabs %}<a href="?tab={{ key }}" class="seg-tab{% if tab == key %} is-active{% endif %}" {% if tab == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+
 {% if rows %}
 <div class="ui-panel">
   <div class="rcard">
@@ -21,10 +31,10 @@
       </thead>
       <tbody>
         {% for r in rows %}
-        <tr>
+        <tr{% if r.attention %} class="is-attn"{% endif %}>
           <td data-label="Besoin">
             <a href="{% url 'auctions:need_detail' r.need.pk %}" class="ui-link font-semibold">{{ r.need.title }}</a>
-            <div class="ui-meta">{{ r.bid.created_at|date:"d/m H:i" }}{% if r.bid.tags %} · {{ r.bid.tags|join:", " }}{% endif %}</div>
+            <div class="ui-meta flex flex-wrap items-center gap-x-2">{% include "components/wallet.html" with address=r.need.client.stellar_address label="Client" %}<span><span data-time-ago="{{ r.bid.created_at|date:'c' }}">{{ r.bid.created_at|date:"d/m H:i" }}</span>{% if r.bid.tags %} · {{ r.bid.tags|join:", " }}{% endif %}</span></div>
           </td>
           <td data-label="Mon prix" class="ui-col-end ui-num"><span class="ui-price">{{ r.bid.price|usdc }}</span></td>
           <td data-label="Meilleur prix" class="ui-col-end ui-num">{% if r.best_price is not None %}{{ r.best_price|usdc }}{% else %}—{% endif %}</td>
@@ -32,13 +42,15 @@
           <td data-label="Statut">
             <span class="ui-badge {{ r.badge }}">{{ r.label }}</span>
             {% if r.bid.status == 'won' %}
-              {% if r.need.escrow %}<span class="ui-badge {{ r.need.escrow.badge_class }} ms-1">{{ r.need.escrow.status_label }}</span>{% endif %}
-              <div class="mt-1"><a href="{% url 'auctions:need_detail' r.need.pk %}#paiement" class="ui-link text-sm"><i class="fa-solid fa-money-bill-transfer text-[10px]" aria-hidden="true"></i> Voir le paiement</a></div>
+              {% if r.need.escrow %}<span class="ui-badge {{ r.need.escrow.badge_class }}">{{ r.need.escrow.status_label }}</span>{% endif %}
+              <div class="mt-1"><a href="{% url 'auctions:need_detail' r.need.pk %}#paiement" class="ui-link text-sm"><i class="fa-solid fa-money-bill-transfer text-[10px]" aria-hidden="true"></i> {% if r.attention %}Action requise : voir le paiement{% else %}Voir le paiement{% endif %}</a></div>
+            {% elif r.attention %}
+              <div class="mt-1"><a href="{% url 'auctions:need_detail' r.need.pk %}#bid-form-panel" class="ui-link text-sm"><i class="fa-solid fa-gavel text-[10px]" aria-hidden="true"></i> Surenchérir</a></div>
             {% endif %}
           </td>
           <td data-label="Enchères">
-            <span class="ui-badge {{ r.need.badge_class }}">{{ r.need.effective_status_label }}</span>
-            <span class="ui-countdown ui-meta ms-1" data-ends-at="{{ r.need.bidding_ends_at|date:'c' }}" data-status="{{ r.need.effective_status }}"></span>
+            {% include "components/status_badge.html" with need=r.need %}
+            {% include "components/countdown.html" with need=r.need class="ui-meta ms-1" %}
           </td>
         </tr>
         {% endfor %}
@@ -47,12 +59,12 @@
   </div>
 </div>
 {% else %}
-<div class="empty-state glass-card">
-  <div class="empty-state-icon"><i class="fa-solid fa-gavel" aria-hidden="true"></i></div>
-  <div class="empty-state-title">Aucune enchère pour l’instant</div>
-  <p class="empty-state-desc">Parcourez les besoins ouverts et proposez un prix sous la meilleure offre.</p>
-  <a href="{% url 'auctions:need_list' %}" class="ui-btn ui-btn-primary mt-4"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Voir les besoins</a>
-</div>
+  {% url 'auctions:need_list' as list_url %}
+  {% if tab == 'active' %}
+    {% include "components/empty_state.html" with icon="fa-gavel" title="Aucune enchère pour l’instant" desc="Parcourez les besoins ouverts et proposez un prix sous la meilleure offre." cta_href=list_url cta_label="Voir les besoins" cta_icon="fa-list-ul" %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="fa-folder-open" title="Rien ici" desc="Aucune enchère dans cet onglet." %}
+  {% endif %}
 {% endif %}
 {% endblock %}
 

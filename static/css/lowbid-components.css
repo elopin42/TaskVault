@@ -250,8 +250,9 @@ a.ui-list-row:hover { background: var(--row-hover); }
 .lb-brand-name { font-weight: 700; font-size: 1.05rem; letter-spacing: -0.01em; }
 .lb-nav-links { display: none; align-items: center; gap: 0.25rem; margin-inline-start: 0.5rem; }
 @media (min-width: 1024px) { .lb-nav-links { display: flex; } }
+@media (min-width: 1024px) and (max-width: 1199.98px) { .lb-nav-link span { display: none; } .lb-nav-link { padding: 0 0.6rem; } .lb-nav-link i { font-size: 0.95rem; } }
 .lb-nav-link {
-    display: inline-flex; align-items: center; gap: 0.5rem; min-height: 40px; padding: 0 0.8rem; border-radius: 0.6rem;
+    display: inline-flex; align-items: center; gap: 0.45rem; min-height: 40px; padding: 0 0.65rem; border-radius: 0.6rem; white-space: nowrap;
     color: var(--muted); font-size: var(--text-body); font-weight: 500; text-decoration: none; transition: background 0.15s ease, color 0.15s ease;
 }
 .lb-nav-link i { font-size: 0.8rem; }
@@ -269,7 +270,7 @@ html[data-theme="light"] .lb-theme-dark { display: none; }
 .lb-wallet-btn {
     display: inline-flex; align-items: center; gap: 0.5rem; min-height: 40px; padding: 0 0.9rem; border-radius: 0.65rem; cursor: pointer;
     border: 1px solid var(--brand-600); background: var(--brand-600); color: var(--brand-ink); font-weight: 600; font-size: var(--text-body); font-family: inherit;
-    list-style: none; transition: filter 0.15s ease, border-color 0.15s ease;
+    list-style: none; white-space: nowrap; transition: filter 0.15s ease, border-color 0.15s ease;
 }
 .lb-wallet-btn::-webkit-details-marker { display: none; }
 .lb-wallet-btn:hover { filter: brightness(1.08); }

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static lowbid_extras %}
 {% block title %}Lowbid — l’enchère inversée des freelances, sur Stellar{% endblock %}
 
 {% block content %}
@@ -18,6 +18,11 @@
       <a href="{% url 'auctions:need_list' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Parcourir les besoins</a>
     {% endif %}
   </div>
+  <p class="ui-meta mt-5 flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Chiffres en direct" data-landing-stats>
+    <span><strong class="text-strong ui-num">{{ stats.open_needs }}</strong> besoin{{ stats.open_needs|pluralize }} ouvert{{ stats.open_needs|pluralize }}</span>
+    <span><strong class="text-strong ui-num">{{ stats.bids }}</strong> enchère{{ stats.bids|pluralize }} placée{{ stats.bids|pluralize }}</span>
+    <span><strong class="text-strong ui-num">{{ stats.paid_usdc|usdc }}</strong> payés aux freelances</span>
+  </p>
   {% if next_url %}
     <p class="ui-alert ui-alert-attn mt-4 inline-flex"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Connectez votre wallet pour continuer vers <code class="font-mono">{{ next_url }}</code>.</span></p>
   {% endif %}
@@ -42,11 +47,9 @@
 </section>
 
 {% if latest_needs %}
-<section class="mt-10" aria-label="Besoins ouverts">
-  <div class="ui-page-header mb-4">
-    <div><h2 class="ui-panel-title">Enchères en cours</h2><p class="ui-panel-sub">Les besoins qui se terminent le plus tôt.</p></div>
-    <a href="{% url 'auctions:need_list' %}" class="ui-link">Tous les besoins <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
-  </div>
+<section class="ui-section" aria-label="Besoins ouverts">
+  {% url 'auctions:need_list' as list_url %}
+  {% include "components/section_head.html" with title="Enchères en cours" sub="Les besoins qui se terminent le plus tôt." icon="fa-bolt" link_href=list_url link_label="Tous les besoins" %}
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
     {% for need in latest_needs %}{% include "auctions/_need_card.html" with need=need %}{% endfor %}
   </div>

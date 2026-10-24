@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% load static lowbid_extras %}
+{% comment %}
+Project page. Payments (Phase 2): the header's [data-fund] button chains deploy + fund for every assigned,
+unfunded task (escrow mode) from GET /pay/project/<pk>/pending.json; the aside's first slot is the funding
+banner (totals, per-task escrow status, every hash with its stellar.expert link). `funding` =
+payments.services.project_funding().
+{% endcomment %}
 {% block title %}{{ project.title }} · Lowbid{% endblock %}
 {% block meta_description %}{{ project.title }} — {{ project.tasks_count }} tâche{{ project.tasks_count|pluralize }}, {{ project.total_amount|usdc }} au total.{% endblock %}
 
@@ -15,13 +21,13 @@
     {% include "components/tags.html" with tags=tag_list linked=True class="mt-2" %}
   </div>
   <div class="ui-page-actions">
-    {% if show_fund %}
-      {% if payments_enabled %}
-        <button type="button" class="ui-btn ui-btn-primary" data-fund><i class="fa-solid fa-lock" aria-hidden="true"></i> Financer le projet</button>
+    {% if show_fund and not funding.is_direct %}
+      {% if funding.can_fund %}
+        <button type="button" class="ui-btn ui-btn-primary" data-fund data-pending-url="{% url 'payments:project_pending' project.pk %}" data-loading-label="Financement…" title="{{ funding.fund_hint }}"><i class="fa-solid fa-lock" aria-hidden="true"></i> Financer le projet</button>
       {% else %}
-        <span class="inline-flex flex-col items-end gap-0.5">
-          <button type="button" class="ui-btn ui-btn-primary" data-fund disabled aria-disabled="true" title="Paiement Stellar branché à l’étape suivante"><i class="fa-solid fa-lock" aria-hidden="true"></i> Financer le projet</button>
-          <span class="ui-meta">Paiement Stellar branché à l’étape suivante</span>
+        <span class="inline-flex flex-col items-end gap-0.5 max-w-xs text-end">
+          <button type="button" class="ui-btn ui-btn-primary" data-fund disabled aria-disabled="true" title="{{ funding.fund_hint }}"><i class="fa-solid fa-lock" aria-hidden="true"></i> Financer le projet</button>
+          <span class="ui-meta" data-pay-hint>{{ funding.fund_hint }}</span>
         </span>
       {% endif %}
     {% endif %}
@@ -38,7 +44,7 @@
 </div>
 
 <section class="ui-kpi-band mb-6" aria-label="Chiffres clés">
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Budget total</span><span class="ui-kpi-value" data-kpi-total>{{ project.total_amount|usdc:"" }}<span class="ui-price-unit">USDC</span></span><span class="ui-kpi-hint ui-meta">somme des tâches</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Budget total</span><span class="ui-kpi-value" data-kpi-total>{{ project.total_amount|usdc:"" }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if funding.is_direct %}payé à chaque validation{% else %}{{ funding.funded|usdc:asset_code }} bloqués ou versés{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Tâches</span><span class="ui-kpi-value" data-kpi-count>{{ tasks|length }}</span><span class="ui-kpi-hint ui-meta">{{ project.open_count }} ouverte{{ project.open_count|pluralize }}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Candidatures</span><span class="ui-kpi-value">{{ pending_total }}</span><span class="ui-kpi-hint ui-meta">en attente de choix</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Payées</span><span class="ui-kpi-value">{{ project.paid_count }}<span class="ui-price-unit">/ {{ tasks|length }}</span></span><span class="ui-kpi-hint ui-meta">{{ project.progress_pct }} % du projet</span></div>
@@ -102,6 +108,8 @@
   </div>
 
   <aside class="ui-stack">
+    {% include "projects/_funding_panel.html" with funding=funding project=project %}
+
     {% if can_add_task %}
       {% include "projects/_task_form.html" with project=project %}
     {% endif %}
@@ -119,7 +127,9 @@
         </section>
       {% endif %}
       {% if project.is_draft %}
-        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Projet en brouillon : les tâches restent modifiables. Les freelances peuvent déjà postuler.</span></div>
+        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Projet en brouillon : les tâches restent modifiables{% if not funding.is_direct %} jusqu’au blocage des fonds{% endif %}. Les freelances peuvent déjà postuler.</span></div>
+      {% elif project.status == 'funded' %}
+        <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Projet financé : {% if funding.is_direct %}un premier paiement a été signé{% else %}le prix des tâches attribuées est bloqué en escrow{% endif %} — les tâches ne peuvent plus changer.</span></div>
       {% elif project.status == 'closed' %}
         <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Projet terminé : toutes les tâches sont payées.</span></div>
       {% endif %}
@@ -147,9 +157,11 @@
     status: "{{ project.status|escapejs }}",
     isCompany: {{ viewer_is_company|yesno:"true,false" }},
     tasksCount: {{ tasks|length }},
+    paymentMode: "{{ funding.mode|escapejs }}",
     urls: {
       addTask: "{% url 'projects:task_add' project.pk %}",
-      deleteTask: "{% url 'projects:task_delete' 0 %}"
+      deleteTask: "{% url 'projects:task_delete' 0 %}",
+      fund: "{% url 'payments:project_pending' project.pk %}"
     }
   };
 </script>

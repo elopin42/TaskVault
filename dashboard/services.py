@@ -10,9 +10,33 @@ from decimal import Decimal
 from django.db.models import Avg, Count, Q, Sum
 from django.urls import reverse
 
+from payments import services as payments
+from payments.stellar import asset_code
 from projects.models import Application, Project, Rating, Task
 
 ZERO = Decimal("0")
+
+# Payment steps → to-do copy for the wallet that must sign them (company side) and for the
+# freelance waiting on them. Mirrors payments.services.FLOW; the "validate" step is projects'.
+COMPANY_PAY_STEPS = {
+    "deploy": ("Financement", "Financer « {title} »", "Créer l’escrow de la tâche, puis bloquer {amount} {code} (deux signatures).", "Financer", "fa-lock", "#funding-panel"),
+    "fund": ("Financement", "Bloquer les fonds de « {title} »", "Escrow créé : il reste à y bloquer {amount} {code}.", "Bloquer", "fa-lock", "#funding-panel"),
+    "approve": ("Paiement", "Libérer les fonds de « {title} »", "Note enregistrée : signez la validation puis la libération des {amount} {code}.", "Libérer", "fa-money-bill-transfer", "#paiement"),
+    "release": ("Paiement", "Libérer les fonds de « {title} »", "Livraison validée on-chain : signez la libération des {amount} {code}.", "Libérer", "fa-money-bill-transfer", "#paiement"),
+    "direct_pay": ("Paiement", "Payer « {title} »", "Note enregistrée : signez le paiement de {amount} {code} dans Freighter.", "Payer", "fa-money-bill-transfer", "#paiement"),
+}
+FREELANCE_WAIT_STEPS = {
+    "deploy": ("Financement attendu", "« {title} » : en attente du financement par l’entreprise", "Vous pourrez déclarer la livraison une fois les {amount} {code} bloqués en escrow."),
+    "fund": ("Financement attendu", "« {title} » : en attente du financement par l’entreprise", "Escrow créé, fonds pas encore bloqués."),
+    "validate": ("Livraison déclarée", "« {title} » : en attente de validation par l’entreprise", ""),
+    "approve": ("Paiement en cours", "« {title} » : validée, libération des fonds en attente", "L’entreprise signe la libération de vos {amount} {code}."),
+    "release": ("Paiement en cours", "« {title} » : validée, libération des fonds en attente", "L’entreprise signe la libération de vos {amount} {code}."),
+    "direct_pay": ("Paiement en cours", "« {title} » : validée, paiement en attente", "L’entreprise signe le paiement de vos {amount} {code}."),
+}
+
+
+def _fmt(text: str, task: Task) -> str:
+    return text.format(title=task.title, amount=f"{task.price:,.2f}", code=asset_code())
 
 
 def _task_url(task: Task, anchor: str = "") -> str:
@@ -44,20 +68,37 @@ def todo_items(wallet) -> list[dict]:
         .annotate(pending_count=Count("applications", filter=Q(applications__status=Application.Status.PENDING)))
     )
     for task in company_tasks:
-        if task.status == Task.Status.DELIVERED:
-            who = task.assigned_to.display_name or task.assigned_to.short_address if task.assigned_to else "le freelance"
-            items.append(
-                {
-                    "tone": "act",
-                    "kicker": "Livraison déclarée",
-                    "headline": f"Valider et noter « {task.title} »",
-                    "body": f"{who} a livré : {task.delivery_link}" if task.delivery_link else f"{who} a livré.",
-                    "href": _task_url(task, "#validate-panel"),
-                    "cta": "Valider + noter",
-                    "icon": "fa-star",
-                    "when": task.delivered_at or task.updated_at,
-                }
-            )
+        if task.status in (Task.Status.TAKEN, Task.Status.DELIVERED):
+            action = payments.next_action(task, wallet)
+            if action and action["mine"] and action["step"] == "validate":
+                who = task.assigned_to.display_name or task.assigned_to.short_address if task.assigned_to else "le freelance"
+                items.append(
+                    {
+                        "tone": "act",
+                        "kicker": "Livraison déclarée",
+                        "headline": f"Valider et noter « {task.title} »",
+                        "body": f"{who} a livré : {task.delivery_link}" if task.delivery_link else f"{who} a livré.",
+                        "href": _task_url(task, "#validate-panel"),
+                        "cta": "Valider + noter",
+                        "icon": "fa-star",
+                        "when": task.delivered_at or task.updated_at,
+                    }
+                )
+            elif action and action["mine"] and action["step"] in COMPANY_PAY_STEPS:
+                kicker, headline, body, cta, icon, anchor = COMPANY_PAY_STEPS[action["step"]]
+                href = _project_url(task.project, anchor) if anchor == "#funding-panel" else _task_url(task, anchor)
+                items.append(
+                    {
+                        "tone": "act",
+                        "kicker": kicker,
+                        "headline": _fmt(headline, task),
+                        "body": _fmt(body, task),
+                        "href": href,
+                        "cta": cta,
+                        "icon": icon,
+                        "when": task.updated_at,
+                    }
+                )
         elif task.status == Task.Status.OPEN and task.pending_count:
             items.append(
                 {
@@ -65,7 +106,7 @@ def todo_items(wallet) -> list[dict]:
                     "kicker": "Candidatures",
                     "headline": f"Choisir un freelance pour « {task.title} »",
                     "body": f"{task.pending_count} candidat{'s' if task.pending_count > 1 else ''}, "
-                    f"{task.price:,.2f} USDC — projet « {task.project.title} ».",
+                    f"{task.price:,.2f} {asset_code()} — projet « {task.project.title} ».",
                     "href": _task_url(task, "#candidates-panel"),
                     "cta": "Choisir",
                     "icon": "fa-user-check",
@@ -87,29 +128,33 @@ def todo_items(wallet) -> list[dict]:
                 }
             )
 
-    # Freelance side: tasks to deliver, deliveries awaiting validation, pending applications.
-    for task in Task.objects.filter(assigned_to=wallet).select_related("project"):
-        if task.status == Task.Status.TAKEN:
+    # Freelance side: tasks to deliver, funding / validation / payment awaited, pending applications.
+    for task in Task.objects.filter(assigned_to=wallet).select_related("project__company"):
+        if task.status not in (Task.Status.TAKEN, Task.Status.DELIVERED):
+            continue
+        action = payments.next_action(task, wallet)
+        if action and action["mine"] and action["step"] == "deliver":
             items.append(
                 {
                     "tone": "act",
                     "kicker": "Tâche prise",
                     "headline": f"Livrer « {task.title} »",
-                    "body": f"{task.price:,.2f} USDC à la validation — projet « {task.project.title} ».",
+                    "body": f"{task.price:,.2f} {asset_code()} à la validation — projet « {task.project.title} ».",
                     "href": _task_url(task, "#deliver-panel"),
                     "cta": "Livrer",
                     "icon": "fa-truck-fast",
                     "when": task.updated_at,
                 }
             )
-        elif task.status == Task.Status.DELIVERED:
+        elif action and action["step"] in FREELANCE_WAIT_STEPS:
+            kicker, headline, body = FREELANCE_WAIT_STEPS[action["step"]]
             items.append(
                 {
                     "tone": "wait",
-                    "kicker": "Livraison déclarée",
-                    "headline": f"« {task.title} » : en attente de validation par l’entreprise",
-                    "body": "",
-                    "href": _task_url(task),
+                    "kicker": kicker,
+                    "headline": _fmt(headline, task),
+                    "body": _fmt(body, task),
+                    "href": _task_url(task, "#paiement"),
                     "cta": "Voir",
                     "icon": "fa-hourglass-half",
                     "when": task.delivered_at or task.updated_at,
@@ -213,7 +258,7 @@ def recent_activity(wallet, limit: int = 12) -> list[dict]:
                 "when": app.created_at,
                 "icon": "fa-paper-plane",
                 "tone": "brand",
-                "text": f"Candidature sur « {app.task.title} » ({app.task.price:,.2f} USDC)",
+                "text": f"Candidature sur « {app.task.title} » ({app.task.price:,.2f} {asset_code()})",
                 "href": _task_url(app.task),
             }
         )
@@ -259,7 +304,7 @@ def recent_activity(wallet, limit: int = 12) -> list[dict]:
                     "when": task.paid_at,
                     "icon": "fa-money-bill-transfer",
                     "tone": "ok",
-                    "text": f"{'Paiement envoyé' if mine_as_company else 'Paiement reçu'} — « {task.title} » ({task.price:,.2f} USDC)",
+                    "text": f"{'Paiement envoyé' if mine_as_company else 'Paiement reçu'} — « {task.title} » ({task.price:,.2f} {asset_code()})",
                     "href": _task_url(task),
                 }
             )

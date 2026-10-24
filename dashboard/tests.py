@@ -41,6 +41,7 @@ class ScenarioTest(TestCase):
         projects.choose(self.t1, Application.objects.get(task=self.t1, freelancer=self.a), self.company)
         projects.deliver(self.t1, self.a, "https://example.com/pr/1")
         projects.validate(self.t1, self.company, 5, "Parfait")
+        projects.mark_paid(self.t1)  # what payments does once the payment is confirmed on chain
         # T2: open with A + B pending → company must choose
         projects.apply(self.t2, self.a, "", ["stellar"])
         projects.apply(self.t2, self.b, "", ["stellar", "js"])

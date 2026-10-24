@@ -1,21 +1,25 @@
 {% load lowbid_extras %}
 {% comment %}
 Rendered by the `escrow_panel` inclusion tag (payments/templatetags/payments_extras.py), used as
-{% escrow_panel need wallet %} in auctions/need_detail.html. Context: need, winning_bid, escrow (may be
-None), mode, is_direct, status, steps, action, role (client|winner|other|anonymous), is_party, amount,
-payee, payer, links, last_error, pending_hash.
+{% escrow_panel task wallet %} in projects/task_detail.html for every non-open task. Context: task, project,
+escrow (may be None), mode, is_direct, status, steps, action (next_action(): a payment step or "validate"),
+role (company|freelance|other|anonymous), is_party, rated, amount, payee, payer, links, last_error,
+pending_hash, asset_code, asset_native, validate_url, trustline_url.
+DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-url] · [data-pay-error] ·
+#deliver-panel #deliver-link [data-deliver] · #validate-panel form[data-validate] [data-rate] [data-validate-submit] ·
+[data-pay-trustline] · [data-usdc-balance].
 {% endcomment %}
-<section class="glass-card p-5" id="escrow-panel" data-need="{{ need.pk }}" data-status="{{ need.status }}" data-escrow-status="{{ status }}" data-mode="{{ mode }}">
+<section class="glass-card p-5" id="escrow-panel" data-task="{{ task.pk }}" data-status="{{ task.status }}" data-escrow-status="{{ status }}" data-mode="{{ mode }}">
   <a id="paiement" class="block -mt-20 pt-20 pointer-events-none" aria-hidden="true"></a>
   <div class="ui-panel-head">
     <div class="min-w-0">
       <h2 class="ui-panel-title flex flex-wrap items-center gap-2">
         <i class="fa-solid {% if is_direct %}fa-bolt{% else %}fa-shield-halved{% endif %}" style="color: var(--brand-500)" aria-hidden="true"></i>
-        {% if is_direct %}Paiement direct USDC <span class="ui-badge ui-badge-attn" title="Sans escrow : un paiement USDC signé dans Freighter">Plan B</span>{% else %}Paiement en escrow{% endif %}
+        {% if is_direct %}Paiement direct {{ asset_code }} <span class="ui-badge ui-badge-attn" title="Sans escrow : un paiement signé dans Freighter à la validation">sans escrow</span>{% else %}Paiement en escrow{% endif %}
       </h2>
-      <p class="ui-panel-sub">{% if is_direct %}Paiement USDC de wallet à wallet sur Stellar, sans escrow.{% else %}Les USDC sont bloqués dans un contrat Soroban (Trustless Work) jusqu’à la validation.{% endif %}</p>
+      <p class="ui-panel-sub">{% if is_direct %}Paiement {{ asset_code }} de wallet à wallet sur Stellar à la validation, sans escrow.{% else %}Le prix de la tâche est bloqué dans un contrat Soroban (Trustless Work) jusqu’à la validation.{% endif %}</p>
     </div>
-    <span class="ui-badge {{ badge_class }} whitespace-nowrap">{{ status_label }}</span>
+    <span class="ui-badge {{ badge_class }} whitespace-nowrap" data-escrow-badge>{{ status_label }}</span>
   </div>
 
   {# Stepper #}
@@ -31,71 +35,100 @@ payee, payer, links, last_error, pending_hash.
   {# Amount / payee / live balance #}
   <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 mt-4 text-sm items-center">
     <dt class="ui-label mb-0">Montant</dt>
-    <dd class="text-end"><span class="ui-price text-lg">{{ amount|usdc:"" }}<span class="ui-price-unit">{{ usdc_code }}</span></span></dd>
+    <dd class="text-end"><span class="ui-price text-lg">{{ amount|usdc:"" }}<span class="ui-price-unit">{{ asset_code }}</span></span></dd>
     <dt class="ui-label mb-0">Freelance</dt>
     <dd class="text-end flex items-center justify-end gap-1.5 min-w-0">
       <a href="{{ payee_explorer_url }}" target="_blank" rel="noopener" class="ui-link font-mono truncate" title="{{ payee }}">{{ payee|short_addr }}</a>
       <button type="button" class="ui-btn ui-btn-ghost ui-btn-sm !px-2 shrink-0" data-copy="{{ payee }}" title="Copier l’adresse" aria-label="Copier l’adresse du freelance"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
     </dd>
-    <dt class="ui-label mb-0">Solde USDC du freelance</dt>
+    <dt class="ui-label mb-0">Solde {{ asset_code }} du freelance</dt>
     <dd class="text-end"><span class="ui-num font-semibold text-strong ui-balance" data-usdc-balance="{{ payee }}" data-watch title="Lu sur Horizon toutes les 5 s">…</span></dd>
   </dl>
 
-  {% if platform_fallback and role == 'client' and not is_done %}
+  {% if platform_fallback and role == 'company' and not is_done %}
     <div class="ui-alert ui-alert-attn mt-4" role="status" data-platform-fallback>
       <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
-      <span>Adresse plateforme non configurée : rôles fusionnés avec le client (<code class="font-mono">LOWBID_PLATFORM_ADDRESS</code> vide).</span>
+      <span>Adresse plateforme non configurée : rôles fusionnés avec l’entreprise (<code class="font-mono">LOWBID_PLATFORM_ADDRESS</code> vide).</span>
     </div>
   {% endif %}
 
   {% if last_error %}
-    <div class="ui-alert {% if pending_hash %}ui-alert-info{% else %}ui-alert-attn{% endif %} mt-4" role="status">
+    <div class="ui-alert {% if pending_hash %}ui-alert-info{% else %}ui-alert-attn{% endif %} mt-4" role="status" data-last-error>
       <i class="fa-solid {% if pending_hash %}fa-hourglass-half{% else %}fa-triangle-exclamation{% endif %}" aria-hidden="true"></i>
       <span>{{ last_error }}</span>
     </div>
   {% endif %}
 
-  {% if escrow.delivery_note %}
-    <p class="ui-meta mt-3"><i class="fa-solid fa-box-open" aria-hidden="true"></i> Livraison : <span class="text-strong">{{ escrow.delivery_note }}</span></p>
-  {% endif %}
-
   {# Next action #}
   <div class="mt-4" data-pay-action>
     {% if is_done %}
-      <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>{% if is_direct %}Paiement envoyé au freelance.{% else %}Fonds libérés vers le freelance.{% endif %} Merci !</span></div>
-    {% elif action and action.mine %}
-      {% if action.evidence %}
-        <form class="ui-form-grid" data-pay-form novalidate onsubmit="return false">
-          <div class="ui-field">
-            <label for="pay-evidence" class="ui-label">Note de livraison <span class="normal-case font-normal">(lien ou résumé, optionnel)</span></label>
-            <textarea id="pay-evidence" name="evidence" class="ui-textarea" rows="2" maxlength="280" placeholder="https://… ou un mot sur ce qui est livré" style="min-height: 64px"></textarea>
+      <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>{% if is_direct %}Paiement envoyé au freelance.{% else %}Fonds libérés vers le freelance.{% endif %} Tâche payée{% if task.paid_at %} le {{ task.paid_at|date:"d/m/Y à H:i" }}{% endif %}.</span></div>
+    {% elif action and action.mine and action.step == 'validate' %}
+      <div id="validate-panel" class="ui-form-scope">
+        <p class="text-sm mb-3"><i class="fa-solid fa-star" style="color: var(--brand-500)" aria-hidden="true"></i> Vérifiez la livraison, puis notez {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} de 1 à 5. {% if is_direct %}La note enregistrée, vous signez le paiement de {{ amount|usdc:asset_code }} dans Freighter.{% else %}La note enregistrée, vous signez la validation puis la libération des {{ amount|usdc:asset_code }} (deux signatures).{% endif %}</p>
+        <form id="validate-form" class="ui-form-grid" novalidate data-validate data-validate-url="{{ validate_url }}">
+          <fieldset class="ui-field ui-field-wide">
+            <legend class="ui-label">Note</legend>
+            <div class="ui-stars" role="radiogroup" aria-label="Note de 1 à 5">
+              {% for n in "12345" %}
+                <input type="radio" name="note" id="rate-{{ n }}" value="{{ n }}" data-rate="{{ n }}"{% if n == "5" %} checked{% endif %}>
+                <label for="rate-{{ n }}" title="{{ n }}/5"><i class="fa-solid fa-star" aria-hidden="true"></i><span class="sr-only">{{ n }} sur 5</span></label>
+              {% endfor %}
+            </div>
+            <span class="ui-help" data-rate-help>5/5 — excellent</span>
+            <span class="ui-error" data-error-for="note" hidden></span>
+          </fieldset>
+          <div class="ui-field ui-field-wide">
+            <label for="validate-comment" class="ui-label">Commentaire <span class="normal-case font-normal">(optionnel)</span></label>
+            <textarea id="validate-comment" name="comment" class="ui-textarea" rows="2" maxlength="280" placeholder="Un mot sur la collaboration…" style="min-height: 64px"></textarea>
           </div>
-          <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-pay-step="{{ action.step }}" data-prepare-url="{{ action.prepare_url }}" data-loading-label="{% if action.no_tx %}Envoi…{% else %}Signature…{% endif %}"><i class="fa-solid {{ action.icon }}" aria-hidden="true"></i> {{ action.label }}</button>
-          <p class="ui-error" data-pay-error hidden></p>
-          <p class="ui-help">{{ action.hint }}</p>
+          <div class="ui-field-wide">
+            <span class="ui-error" data-error-for="_" hidden></span>
+            <p class="ui-error" data-pay-error hidden></p>
+            <div class="ui-sticky-actions">
+              <button type="submit" class="ui-btn ui-btn-primary" data-validate-submit data-loading-label="Validation…"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> {% if is_direct %}Valider et payer {{ amount|usdc:asset_code }}{% else %}Valider et libérer {{ amount|usdc:asset_code }}{% endif %}</button>
+            </div>
+          </div>
         </form>
-      {% else %}
-        <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-pay-step="{{ action.step }}" data-prepare-url="{{ action.prepare_url }}" data-loading-label="Signature…"><i class="fa-solid {{ action.icon }}" aria-hidden="true"></i> {{ action.label }}</button>
-        <p class="ui-error mt-2" data-pay-error hidden></p>
-        <p class="ui-help mt-2">{{ action.hint }}</p>
-      {% endif %}
+      </div>
+    {% elif action and action.mine and action.evidence %}
+      <div id="deliver-panel" class="ui-form-scope">
+        <p class="text-sm mb-3"><i class="fa-solid fa-truck-fast" style="color: var(--brand-500)" aria-hidden="true"></i> Vous êtes choisi pour cette tâche. Déposez le lien de votre livraison (PR, démo, dépôt){% if not action.no_tx %} : il est enregistré comme preuve sur Stellar (une signature Freighter){% endif %}. L’entreprise valide, vous note, et le paiement suit.</p>
+        <form id="deliver-form" class="ui-form-grid" data-pay-form novalidate onsubmit="return false">
+          <div class="ui-field ui-field-wide">
+            <label for="deliver-link" class="ui-label">Lien de la livraison</label>
+            <input id="deliver-link" name="delivery_link" class="ui-input" type="url" inputmode="url" maxlength="500" required placeholder="https://github.com/…/pull/42" autocomplete="off">
+            <span class="ui-help">{{ action.hint }}</span>
+          </div>
+          <div class="ui-field-wide">
+            <p class="ui-error" data-pay-error hidden></p>
+            <div class="ui-sticky-actions">
+              <button type="button" class="ui-btn ui-btn-primary" data-pay-step="{{ action.step }}" data-prepare-url="{{ action.prepare_url }}" data-deliver data-loading-label="{% if action.no_tx %}Envoi…{% else %}Signature…{% endif %}"{% if action.no_tx %} data-confirm-title="Déclarer la livraison ?" data-confirm-message="L’entreprise vérifie, valide et vous note : le paiement suit la validation." data-confirm-label="Déclarer la livraison"{% endif %}><i class="fa-solid {{ action.icon }}" aria-hidden="true"></i> {{ action.label }}</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    {% elif action and action.mine %}
+      <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-pay-step="{{ action.step }}" data-prepare-url="{{ action.prepare_url }}" data-loading-label="Signature…"><i class="fa-solid {{ action.icon }}" aria-hidden="true"></i> {{ action.label }}</button>
+      <p class="ui-error mt-2" data-pay-error hidden></p>
+      <p class="ui-help mt-2">{{ action.hint }}{% if action.step == 'approve' %} La libération des fonds s’enchaîne juste après (deuxième signature).{% endif %}</p>
     {% elif action %}
       <div class="ui-alert ui-alert-info"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>{{ action.waiting }}</span></div>
-      {% if role == 'anonymous' %}<p class="ui-meta mt-2">Connectez votre wallet si vous êtes partie prenante de ce besoin.</p>{% endif %}
+      {% if role == 'anonymous' %}<p class="ui-meta mt-2">Connectez votre wallet si vous êtes partie prenante de cette tâche.</p>{% endif %}
     {% endif %}
   </div>
 
-  {# Trustline helper for the two parties #}
-  {% if is_party and not is_done %}
+  {# Trustline helper for the two parties (not needed for the native asset) #}
+  {% if is_party and not is_done and not asset_native %}
     <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-      <span class="ui-meta">Le wallet qui reçoit des USDC doit avoir la trustline.</span>
-      <button type="button" class="ui-btn ui-btn-ghost ui-btn-sm" data-pay-trustline data-prepare-url="{% url 'payments:trustline_prepare' %}" data-loading-label="Vérification…"><i class="fa-solid fa-link" aria-hidden="true"></i> Ajouter la trustline USDC</button>
+      <span class="ui-meta">Le wallet qui reçoit des {{ asset_code }} doit avoir la trustline.</span>
+      <button type="button" class="ui-btn ui-btn-ghost ui-btn-sm" data-pay-trustline data-prepare-url="{{ trustline_url }}" data-loading-label="Vérification…"><i class="fa-solid fa-link" aria-hidden="true"></i> Ajouter la trustline {{ asset_code }}</button>
     </div>
   {% endif %}
 
   {# Explorer links #}
   {% if links %}
-    <ul class="ui-list mt-4 border-t pt-3" style="border-color: var(--divider)">
+    <ul class="ui-list mt-4 border-t pt-3" style="border-color: var(--divider)" data-explorer-links>
       {% for l in links %}
         <li class="flex items-center justify-between gap-3 py-1 text-sm">
           <span class="ui-meta">{{ l.label }}</span>

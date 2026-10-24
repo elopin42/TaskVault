@@ -2,11 +2,12 @@ from decimal import Decimal
 from io import StringIO
 
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from stellar_sdk import Keypair
 
 from accounts.models import WalletUser
+from payments.models import Escrow
 
 from . import services
 from .models import Application, Project, Rating, Task
@@ -44,12 +45,14 @@ class BaseProjectTest(TestCase):
         self.t3 = services.add_task(self.project, self.company, "Dashboard", "", "400", ["django", "charts"])
 
     def pay_t1_to_a(self, note: int = 5) -> Task:
-        """Run the §8 first half: A and B apply to T1, A is chosen, delivers, gets validated with `note`."""
+        """Run the §8 first half: A and B apply to T1, A is chosen, delivers, gets validated with `note`,
+        then the payment is confirmed (what payments.confirm_release / confirm_direct_pay do: mark_paid)."""
         services.apply(self.t1, self.a, "A", ["django", "ui"])
         services.apply(self.t1, self.b, "B", ["django"])
         services.choose(self.t1, app_of(self.t1, self.a), self.company)
         services.deliver(self.t1, self.a, "https://github.com/studio-nova/booking/pull/1")
-        return services.validate(self.t1, self.company, note, "Parfait")
+        services.validate(self.t1, self.company, note, "Parfait")
+        return services.mark_paid(self.t1)
 
     def post_json(self, client, url, body=None):
         return client.post(url, data=body or {}, content_type="application/json", **JSON)
@@ -308,16 +311,40 @@ class DeliverTests(BaseProjectTest):
         self.assertEqual(Task.objects.get(pk=self.t1.pk).status, Task.Status.TAKEN)
 
 
-# --- company: validate + rate → paid (Phase 1 hook) ----------------------------------------------
+# --- company: validate + rate → payment hook → mark_paid --------------------------------------------
 
 class ValidateTests(BaseProjectTest):
-    def test_validate_stores_the_rating_and_marks_paid(self):
-        task = self.pay_t1_to_a(5)
-        self.assertEqual(task.status, Task.Status.PAID)
-        self.assertIsNotNone(task.paid_at)
+    def test_validate_stores_the_rating_and_hands_over_to_payments(self):
+        """validate() saves the Rating and calls payments.on_task_validated: the task stays `delivered`
+        (nothing is paid without a signature), the Escrow row exists, mark_paid is payments' job."""
+        services.apply(self.t1, self.a, "A", ["django", "ui"])
+        services.choose(self.t1, app_of(self.t1, self.a), self.company)
+        services.deliver(self.t1, self.a, "https://github.com/studio-nova/booking/pull/1")
+        task = services.validate(self.t1, self.company, 5, "Parfait")
+        self.assertEqual(task.status, Task.Status.DELIVERED)
+        self.assertIsNone(task.paid_at)
         rating = Rating.objects.get(task=task)
         self.assertEqual((rating.note, rating.comment, rating.company, rating.freelancer), (5, "Parfait", self.company, self.a))
+        escrow = Escrow.objects.get(task=task)
+        self.assertEqual((escrow.mode, escrow.status, escrow.amount), (Escrow.Mode.DIRECT, Escrow.Status.CREATED, Decimal("300")))
+        self.assertEqual((escrow.payer_address, escrow.payee_address), (self.company.stellar_address, self.a.stellar_address))
+        task = services.mark_paid(task)
+        self.assertEqual(task.status, Task.Status.PAID)
+        self.assertIsNotNone(task.paid_at)
         self.assertEqual(Project.objects.get(pk=self.project.pk).status, Project.Status.DRAFT, "two tasks remain")
+
+    @override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k")
+    def test_db_only_delivery_is_refused_in_escrow_mode(self):
+        services.apply(self.t1, self.a, "A", ["django", "ui"])
+        services.choose(self.t1, app_of(self.t1, self.a), self.company)
+        with self.assertRaises(ProjectError) as ctx:
+            services.deliver(self.t1, self.a, "https://x.y/pr")
+        self.assertEqual(ctx.exception.code, "wrong_state")
+        self.assertIn("escrow", ctx.exception.message)
+        self.assertEqual(Task.objects.get(pk=self.t1.pk).status, Task.Status.TAKEN)
+        # payments confirms the on-chain milestone change with on_chain=True
+        task = services.deliver(self.t1, self.a, "https://x.y/pr", on_chain=True)
+        self.assertEqual(task.status, Task.Status.DELIVERED)
 
     def test_project_closes_when_every_task_is_paid(self):
         services.delete_task(self.t2, self.company)
@@ -356,7 +383,7 @@ class ValidateTests(BaseProjectTest):
         first = task.paid_at
         again = services.mark_paid(task)
         self.assertEqual(again.paid_at, first)
-        self.assertTrue(callable(services._after_validate), "Phase 2 replaces this hook")
+        self.assertTrue(callable(services._after_validate) and callable(services._before_deliver), "payment hooks")
 
     def test_comment_is_optional_and_truncated(self):
         services.apply(self.t1, self.a, "", [])
@@ -500,16 +527,31 @@ class ProjectDetailViewTests(BaseProjectTest):
         self.assertIn('id="candidates-%d"' % self.t1.pk, html)
         self.assertEqual(html.count("data-choose="), 2, "a Choisir button on EVERY candidate")
         self.assertIn("data-recommended", html)
-        self.assertIn("data-fund", html)
-        self.assertIn("Paiement Stellar branché à l’étape suivante", html)
         self.assertIn("window.LOWBID_PROJECT", html)
         self.assertIn(reverse("projects:task_add", args=[self.project.pk]), html)
+        # direct mode (no Trustless Work key): no funding button, an honest note instead
+        self.assertNotIn("data-fund", html)
+        self.assertIn("Mode paiement direct", html)
+        with override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k"):
+            html = self.client.get(self.url()).content.decode()
+        self.assertIn("data-fund", html)
+        self.assertIn("disabled", html.split("data-fund", 1)[1][:80], "no chosen freelance → the button is disabled")
+        self.assertIn("Choisissez d’abord un freelance", html)
+        self.assertIn("Trustless Work fixe le destinataire", html)
 
-    def test_fund_button_only_for_a_draft_project_with_tasks(self):
+    @override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k")
+    def test_fund_button_enabled_once_a_freelance_is_chosen(self):
         login(self.client, self.company)
         empty = services.create_project(self.company, "Vide", "Rien.")
         self.assertNotContains(self.client.get(reverse("projects:project_detail", args=[empty.pk])), "data-fund")
-        Project.objects.filter(pk=self.project.pk).update(status=Project.Status.FUNDED)
+        services.apply(self.t1, self.a, "", ["django"])
+        services.choose(self.t1, app_of(self.t1, self.a), self.company)
+        html = self.client.get(self.url()).content.decode()
+        self.assertIn(f'data-fund data-pending-url="{reverse("payments:project_pending", args=[self.project.pk])}"', html)
+        self.assertIn("1 tâche attribuée à financer", html)
+        self.assertIn('id="funding-panel"', html)
+        self.assertIn("En préparation", html, "T1's escrow status in the banner")
+        Project.objects.filter(pk=self.project.pk).update(status=Project.Status.CLOSED)
         r = self.client.get(self.url())
         self.assertNotContains(r, "data-fund")
         self.assertNotContains(r, 'id="task-form"')
@@ -592,9 +634,11 @@ class TaskDetailViewTests(BaseProjectTest):
         login(self.client, self.company)
         html = self.client.get(self.url()).content.decode()
         self.assertIn('id="validate-panel"', html)
-        self.assertIn('novalidate data-validate>', html)
+        self.assertIn('novalidate data-validate data-validate-url="%s"' % reverse("projects:task_validate", args=[self.t1.pk]), html)
         self.assertEqual(html.count("data-rate="), 5)
         self.assertIn("data-validate-submit", html)
+        self.assertIn("Valider et payer 300.00 USDC", html)
+        self.assertIn('id="escrow-panel"', html)
         self.assertIn("https://x.y/pr", html)
         login(self.client, self.a)
         html = self.client.get(self.url()).content.decode()
@@ -796,7 +840,7 @@ class DeliverValidateEndpointTests(BaseProjectTest):
         r = self.post_json(self.client, url, {"delivery_link": "https://github.com/x/y/pull/2"})
         self.assertEqual((r.status_code, r.json()["error"]), (409, "wrong_state"))
 
-    def test_validate_endpoint_marks_paid(self):
+    def test_validate_endpoint_saves_the_rating_and_returns_the_payment_step(self):
         url = reverse("projects:task_validate", args=[self.t1.pk])
         login(self.client, self.company)
         r = self.post_json(self.client, url, {"note": 5})
@@ -810,11 +854,18 @@ class DeliverValidateEndpointTests(BaseProjectTest):
         self.assertEqual((r.status_code, r.json()["error"]), (400, "invalid"))
         r = self.post_json(self.client, url, {"note": "5", "comment": "Top"})
         self.assertEqual(r.status_code, 200, r.content)
-        self.assertEqual(r.json()["status"], "paid")
-        self.assertEqual(r.json()["project_status"], "draft")
-        self.assertIn("Paiement effectué", r.json()["message"])
+        data = r.json()
+        self.assertEqual(data["status"], "delivered", "nothing is paid before the signature")
+        self.assertEqual(data["project_status"], "draft")
+        self.assertEqual(data["next"]["step"], "direct_pay")
+        self.assertTrue(data["next"]["mine"])
+        self.assertEqual(data["next"]["prepare_url"], reverse("payments:prepare", kwargs={"task_pk": self.t1.pk, "step": "direct_pay"}))
+        self.assertIn("Payer le freelance", data["message"])
         self.assertEqual(Rating.objects.get(task=self.t1).comment, "Top")
-        self.assertEqual(Task.objects.get(pk=self.t1.pk).status, Task.Status.PAID)
+        self.assertEqual(Task.objects.get(pk=self.t1.pk).status, Task.Status.DELIVERED)
+        # a second validation is refused (the task is still delivered but rated)
+        r = self.post_json(self.client, url, {"note": 4})
+        self.assertEqual((r.status_code, r.json()["error"]), (409, "duplicate"))
 
 
 class CandidatesJsonTests(BaseProjectTest):
@@ -872,6 +923,10 @@ class SeedDemoTests(TestCase):
         t1, t2, t3 = list(pitch.tasks.order_by("position"))
         self.assertEqual((t1.status, t2.status, t3.status), ("paid", "open", "open"))
         self.assertEqual(Rating.objects.get(task=t1).note, 5)
+        escrow = Escrow.objects.get(task=t1)
+        self.assertEqual((escrow.mode, escrow.status, len(escrow.payment_tx_hash)), ("direct", "paid", 64))
+        self.assertIn("payment mode", text)
+        self.assertIn("stellar.expert", text)
         scores = sorted(t2.applications.values_list("score", flat=True), reverse=True)
         self.assertEqual(scores, [Decimal("90.0"), Decimal("20.0")])
         draft = Project.objects.exclude(pk=pitch.pk).get()

@@ -33,14 +33,17 @@
         networkPassphrase: "{{ STELLAR_NETWORK_PASSPHRASE|escapejs }}",
         horizonUrl: "{{ STELLAR_HORIZON_URL|escapejs }}",
         sorobanRpcUrl: "{{ STELLAR_SOROBAN_RPC_URL|escapejs }}",
-        usdc: { code: "{{ STELLAR_USDC_CODE|escapejs }}", issuer: "{{ STELLAR_USDC_ISSUER|escapejs }}" },
+        asset: { code: "{{ asset_code|escapejs }}", issuer: "{{ asset_issuer|escapejs }}", native: {{ asset_native|yesno:"true,false" }} },
+        paymentMode: "{{ payment_mode|escapejs }}",
         walletAddress: "{{ wallet_address|escapejs }}",
         urls: {
           challenge: "{% url 'accounts:challenge' %}",
           verify: "{% url 'accounts:verify' %}",
           logout: "{% url 'accounts:logout' %}",
           landing: "{% url 'core:landing' %}",
-          dashboard: "{% url 'dashboard:home' %}"
+          dashboard: "{% url 'dashboard:home' %}",
+          trustlinePrepare: "{% url 'payments:trustline_prepare' %}",
+          trustlineSend: "{% url 'payments:trustline_send' %}"
         }
       };
     </script>

@@ -1,10 +1,14 @@
 """Business rules of the task board in one place (SPEC §3). Views only translate
 ProjectError codes into HTTP; templates never decide a rule.
 
-Payment hooks (Phase 2 wires them to the payments app):
-  - `mark_paid(task)`      the ONLY function that flips a task to `paid` (idempotent);
-  - `_after_validate(task)` called by `validate()` once the Rating is stored — Phase 1 marks the
-    task paid right away, Phase 2 calls `payments.services.on_task_validated(task)` instead.
+Payment hooks (wired to the payments app, imported lazily to avoid an import cycle):
+  - `mark_paid(task)`       the ONLY function that flips a task to `paid` (idempotent); payments
+    calls it once the escrow release / direct payment is confirmed on chain;
+  - `_after_validate(task)` called by `validate()` once the Rating is stored → it hands over to
+    `payments.services.on_task_validated(task)`, which does NOT pay: the page then chains the
+    Freighter signatures (approve → release, or direct_pay);
+  - `_before_deliver(task)` a DB-only delivery is refused in escrow mode (the freelance signs the
+    milestone change instead; payments calls `deliver(..., on_chain=True)` after that).
 """
 
 import logging
@@ -33,6 +37,7 @@ __all__ = [
     "add_task",
     "apply",
     "choose",
+    "clean_link",
     "clean_tags",
     "company_history",
     "create_project",
@@ -122,7 +127,8 @@ def _clean_title(raw, label: str) -> str:
     return title
 
 
-def _clean_link(raw) -> str:
+def clean_link(raw) -> str:
+    """The delivery link: required, ≤500 chars, http(s)://. Raises ProjectError('invalid')."""
     link = str(raw or "").strip()
     if not link:
         raise ProjectError("invalid", "Indiquez le lien de la livraison (PR, démo, dépôt…).")
@@ -234,15 +240,19 @@ def choose(task: Task, application: Application, company) -> Task:
     return locked
 
 
-def deliver(task: Task, freelancer, delivery_link) -> Task:
-    """Only the assignee, only a `taken` task; the link must be http(s), ≤500 chars."""
-    link = _clean_link(delivery_link)
+def deliver(task: Task, freelancer, delivery_link, *, on_chain: bool = False) -> Task:
+    """Only the assignee, only a `taken` task; the link must be http(s), ≤500 chars.
+    `on_chain=True` is payments confirming the Trustless Work milestone change; otherwise the
+    `_before_deliver` hook refuses a DB-only delivery in escrow mode."""
+    link = clean_link(delivery_link)
     with transaction.atomic():
         locked = _locked_task(task)
         if freelancer is None or locked.assigned_to_id != freelancer.pk:
             raise ProjectError("not_assigned", "Seul le freelance choisi peut livrer cette tâche.")
         if locked.status != Task.Status.TAKEN:
             raise ProjectError("wrong_state", "Cette tâche n’est pas en cours : rien à livrer.")
+        if not on_chain:
+            _before_deliver(locked)
         locked.status = Task.Status.DELIVERED
         locked.delivery_link = link
         locked.delivered_at = timezone.now()
@@ -273,14 +283,26 @@ def validate(task: Task, company, note, comment: str = "") -> Task:
 
 
 def _after_validate(task: Task) -> None:
-    """Payment hook. Phase 1: no money, the task is paid right away.
-    Phase 2 replaces this body with `payments.services.on_task_validated(task)`."""
-    mark_paid(task)
+    """Payment hook: the Rating is stored, payments decides what the company signs next
+    (approve → release in escrow mode, direct_pay in direct mode). Nothing is paid here."""
+    from payments import services as payments  # lazy: payments.services imports this module
+
+    payments.on_task_validated(task)
+
+
+def _before_deliver(task: Task) -> None:
+    """Payment hook: a DB-only delivery is only possible in direct mode."""
+    from payments import services as payments  # lazy: payments.services imports this module
+
+    try:
+        payments.check_db_deliver(task)
+    except payments.PaymentError as exc:
+        raise ProjectError("wrong_state", exc.message) from None
 
 
 def mark_paid(task: Task) -> Task:
     """Flip a task to `paid` (idempotent). Closes the project when every task is paid.
-    Phase 2 calls this after the on-chain release / direct payment is confirmed."""
+    Called by payments once the on-chain release / direct payment is confirmed."""
     with transaction.atomic():
         locked = _locked_task(task)
         if locked.status == Task.Status.PAID:

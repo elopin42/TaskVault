@@ -12,6 +12,7 @@ can_delete / my_application / is_mine set by the view), viewer_is_company.
   <td data-label="Prix" class="ui-col-end ui-num">{% include "components/price.html" with amount=task.price %}</td>
   <td data-label="Statut">
     {% include "components/status_badge.html" with obj=task %}
+    {% if task.pay_status_label and task.status != 'open' and task.status != 'paid' %}<span class="ui-badge {{ task.pay_badge_class }}" title="Paiement" data-pay-badge>{{ task.pay_status_label }}</span>{% endif %}
     {% if task.my_application %}<span class="ui-badge {{ task.my_application.badge_class }}" title="Votre candidature">{% if task.my_application.status == 'pending' %}Postulé{% else %}{{ task.my_application.status_label }}{% endif %}</span>{% endif %}
   </td>
   <td data-label="Freelance">

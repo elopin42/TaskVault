@@ -1,7 +1,8 @@
 """Seed the demo dataset (SPEC §8): 3 wallets, 2 projects.
 
   1. "Plateforme de réservation" at the pitch state — T1 "Landing page" paid to freelance A
-     (note 5), T2 "Intégration Freighter" open with A + B applying (A is Validé + Recommandé:
+     (note 5, with its Escrow row: a direct payment and a demo tx hash so the explorer links render),
+     T2 "Intégration Freighter" open with A + B applying (A is Validé + Recommandé:
      40 + 5·8 + 20·(1/2) = 90 vs B 0 + 0 + 20·(2/2) = 20), T3 "Dashboard" open, no candidate.
   2. A draft project with open tasks and no application.
 
@@ -12,13 +13,17 @@ then `make dev` after a models change.
     python manage.py seed_demo [--flush]
 """
 
+import hashlib
 import os
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 from stellar_sdk import Keypair
 
 from accounts.models import WalletUser
+from payments import stellar
+from payments.models import Escrow
 from projects import services
 from projects.models import Application, Project, Rating, Task
 
@@ -32,24 +37,31 @@ def _wallet(env_name: str, display: str) -> WalletUser:
     return wallet
 
 
+def _demo_hash(label: str) -> str:
+    """A deterministic 64-hex "tx hash" for the seeded payment (explorer links render, nothing on chain)."""
+    return hashlib.sha256(f"lowbid-demo:{label}".encode()).hexdigest()
+
+
 class Command(BaseCommand):
-    help = "Create the Lowbid demo data (wallets, projects, tasks, applications, one paid task)."
+    help = "Create the Lowbid demo data (wallets, projects, tasks, applications, one paid task with its escrow row)."
 
     def add_arguments(self, parser):
-        parser.add_argument("--flush", action="store_true", help="Delete every Project (tasks, applications, ratings) first.")
+        parser.add_argument("--flush", action="store_true", help="Delete every Project (tasks, applications, ratings, escrows) first.")
 
     @transaction.atomic
     def handle(self, *args, **options):
         if options["flush"]:
+            escrows, _ = Escrow.objects.all().delete()
             ratings, _ = Rating.objects.all().delete()
             apps, _ = Application.objects.all().delete()
             tasks, _ = Task.objects.all().delete()
             projects, _ = Project.objects.all().delete()
-            self.stdout.write(f"flushed projects={projects} tasks={tasks} applications={apps} ratings={ratings}")
+            self.stdout.write(f"flushed projects={projects} tasks={tasks} applications={apps} ratings={ratings} escrows={escrows}")
 
         company = _wallet("LOWBID_DEMO_CLIENT", "Studio Nova (entreprise)")
         a = _wallet("LOWBID_DEMO_FREELANCE1", "Yanis (freelance A)")
         b = _wallet("LOWBID_DEMO_FREELANCE2", "Nora (freelance B)")
+        mode = stellar.payment_mode()
 
         # 1. The pitch project: T1 paid to A, T2 open with A + B, T3 open.
         p1 = services.create_project(
@@ -75,8 +87,20 @@ class Command(BaseCommand):
         services.apply(t1, b, "Intégration propre depuis Figma, 2 itérations comprises.", ["django"])
         app_a = Application.objects.get(task=t1, freelancer=a)
         services.choose(t1, app_a, company)
-        services.deliver(t1, a, "https://github.com/studio-nova/booking/pull/1")
-        services.validate(t1, company, 5, "Impeccable, pixel-perfect et en avance.")
+        # T1 is settled as a DIRECT payment whatever the configured mode: the seed cannot sign anything
+        # on chain, and a direct row is the only honest terminal state without a contract id. The row is
+        # frozen in direct mode (status past `created`) BEFORE the DB-only delivery, which escrow mode refuses.
+        link = "https://github.com/studio-nova/booking/pull/1"
+        now = timezone.now()
+        escrow = Escrow.objects.create(
+            task=t1, mode=Escrow.Mode.DIRECT, status=Escrow.Status.DELIVERED, amount=t1.price,
+            payer_address=company.stellar_address, payee_address=a.stellar_address, engagement_id=f"lowbid-task-{t1.pk}",
+            delivery_note=link, delivered_at=now,
+        )
+        services.deliver(t1, a, link)
+        services.validate(t1, company, 5, "Impeccable, pixel-perfect et en avance.")  # Rating only: payments pays
+        Escrow.objects.filter(pk=escrow.pk).update(status=Escrow.Status.PAID, payment_tx_hash=_demo_hash(f"t1-{t1.pk}"), released_at=now)
+        services.mark_paid(t1)
         services.apply(t2, a, "J’ai déjà branché Freighter et Horizon sur un back-office Django.", ["stellar"])
         services.apply(t2, b, "Spécialiste Stellar/JS : SEP-53, trustlines, Soroban.", ["stellar", "js"])
 
@@ -93,8 +117,10 @@ class Command(BaseCommand):
 
         scores = {app.freelancer.display_name: f"{app.score:.1f}" for app in t2.applications.select_related("freelancer")}
         self.stdout.write(self.style.SUCCESS("Demo data ready."))
+        self.stdout.write(f"  payment mode {mode} (LOWBID_PAYMENT_MODE={os.environ.get('LOWBID_PAYMENT_MODE', '') or 'auto'}), asset {stellar.asset_code()}")
         self.stdout.write(f"  entreprise  {company.stellar_address}")
         self.stdout.write(f"  freelance A {a.stellar_address}")
         self.stdout.write(f"  freelance B {b.stellar_address}")
         self.stdout.write(f"  projects: pitch=#{p1.pk} (T1 #{t1.pk} paid, T2 #{t2.pk} open A+B, T3 #{t3.pk} open)  draft=#{p2.pk}")
+        self.stdout.write(f"  T1 payment: direct, demo hash {_demo_hash(f't1-{t1.pk}')[:12]}… → {stellar.explorer_tx_url(_demo_hash(f't1-{t1.pk}'))}")
         self.stdout.write(f"  T2 scores: {scores}")

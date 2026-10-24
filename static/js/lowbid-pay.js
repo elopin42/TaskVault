@@ -1,32 +1,44 @@
-/* Lowbid pay module — sign-and-send driver for escrow (Trustless Work) and direct USDC steps.
+/* Lowbid pay module — sign-and-send driver for the escrow (Trustless Work) and direct-payment steps.
  *
  * Depends on window.Lowbid (lowbid-base.js: api/toast), Lowbid.signTransaction
- * (lowbid-wallet.js: Freighter) and window.LOWBID (base.html). View-agnostic: the
+ * (lowbid-wallet.js: Freighter) and window.LOWBID (base.html: asset, urls). View-agnostic: the
  * payments views only have to answer two JSON shapes.
  *
- *   prepare  POST <data-prepare-url>  -> {ok, xdr, send_url, extra?}   (ok:false -> {error})
- *   send     POST <send_url>          {signed_xdr, ...extra} -> {ok, hash?, contract_id?, redirect?, message?, error?}
+ *   prepare  POST <data-prepare-url>  -> {ok, xdr, send_url, extra?} | {ok, redirect, message, next}   (ok:false -> {error, message})
+ *   send     POST <send_url>          {signed_xdr, ...extra} -> {ok, hash?, contract_id?, redirect?, message?, next?, error?}
+ *
+ * `next` = the viewer's following step ({step, label, prepare_url, mine, evidence, no_tx} or null): the
+ * driver chains it when it is a plain signature (deploy → fund, approve → release), so a validation
+ * needs no reload between the two Freighter prompts.
  *
  * Markup:
- *   <button data-pay-step="fund" data-prepare-url="/pay/..../prepare/" [data-send-url] [data-pay-body='{"k":1}']
- *           [data-loading-label="Signature…"] [data-no-reload]>Financer</button>
+ *   <button data-pay-step="fund" data-prepare-url="/pay/prepare/<task>/fund/" [data-send-url] [data-pay-body='{"k":1}']
+ *           [data-loading-label="Signature…"] [data-no-reload]
+ *           [data-confirm-title data-confirm-message data-confirm-label]>Bloquer les fonds</button>
+ *   <form data-pay-form> … </form>                 (its fields join the prepare/send body, e.g. delivery_link)
  *   <p data-pay-error hidden></p>                       (nearest ancestor's one gets the server error)
- *   <button data-pay-trustline>Ajouter la trustline USDC</button>   (uses LOWBID.urls.trustlinePrepare)
- *   <span data-usdc-balance="G…" data-watch>0.00 USDC</span>          (polled from Horizon: 5 s for 2 min, then 15 s, up to 15 min)
+ *   <button data-pay-trustline>Ajouter la trustline</button>      (uses LOWBID.urls.trustlinePrepare)
+ *   <button data-fund data-pending-url="/pay/project/<pk>/pending.json">Financer le projet</button>
+ *   <span data-usdc-balance="G…" data-watch>…</span>     (polled from Horizon: 5 s for 2 min, then 15 s, up to 15 min)
  *
  * Public API:
  *   Lowbid.pay.signAndSend({xdr, sendUrl, extra})  -> Promise<serverJson>
- *   Lowbid.pay.runStep(button)                     -> Promise<serverJson|undefined>
+ *   Lowbid.pay.run({step, prepareUrl, body})       -> Promise<serverJson>      one step, no reload
+ *   Lowbid.pay.runChain(next, {stopAfter})         -> Promise<{completed, last, next}>  follows `next` while it is mine
+ *   Lowbid.pay.runStep(button)                     -> Promise<serverJson|undefined>   button driver (+ chain, then reload)
+ *   Lowbid.pay.fundProject(button)                 -> Promise                 deploy + fund every pending task
  *   Lowbid.pay.ensureTrustline(button?)            -> Promise<serverJson>
  *   Lowbid.pay.watchBalance(el, {interval, maxMs}) -> stop()
- *   Lowbid.pay.fetchUsdcBalance(address)           -> Promise<string|null>
+ *   Lowbid.pay.fetchUsdcBalance(address)           -> Promise<string|null>   balance of the configured asset
  *   Lowbid.pay.explorerTxUrl(hash) / explorerAccountUrl(addr) / explorerContractUrl(id)
+ *   Lowbid.pay.toastTx(message, hash)              toast with a stellar.expert link
  */
 (function () {
   "use strict";
 
   var Lowbid = window.Lowbid = window.Lowbid || {};
   var CFG = window.LOWBID || {};
+  var ASSET = CFG.asset || CFG.usdc || {};
 
   var DECLINED_CODE = -4; // FreighterApiDeclinedError
   var BALANCE_INTERVAL_MS = 5000;        // first 2 minutes
@@ -35,6 +47,8 @@
   var BALANCE_MAX_MS = 15 * 60 * 1000;
   var BALANCE_MAX_FAILURES = 3; // consecutive Horizon failures before a watcher gives up
   var balanceWarned = false;
+  // Steps the chain may run without a form: everything but deliver (needs the link) and validate (rating).
+  var CHAINABLE = { deploy: 1, fund: 1, approve: 1, release: 1, direct_pay: 1 };
 
   /* ---------- helpers ---------- */
   function toast(msg, type, opts) {
@@ -67,17 +81,16 @@
     return "https://stellar.expert/explorer/" + (CFG.network === "public" ? "public" : "testnet");
   }
 
-  function setLoading(btn, on) {
+  function setLoading(btn, on, label) {
     if (!btn) return;
     if (on) {
-      if (btn.dataset.busy === "1") return;
+      if (btn.dataset.busy === "1") { if (label) setLoadingLabel(btn, label); return; }
       btn.dataset.busy = "1";
       btn.dataset.label = btn.innerHTML;
       btn.classList.add("is-loading");
       btn.disabled = true;
       btn.setAttribute("aria-busy", "true");
-      var label = btn.getAttribute("data-loading-label") || "Signature…";
-      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> <span>' + Lowbid.escapeHtml(label) + "</span>";
+      setLoadingLabel(btn, label || btn.getAttribute("data-loading-label") || "Signature…");
     } else {
       delete btn.dataset.busy;
       btn.classList.remove("is-loading");
@@ -85,6 +98,9 @@
       btn.removeAttribute("aria-busy");
       if (btn.dataset.label) btn.innerHTML = btn.dataset.label;
     }
+  }
+  function setLoadingLabel(btn, label) {
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> <span>' + Lowbid.escapeHtml(label) + "</span>";
   }
 
   /* Nearest [data-pay-error]: walk up until an ancestor contains one, else the first on the page. */
@@ -99,13 +115,13 @@
   }
 
   function showError(btn, msg) {
-    var slot = errorSlot(btn);
+    var slot = btn && btn.matches && btn.matches("[data-pay-error]") ? btn : errorSlot(btn);
     if (!slot) return;
     slot.textContent = msg || "";
     if (msg) slot.removeAttribute("hidden"); else slot.setAttribute("hidden", "");
   }
 
-  /* data-pay-body JSON, plus the fields of the enclosing <form data-pay-form> (e.g. the delivery note). */
+  /* data-pay-body JSON, plus the fields of the enclosing <form data-pay-form> (e.g. the delivery link). */
   function parseBody(btn) {
     var body = {};
     var raw = btn.getAttribute("data-pay-body");
@@ -121,11 +137,28 @@
 
   function finish(result, btn) {
     if (result && result.redirect) {
-      window.location.href = result.redirect;
+      var target = new URL(result.redirect, window.location.href);
+      if (target.pathname === window.location.pathname && target.search === window.location.search) {
+        // Same page, only the #anchor differs: assigning href would not reload — do it explicitly.
+        if (target.hash) window.location.hash = target.hash;
+        setTimeout(function () { window.location.reload(); }, 600);
+      } else {
+        window.location.href = result.redirect;
+      }
       return;
     }
     if (btn && btn.hasAttribute("data-no-reload")) return;
     setTimeout(function () { window.location.reload(); }, 900);
+  }
+
+  function failed(res, fallback) {
+    var e = new Error((res && (res.message || res.error)) || fallback);
+    e.data = res || {};
+    return e;
+  }
+
+  function chainable(next) {
+    return !!(next && next.mine && next.prepare_url && CHAINABLE[next.step] && !next.evidence);
   }
 
   /* ---------- core ---------- */
@@ -133,6 +166,22 @@
     explorerTxUrl: function (hash) { return explorerBase() + "/tx/" + encodeURIComponent(hash || ""); },
     explorerAccountUrl: function (addr) { return explorerBase() + "/account/" + encodeURIComponent(addr || ""); },
     explorerContractUrl: function (id) { return explorerBase() + "/contract/" + encodeURIComponent(id || ""); },
+
+    /* Success toast carrying the tx hash and its stellar.expert link (the toast body is text-only by design). */
+    toastTx: function (message, hash, opts) {
+      var t = toast(message + (hash ? " (" + Lowbid.shortAddr(hash, 6) + ")" : ""), "success", Object.assign({ title: "Confirmé", duration: 9000 }, opts || {}));
+      if (t && t.el && hash) {
+        var body = t.el.querySelector(".lb-toast-message");
+        if (body) {
+          var a = document.createElement("a");
+          a.href = pay.explorerTxUrl(hash); a.target = "_blank"; a.rel = "noopener"; a.className = "ui-link";
+          a.textContent = "voir sur stellar.expert";
+          body.appendChild(document.createTextNode(" — "));
+          body.appendChild(a);
+        }
+      }
+      return t;
+    },
 
     /* Freighter signs `xdr` with the session wallet, the signed XDR goes to `sendUrl`.
        Resolves with the server JSON. Rejects with an Error; `.handled` is set when a toast
@@ -159,19 +208,59 @@
         var body = Object.assign({ signed_xdr: signedXdr }, opts.extra || {});
         return Lowbid.api(opts.sendUrl, { method: "POST", body: body });
       }).then(function (res) {
-        if (!res || res.ok === false) {
-          var e = new Error((res && (res.message || res.error)) || "Transaction refusée par le réseau.");
-          e.data = res || {};
-          throw e;
-        }
-        var msg = res.message || "Transaction confirmée.";
-        if (res.hash) msg += " (" + Lowbid.shortAddr(res.hash, 6) + ")";
-        toast(msg, "success", { title: "Confirmé", duration: 7000 });
+        if (!res || res.ok === false) throw failed(res, "Transaction refusée par le réseau.");
+        pay.toastTx(res.message || "Transaction confirmée.", res.hash);
         return res;
       });
     },
 
-    /* Generic [data-pay-step] driver: prepare -> sign -> send -> reload/redirect. */
+    /* One step, no page effect: prepare -> (sign -> send). Resolves with the server JSON of the last
+       call (the prepare answer when the server completed the step itself, e.g. direct-mode deliver). */
+    run: function (desc) {
+      desc = desc || {};
+      if (!desc.prepareUrl) return Promise.reject(new Error("Bouton mal configuré (data-prepare-url manquant)."));
+      var body = Object.assign({}, desc.body || {});
+      body.step = desc.step || body.step || "";
+      return Lowbid.api(desc.prepareUrl, { method: "POST", body: body }).then(function (prep) {
+        if (!prep || prep.ok === false) throw failed(prep, "Préparation impossible.");
+        if (!prep.xdr) {
+          if (prep.message) toast(prep.message, "success", { title: "Enregistré" });
+          return prep; // nothing to sign: the server completed the step itself
+        }
+        return pay.signAndSend({
+          xdr: prep.xdr,
+          sendUrl: prep.send_url || desc.sendUrl,
+          extra: Object.assign({ step: body.step }, prep.extra || {})
+        });
+      });
+    },
+
+    /* Follow `next` while it is a signature of mine (deploy → fund, approve → release, direct_pay).
+       opts.stopAfter: array of steps after which the chain stops (e.g. ["fund"] for project funding).
+       opts.onStep(next, index): called before each step (progress label). Resolves {completed, last, next};
+       rejects with the step error carrying .completed and .pending (the step that failed). */
+    runChain: function (next, opts) {
+      opts = opts || {};
+      var completed = 0, last = null;
+      function loop(cur) {
+        if (!chainable(cur)) return Promise.resolve({ completed: completed, last: last, next: cur });
+        if (typeof opts.onStep === "function") opts.onStep(cur, completed);
+        return pay.run({ step: cur.step, prepareUrl: cur.prepare_url, body: opts.body }).then(function (res) {
+          completed += 1; last = res;
+          var following = res && res.next;
+          if (opts.stopAfter && opts.stopAfter.indexOf(cur.step) !== -1 && !(following && opts.stopAfter.indexOf(following.step) !== -1)) {
+            return { completed: completed, last: last, next: following };
+          }
+          return loop(following);
+        }).catch(function (err) {
+          if (err && err.completed === undefined) { err.completed = completed; err.pending = cur; }
+          throw err;
+        });
+      }
+      return loop(next);
+    },
+
+    /* Generic [data-pay-step] driver: (confirm) -> prepare -> sign -> send -> chain `next` -> reload/redirect. */
     runStep: function (btn) {
       if (!btn || btn.dataset.busy === "1") return Promise.resolve();
       var prepareUrl = btn.getAttribute("data-prepare-url");
@@ -179,41 +268,84 @@
         showError(btn, "Bouton mal configuré (data-prepare-url manquant).");
         return Promise.resolve();
       }
-      showError(btn, "");
-      setLoading(btn, true);
-      var body = parseBody(btn);
-      body.step = btn.getAttribute("data-pay-step") || body.step || "";
-
-      return Lowbid.api(prepareUrl, { method: "POST", body: body }).then(function (prep) {
-        if (!prep || prep.ok === false) {
-          var e = new Error((prep && (prep.message || prep.error)) || "Préparation impossible.");
-          e.data = prep || {};
-          throw e;
-        }
-        if (!prep.xdr) {
-          // Nothing to sign (server completed the step itself) — just follow it.
-          finish(prep, btn);
-          return prep;
-        }
-        return pay.signAndSend({
-          xdr: prep.xdr,
-          sendUrl: prep.send_url || btn.getAttribute("data-send-url"),
-          extra: Object.assign({ step: body.step }, prep.extra || {})
+      var ask = Promise.resolve(true);
+      if (btn.hasAttribute("data-confirm-message") && typeof Lowbid.confirm === "function") {
+        ask = Lowbid.confirm({
+          title: btn.getAttribute("data-confirm-title") || "Confirmer ?",
+          message: btn.getAttribute("data-confirm-message"),
+          confirmLabel: btn.getAttribute("data-confirm-label") || "Confirmer",
+          icon: "fa-truck-fast"
+        });
+      }
+      return ask.then(function (ok) {
+        if (!ok) return;
+        showError(btn, "");
+        setLoading(btn, true);
+        var step = btn.getAttribute("data-pay-step") || "";
+        return pay.run({ step: step, prepareUrl: prepareUrl, body: parseBody(btn), sendUrl: btn.getAttribute("data-send-url") }).then(function (res) {
+          if (res && chainable(res.next)) {
+            setLoading(btn, true, res.next.label + "…");
+            return pay.runChain(res.next).then(function (chain) { return chain.last || res; });
+          }
+          return res;
         }).then(function (res) {
           finish(res, btn);
           return res;
+        }).catch(function (err) {
+          setLoading(btn, false);
+          if (err && err.handled) { if (err.completed) finish(null, btn); return; }
+          var msg = errorMessage(err);
+          showError(btn, msg);
+          toast(msg, "error", { title: "Paiement" });
+          console.warn("lowbid-pay: step failed", err);
+          if (err && err.completed) finish(null, btn); // a signature went through: refresh the panel
         });
-      }).catch(function (err) {
-        setLoading(btn, false);
-        if (err && err.handled) return;
-        var msg = errorMessage(err);
-        showError(btn, msg);
-        toast(msg, "error", { title: "Paiement" });
-        console.error("lowbid-pay: step failed", err);
       });
     },
 
-    /* USDC trustline for the session wallet (freelancer onboarding). Needs LOWBID.urls.trustlinePrepare. */
+    /* "Financer le projet": deploy + fund every assigned, unfunded task, one after the other. */
+    fundProject: function (btn) {
+      var url = (btn && btn.getAttribute("data-pending-url")) || (window.LOWBID_PROJECT && window.LOWBID_PROJECT.urls && window.LOWBID_PROJECT.urls.fund);
+      if (!url) return Promise.resolve();
+      if (btn && btn.dataset.busy === "1") return Promise.resolve();
+      var status = document.querySelector("[data-pay-status]");
+      function say(text) { if (status) status.textContent = text; }
+      if (btn) { showError(btn, ""); setLoading(btn, true, "Financement…"); }
+      var done = 0;
+      return Lowbid.api(url).then(function (data) {
+        if (!data || data.ok === false) throw failed(data, "Financement impossible.");
+        var tasks = data.tasks || [];
+        if (!tasks.length) { toast(data.hint || "Rien à financer.", "info", { title: "Financement" }); if (btn) setLoading(btn, false); return null; }
+        var i = 0;
+        function nextTask() {
+          if (i >= tasks.length) return Promise.resolve();
+          var t = tasks[i++];
+          return pay.runChain(t.next, {
+            stopAfter: ["fund"],
+            onStep: function (step) {
+              var label = "Tâche " + i + "/" + tasks.length + " « " + t.title + " » : " + step.label + "…";
+              say(label); if (btn) setLoading(btn, true, label);
+            }
+          }).then(function () { done += 1; return nextTask(); });
+        }
+        return nextTask().then(function () {
+          say(done + " tâche" + (done > 1 ? "s" : "") + " financée" + (done > 1 ? "s" : "") + ". Rechargement…");
+          toast("Projet financé : " + done + " escrow" + (done > 1 ? "s" : "") + " créé" + (done > 1 ? "s" : "") + " et alimenté" + (done > 1 ? "s" : "") + ".", "success", { title: "Financement" });
+          finish(null, btn);
+        });
+      }).catch(function (err) {
+        if (btn) setLoading(btn, false);
+        var msg = errorMessage(err);
+        if (!(err && err.handled)) {
+          showError(btn || status, msg);
+          toast(msg, "error", { title: "Financement" });
+          console.warn("lowbid-pay: funding failed", err);
+        }
+        if (done || (err && err.completed)) finish(null, btn); // some signatures went through: refresh the banner
+      });
+    },
+
+    /* Asset trustline for the session wallet (freelance onboarding). Needs LOWBID.urls.trustlinePrepare. */
     ensureTrustline: function (btn) {
       var urls = CFG.urls || {};
       var prepareUrl = (btn && btn.getAttribute("data-prepare-url")) || urls.trustlinePrepare;
@@ -225,14 +357,10 @@
       if (btn && btn.dataset.busy === "1") return Promise.resolve();
       if (btn) { showError(btn, ""); setLoading(btn, true); }
       return Lowbid.api(prepareUrl, { method: "POST", body: { address: CFG.walletAddress || "" } }).then(function (prep) {
-        if (!prep || prep.ok === false) {
-          var err = new Error((prep && (prep.message || prep.error)) || "Préparation impossible.");
-          err.data = prep || {};
-          throw err;
-        }
+        if (!prep || prep.ok === false) throw failed(prep, "Préparation impossible.");
         if (!prep.xdr) {
-          // Already has the trustline: the server says so without an XDR.
-          toast(prep.message || "La trustline USDC est déjà en place.", "info");
+          // Already has the trustline (or native asset): the server says so without an XDR.
+          toast(prep.message || "La trustline est déjà en place.", "info");
           if (btn) setLoading(btn, false);
           return prep;
         }
@@ -241,7 +369,7 @@
           sendUrl: prep.send_url || urls.trustlineSend || (btn && btn.getAttribute("data-send-url")),
           extra: prep.extra || {}
         }).then(function (res) {
-          finish(res, btn);
+          if (btn) setLoading(btn, false);
           return res;
         });
       }).catch(function (err) {
@@ -250,15 +378,15 @@
         var msg = errorMessage(err);
         if (btn) showError(btn, msg);
         toast(msg, "error", { title: "Trustline" });
-        console.error("lowbid-pay: trustline failed", err);
+        console.warn("lowbid-pay: trustline failed", err);
         throw err;
       });
     },
 
-    /* Horizon /accounts/{addr} (public CORS) -> USDC balance string ("0" without trustline), null on failure. */
+    /* Horizon /accounts/{addr} (public CORS) -> balance string of the configured asset ("0" without
+       trustline, the XLM line for the native asset), null on failure. */
     fetchUsdcBalance: function (address) {
       if (!address || !CFG.horizonUrl) return Promise.resolve(null);
-      var usdc = CFG.usdc || {};
       return fetch(CFG.horizonUrl.replace(/\/$/, "") + "/accounts/" + encodeURIComponent(address), {
         headers: { "Accept": "application/json" }
       }).then(function (res) {
@@ -267,7 +395,8 @@
         return res.json().then(function (acc) {
           var list = (acc && acc.balances) || [];
           for (var i = 0; i < list.length; i++) {
-            if (list[i].asset_code === usdc.code && list[i].asset_issuer === usdc.issuer) return list[i].balance;
+            if (ASSET.native) { if (list[i].asset_type === "native") return list[i].balance; }
+            else if (list[i].asset_code === ASSET.code && list[i].asset_issuer === ASSET.issuer) return list[i].balance;
           }
           return "0";
         });
@@ -308,7 +437,7 @@
 
       function render(balance) {
         var nodes = nodesFor();
-        var text = Lowbid.formatUsdc ? Lowbid.formatUsdc(balance, (CFG.usdc || {}).code) : balance + " USDC";
+        var text = Lowbid.formatUsdc ? Lowbid.formatUsdc(balance, ASSET.code) : balance + " " + (ASSET.code || "USDC");
         nodes.forEach(function (n) {
           var changed = n.textContent.trim() !== text;
           n.textContent = text;
@@ -366,6 +495,12 @@
     if (stepBtn) {
       ev.preventDefault();
       pay.runStep(stepBtn);
+      return;
+    }
+    var fundBtn = ev.target.closest("[data-fund]");
+    if (fundBtn && !fundBtn.disabled) {
+      ev.preventDefault();
+      pay.fundProject(fundBtn);
       return;
     }
     var trustBtn = ev.target.closest("[data-pay-trustline]");

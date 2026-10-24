@@ -1,14 +1,17 @@
 /* Lowbid task board: shared helpers (tags, submit-once) + the project page (inline add-task,
-   delete) + the task page (apply, candidates polling through Lowbid.poll, choose / deliver /
-   validate behind Lowbid.confirm). Depends on lowbid-base.js + lowbid-ui.js. Server-side values
-   arrive through window.LOWBID_PROJECT (project_detail.html) and window.LOWBID_TASK (task_detail.html).
+   delete) + the task page (apply, candidates polling through Lowbid.poll, choose behind
+   Lowbid.confirm, validate + rate → payment chain). Depends on lowbid-base.js + lowbid-ui.js and,
+   for the payment chain, lowbid-pay.js (Lowbid.pay.runChain). Server-side values arrive through
+   window.LOWBID_PROJECT (project_detail.html) and window.LOWBID_TASK (task_detail.html).
 
    Delegated actions (survive innerHTML swaps):
      [data-choose="<app_pk>"][data-choose-url]   company picks a candidate (project or task page)
      [data-task-delete="<task_pk>"]              company deletes an open task of a draft project
      [data-add-tag="x"][data-target="input-id"]  adds a suggested tag to the target input
-   Forms: #task-form [data-task-add] · #apply-form [data-apply-submit] · #deliver-form [data-deliver] ·
-          #validate-form[data-validate] [data-rate] radios + [data-validate-submit]. */
+   Forms: #task-form [data-task-add] · #apply-form [data-apply-submit] ·
+          #validate-form[data-validate] [data-rate] radios + [data-validate-submit] (escrow panel).
+   The deliver form (#deliver-form, #deliver-link) and the funding button ([data-fund]) are payment
+   steps driven by lowbid-pay.js ([data-pay-step] / [data-fund]). */
 (function () {
   "use strict";
 
@@ -216,38 +219,7 @@
     });
   }
 
-  /* ----- deliver form (assignee) ----- */
-  var deliverForm = document.getElementById("deliver-form");
-  if (deliverForm) {
-    var delivering = false;
-    deliverForm.addEventListener("submit", function (ev) {
-      ev.preventDefault();
-      if (delivering) return;
-      clearErrors(deliverForm);
-      var link = document.getElementById("deliver-link").value.trim();
-      if (!/^https?:\/\//i.test(link)) { fieldError(deliverForm, "delivery_link", "Le lien doit commencer par http:// ou https://."); return; }
-      var btn = deliverForm.querySelector("[data-deliver]");
-      Lowbid.confirm({
-        title: "Déclarer la livraison ?",
-        message: link + "\nL’entreprise vérifie, valide et vous note : le paiement suit la validation.",
-        confirmLabel: "Déclarer la livraison", icon: "fa-truck-fast"
-      }).then(function (ok) {
-        if (!ok) return;
-        delivering = true;
-        setBusy(btn, true, "Envoi…");
-        Lowbid.api(cfg.urls.deliver, { method: "POST", body: { delivery_link: link } }).then(function (data) {
-          Lowbid.toast(data.message || "Livraison déclarée.", "success", { title: "Livraison" });
-          setTimeout(function () { location.reload(); }, 500);
-        }).catch(function (err) {
-          delivering = false;
-          setBusy(btn, false);
-          fieldError(deliverForm, "delivery_link", toastError(err, "Livraison refusée."));
-        });
-      });
-    });
-  }
-
-  /* ----- validate + rate form (company) ----- */
+  /* ----- validate + rate form (company) → saves the Rating, then chains the payment signatures ----- */
   var validateForm = document.querySelector("form[data-validate]");
   if (validateForm) {
     var LABELS = { 1: "1/5 — insuffisant", 2: "2/5 — passable", 3: "3/5 — correct", 4: "4/5 — très bien", 5: "5/5 — excellent" };
@@ -256,6 +228,23 @@
       r.addEventListener("change", function () { if (help) help.textContent = LABELS[r.value] || ""; });
     });
     var validating = false;
+    var isDirect = (window.LOWBID && window.LOWBID.paymentMode) === "direct";
+
+    /* After the rating is saved but a signature failed / was declined: swap the form for the pending
+       step so the company can resume without a reload (the server keeps the same `next`). */
+    function showResume(next, msg) {
+      var panel = validateForm.closest("#validate-panel") || validateForm.parentNode;
+      var box = document.createElement("div");
+      box.innerHTML =
+        '<div class="ui-alert ui-alert-ok mb-3"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Note enregistrée. ' +
+        (next && next.mine ? "Il reste à signer « " + Lowbid.escapeHtml(next.label) + " » pour payer le freelance." : "") + "</span></div>" +
+        (next && next.mine && next.prepare_url
+          ? '<button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-pay-step="' + Lowbid.escapeHtml(next.step) + '" data-prepare-url="' + Lowbid.escapeHtml(next.prepare_url) + '" data-loading-label="Signature…"><i class="fa-solid fa-money-bill-transfer" aria-hidden="true"></i> ' + Lowbid.escapeHtml(next.label) + "</button>"
+          : "") +
+        '<p class="ui-error mt-2" data-pay-error' + (msg ? "" : " hidden") + ">" + Lowbid.escapeHtml(msg || "") + "</p>";
+      panel.replaceChild(box, validateForm);
+    }
+
     validateForm.addEventListener("submit", function (ev) {
       ev.preventDefault();
       if (validating) return;
@@ -266,21 +255,39 @@
       var btn = validateForm.querySelector("[data-validate-submit]");
       Lowbid.confirm({
         title: "Valider la livraison ?",
-        message: "Note " + note + "/5. La validation déclenche le paiement de la tâche au freelance.",
-        confirmLabel: "Valider et payer", icon: "fa-circle-check"
+        message: "Note " + note + "/5. " + (isDirect
+          ? "La note enregistrée, vous signez le paiement de la tâche dans Freighter."
+          : "La note enregistrée, vous signez la validation puis la libération des fonds dans Freighter (deux signatures)."),
+        confirmLabel: isDirect ? "Valider et payer" : "Valider et libérer", icon: "fa-circle-check"
       }).then(function (ok) {
         if (!ok) return;
         validating = true;
         setBusy(btn, true, "Validation…");
         var comment = document.getElementById("validate-comment");
-        Lowbid.api(cfg.urls.validate, { method: "POST", body: { note: note, comment: comment ? comment.value : "" } }).then(function (data) {
+        var url = validateForm.getAttribute("data-validate-url") || cfg.urls.validate;
+        Lowbid.api(url, { method: "POST", body: { note: note, comment: comment ? comment.value : "" } }).then(function (data) {
           Lowbid.toast(data.message || "Tâche validée.", "success", { title: "Validation" });
-          setTimeout(function () { location.reload(); }, 500);
+          var next = data.next;
+          if (!(next && next.mine && next.prepare_url && Lowbid.pay)) { setTimeout(function () { location.reload(); }, 500); return; }
+          setBusy(btn, true, next.label + "…");
+          return Lowbid.pay.runChain(next, {
+            onStep: function (step) { setBusy(btn, true, step.label + "…"); }
+          }).then(function () {
+            setTimeout(function () { location.reload(); }, 700);
+          }).catch(function (err) {
+            validating = false;
+            var pending = (err && err.pending) || next;
+            var msg = err && err.handled ? "" : ((err && err.data && err.data.message) || (err && err.message) || "Signature impossible.");
+            if (msg) Lowbid.toast(msg, "error", { title: "Paiement" });
+            if (err && err.completed) { setTimeout(function () { location.reload(); }, 900); return; }
+            showResume(pending, msg);
+          });
         }).catch(function (err) {
           validating = false;
           setBusy(btn, false);
           var code = err && err.data && err.data.error;
           fieldError(validateForm, code === "invalid" ? "note" : "_", toastError(err, "Validation refusée."));
+          if (code === "wrong_state" || code === "duplicate") setTimeout(function () { location.reload(); }, 1500);
         });
       });
     });

@@ -18,6 +18,8 @@ from django.views.decorators.http import require_GET, require_POST
 
 from accounts.decorators import wallet_required
 from accounts.identity import get_wallet
+from payments import services as payments
+from payments.views import next_json
 
 from . import services
 from .forms import ProjectForm
@@ -253,6 +255,11 @@ def project_detail(request: HttpRequest, pk: int) -> HttpResponse:
                 candidate_blocks.append(_candidates_context(task, wallet))
     pending_total = sum(t.pending_count for t in tasks)
     to_validate = [t for t in tasks if t.status == Task.Status.DELIVERED]
+    funding = payments.project_funding(project, wallet)
+    for task in tasks:  # escrow status per row (project_funding already loaded every Escrow)
+        row = next((r for r in funding["rows"] if r["task"].pk == task.pk), None)
+        task.pay_status_label = row["status_label"] if row else ""
+        task.pay_badge_class = row["badge_class"] if row else ""
     return render(
         request,
         "projects/project_detail.html",
@@ -262,9 +269,10 @@ def project_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "wallet": wallet,
             "viewer_is_company": is_company,
             "can_add_task": is_company and project.is_draft,
-            # Phase 2: the escrow panel replaces this placeholder flag (see services._after_validate).
-            "payments_enabled": False,
-            "show_fund": is_company and project.is_draft and len(tasks) >= 1,
+            "funding": funding,
+            # The company sees "Financer le projet" as soon as the project has a task; it is enabled
+            # only when an assigned task still has to be deployed/funded (escrow mode).
+            "show_fund": is_company and len(tasks) >= 1 and project.status != Project.Status.CLOSED,
             "candidate_blocks": candidate_blocks,
             "pending_total": pending_total,
             "to_validate": to_validate,
@@ -289,10 +297,9 @@ def task_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "wallet": wallet,
             "my_application": my_app,
             "can_apply": wallet is not None and not is_company and task.is_open and my_app is None,
-            "can_deliver": task.is_assignee(wallet) and task.status == Task.Status.TAKEN,
-            "can_validate": is_company and task.status == Task.Status.DELIVERED,
             "is_assignee": task.is_assignee(wallet),
             "rating": rating,
+            "pay_action": payments.next_action(task, wallet),
             "candidates_url": reverse("projects:task_candidates_json", kwargs={"pk": task.pk}),
             "siblings": list(task.project.tasks.exclude(pk=task.pk).order_by("position", "pk")[:8]),
         }
@@ -495,17 +502,28 @@ def task_deliver(request: HttpRequest, pk: int) -> JsonResponse:
 @require_POST
 @wallet_required
 def task_validate(request: HttpRequest, pk: int) -> JsonResponse:
-    task = get_object_or_404(Task.objects.select_related("project"), pk=pk)
+    """Saves the Rating, then answers `next`: the payment step the company must sign right away
+    (approve → release in escrow mode, direct_pay in direct mode) so lowbid-projects.js chains it."""
+    task = get_object_or_404(Task.objects.select_related("project__company", "assigned_to"), pk=pk)
+    wallet = get_wallet(request)
     data = _json_body(request)
     try:
-        task = services.validate(task, get_wallet(request), note=data.get("note"), comment=str(data.get("comment") or ""))
+        task = services.validate(task, wallet, note=data.get("note"), comment=str(data.get("comment") or ""))
     except ProjectError as e:
         return _error_response(e)
+    nxt = payments.next_action(task, wallet)
+    if task.status == Task.Status.PAID:
+        message = "Tâche validée, notée et payée."
+    elif nxt and nxt["mine"]:
+        message = f"Note enregistrée. Signez maintenant « {nxt['label']} » dans Freighter."
+    else:
+        message = "Tâche validée et notée."
     return JsonResponse(
         {
             "ok": True,
             "status": task.status,
             "project_status": task.project.status,
-            "message": "Tâche validée et notée." + (" Paiement effectué." if task.status == Task.Status.PAID else ""),
+            "next": next_json(nxt),
+            "message": message,
         }
     )

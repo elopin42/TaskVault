@@ -1,0 +1,47 @@
+{% load lowbid_extras %}
+{% comment %}
+Project funding banner (payments). Context: project, funding = payments.services.project_funding(project):
+mode/is_direct, total, funded, paid, pending (tasks to deploy+fund), rows (per task: escrow, status_label,
+badge_class, links), links (every hash across the project), can_fund, fund_hint. Shown to everyone once the
+project has an assigned task (or always in direct mode, as the honest "no escrow" note).
+{% endcomment %}
+{% if funding.assigned or funding.is_direct or funding.links %}
+<section class="ui-panel" id="funding-panel" data-pay-summary data-mode="{{ funding.mode }}">
+  <div class="ui-panel-head">
+    <div>
+      <h2 class="ui-panel-title"><i class="fa-solid {% if funding.is_direct %}fa-bolt{% else %}fa-shield-halved{% endif %}" style="color: var(--brand-500)" aria-hidden="true"></i> {% if funding.is_direct %}Paiement direct {{ asset_code }}{% else %}Financement en escrow{% endif %}</h2>
+      <p class="ui-panel-sub">{% if funding.is_direct %}Mode paiement direct : chaque validation déclenche un paiement {{ asset_code }} signé dans Freighter.{% else %}Un escrow Trustless Work par tâche, créé et financé par l’entreprise une fois le freelance choisi (le destinataire est fixé au déploiement).{% endif %}</p>
+    </div>
+  </div>
+  <dl class="ui-facts">
+    <dt>Total des tâches</dt><dd class="ui-num" data-pay-total>{{ funding.total|usdc:asset_code }}</dd>
+    <dt>{% if funding.is_direct %}Versés{% else %}Bloqués ou versés{% endif %}</dt><dd class="ui-num" data-pay-funded>{{ funding.funded|usdc:asset_code }}</dd>
+    <dt>Payés aux freelances</dt><dd class="ui-num" data-pay-paid>{{ funding.paid|usdc:asset_code }}</dd>
+  </dl>
+  {% if funding.rows %}
+    <ul class="ui-list mt-4 border-t pt-3" style="border-color: var(--divider)" data-pay-rows>
+      {% for r in funding.rows %}
+        {% if r.task.status != 'open' %}
+          <li class="py-1.5 text-sm" data-pay-task="{{ r.task.pk }}" data-escrow-status="{{ r.status }}">
+            <div class="flex items-center justify-between gap-3">
+              <a href="{% url 'projects:task_detail' r.task.pk %}#paiement" class="ui-link font-medium truncate min-w-0">{{ r.task.title }}</a>
+              <span class="flex items-center gap-2 shrink-0"><span class="ui-num">{{ r.task.price|usdc:"" }}</span><span class="ui-badge {{ r.badge_class }}">{{ r.status_label }}</span></span>
+            </div>
+            {% if r.links %}
+              <ul class="mt-1 space-y-0.5">
+                {% for l in r.links %}
+                  <li class="flex items-center justify-between gap-3 ui-meta"><span>{{ l.label }}</span><a href="{{ l.url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ l.value }}">{{ l.value|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a></li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </li>
+        {% endif %}
+      {% endfor %}
+    </ul>
+  {% endif %}
+  {% if viewer_is_company and not funding.is_direct %}
+    <p class="ui-help mt-3" data-pay-status>{{ funding.fund_hint }}</p>
+    <p class="ui-error mt-2" data-pay-error hidden></p>
+  {% endif %}
+</section>
+{% endif %}

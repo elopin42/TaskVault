@@ -60,7 +60,7 @@ INSTALLED_APPS = [
     "core",
     "accounts",
     "projects",
-    # "payments" is re-enabled in Phase 2 (escrow per project, one milestone per task).
+    "payments",
     "dashboard",
 ]
 

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static lowbid_extras %}
+{% load static lowbid_extras payments_extras %}
 {% block title %}{{ task.title }} · {{ project.title }} · Lowbid{% endblock %}
 {% block meta_description %}{{ task.title }} — tâche à {{ task.price|usdc }} du projet « {{ project.title }} ».{% endblock %}
 
@@ -29,7 +29,7 @@
 </div>
 
 <section class="ui-kpi-band mb-6" aria-label="Chiffres clés">
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Prix fixe</span><span class="ui-kpi-value">{{ task.price|usdc:"" }}<span class="ui-price-unit">USDC</span></span><span class="ui-kpi-hint ui-meta">versé à la validation</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Prix fixe</span><span class="ui-kpi-value">{{ task.price|usdc:"" }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if payment_mode == 'direct' %}payé à la validation{% else %}bloqué en escrow, libéré à la validation{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Candidats</span><span class="ui-kpi-value" data-kpi-count>{{ rows|length }}</span><span class="ui-kpi-hint ui-meta">{% if task_open %}l’entreprise choisit{% else %}candidatures closes{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Projet</span><span class="ui-kpi-value text-base"><a href="{% url 'projects:project_detail' project.pk %}" class="ui-link">{{ project.title|truncatechars:28 }}</a></span><span class="ui-kpi-hint ui-meta">{{ project.paid_count }}/{{ project.tasks_count }} tâche{{ project.tasks_count|pluralize }} payée{{ project.paid_count|pluralize }}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Étape</span><span class="ui-kpi-value text-base">{{ task.status_label }}</span><span class="ui-kpi-hint ui-meta">{% if task.status == 'open' %}candidatures ouvertes{% elif task.status == 'taken' %}livraison attendue{% elif task.status == 'delivered' %}validation attendue{% else %}payée {% if task.paid_at %}le {{ task.paid_at|date:"d/m" }}{% endif %}{% endif %}</span></div>
@@ -49,7 +49,7 @@
       <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-truck-fast" style="color: var(--brand-500)" aria-hidden="true"></i> Livraison</h2><p class="ui-panel-sub">déclarée {% if task.delivered_at %}le {{ task.delivered_at|date:"d/m/Y à H:i" }}{% endif %} par {{ task.assigned_to.display_name|default:task.assigned_to.short_address }}</p></div></div>
       <a href="{{ task.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-delivery-link><i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i> {{ task.delivery_link }}</a>
       {% if rating %}
-        <div class="ui-alert ui-alert-ok mt-4" data-rating="{{ rating.note }}"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Validée et notée <strong class="text-strong">{{ rating.note }}/5</strong>{% if rating.comment %} — « {{ rating.comment }} »{% endif %}{% if task.status == 'paid' %} · {{ task.price|usdc }} versés au freelance.{% endif %}</span></div>
+        <div class="ui-alert ui-alert-ok mt-4" data-rating="{{ rating.note }}"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Validée et notée <strong class="text-strong">{{ rating.note }}/5</strong>{% if rating.comment %} — « {{ rating.comment }} »{% endif %}{% if task.status == 'paid' %} · {{ task.price|usdc:asset_code }} versés au freelance.{% endif %}</span></div>
       {% endif %}
     </section>
     {% endif %}
@@ -134,72 +134,25 @@
         </section>
       {% endif %}
 
-    {% elif task.status == 'taken' %}
-      {% if can_deliver %}
-        <section class="ui-panel ui-form-scope" id="deliver-panel" style="border-color: var(--brand-600)">
-          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-truck-fast" style="color: var(--brand-500)" aria-hidden="true"></i> Livrer</h2><p class="ui-panel-sub">Vous êtes choisi pour cette tâche. Déposez le lien de votre livraison (PR, démo, dépôt) : l’entreprise valide et vous note.</p></div></div>
-          <form id="deliver-form" class="ui-form-grid" novalidate>
-            <div class="ui-field ui-field-wide">
-              <label for="deliver-link" class="ui-label">Lien de la livraison</label>
-              <input id="deliver-link" name="delivery_link" class="ui-input" type="url" inputmode="url" maxlength="500" required placeholder="https://github.com/…/pull/42" autocomplete="off">
-              <span class="ui-error" data-error-for="delivery_link" hidden></span>
-            </div>
-            <div class="ui-field-wide">
-              <div class="ui-sticky-actions">
-                <button type="submit" class="ui-btn ui-btn-primary" data-deliver><i class="fa-solid fa-truck-fast" aria-hidden="true"></i> Déclarer la livraison</button>
-              </div>
-            </div>
-          </form>
-        </section>
-      {% elif viewer_is_company %}
-        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>En cours : {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} travaille sur la tâche. Vous validerez et noterez à la livraison.</span></div>
-      {% else %}
-        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-user-check" aria-hidden="true"></i><span>Un freelance a été choisi pour cette tâche.{% if my_application %} Votre candidature n’a pas été retenue.{% endif %}</span></div>
-      {% endif %}
-
-    {% elif task.status == 'delivered' %}
-      {% if can_validate %}
-        <section class="ui-panel ui-form-scope" id="validate-panel" style="border-color: var(--brand-600)">
-          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-star" style="color: var(--brand-500)" aria-hidden="true"></i> Valider + noter</h2><p class="ui-panel-sub">Vérifiez la livraison, puis notez {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} de 1 à 5. La validation déclenche le paiement de {{ task.price|usdc }}.</p></div></div>
-          <form id="validate-form" class="ui-form-grid" novalidate data-validate>
-            <fieldset class="ui-field ui-field-wide">
-              <legend class="ui-label">Note</legend>
-              <div class="ui-stars" role="radiogroup" aria-label="Note de 1 à 5">
-                {% for n in "12345" %}
-                  <input type="radio" name="note" id="rate-{{ n }}" value="{{ n }}" data-rate="{{ n }}"{% if n == "5" %} checked{% endif %}>
-                  <label for="rate-{{ n }}" title="{{ n }}/5"><i class="fa-solid fa-star" aria-hidden="true"></i><span class="sr-only">{{ n }} sur 5</span></label>
-                {% endfor %}
-              </div>
-              <span class="ui-help" data-rate-help>5/5 — excellent</span>
-              <span class="ui-error" data-error-for="note" hidden></span>
-            </fieldset>
-            <div class="ui-field ui-field-wide">
-              <label for="validate-comment" class="ui-label">Commentaire <span class="normal-case font-normal">(optionnel)</span></label>
-              <textarea id="validate-comment" name="comment" class="ui-textarea" rows="2" maxlength="280" placeholder="Un mot sur la collaboration…" style="min-height: 64px"></textarea>
-            </div>
-            <div class="ui-field-wide">
-              <span class="ui-error" data-error-for="_" hidden></span>
-              <div class="ui-sticky-actions">
-                <button type="submit" class="ui-btn ui-btn-primary" data-validate-submit><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Valider et payer {{ task.price|usdc }}</button>
-              </div>
-            </div>
-          </form>
-        </section>
-      {% elif is_assignee %}
-        <div class="ui-alert ui-alert-attn"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>Livraison déclarée. L’entreprise vérifie, valide et vous note : le paiement suit.</span></div>
-      {% else %}
-        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-truck-fast" aria-hidden="true"></i><span>Tâche livrée, en attente de validation par l’entreprise.</span></div>
-      {% endif %}
-
     {% else %}
-      <section class="ui-panel" style="border-color: var(--brand-600)">
-        <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-circle-check" style="color: var(--success)" aria-hidden="true"></i> Tâche payée</h2><p class="ui-panel-sub">{% if task.paid_at %}le {{ task.paid_at|date:"d/m/Y à H:i" }}{% endif %}</p></div></div>
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          {% include "components/wallet.html" with address=task.assigned_to.stellar_address name=task.assigned_to.display_name size="lg" %}
-          {% include "components/price.html" with amount=task.price size="text-xl" %}
-        </div>
-        {% if rating %}<p class="ui-meta mt-2"><i class="fa-solid fa-star text-[10px]" aria-hidden="true"></i> Note {{ rating.note }}/5{% if rating.comment %} · « {{ rating.comment }} »{% endif %}</p>{% endif %}
-      </section>
+      {# Non-open task: the payment panel drives deliver (freelance) → validate + rate (company) → pay. #}
+      {% escrow_panel task wallet %}
+      {% if task.status == 'taken' and not is_assignee and not viewer_is_company %}
+        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-user-check" aria-hidden="true"></i><span>Un freelance a été choisi pour cette tâche.{% if my_application %} Votre candidature n’a pas été retenue.{% endif %}</span></div>
+      {% elif task.status == 'taken' and viewer_is_company %}
+        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>En cours : {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} travaille sur la tâche. Vous validerez et noterez à la livraison.</span></div>
+      {% elif task.status == 'delivered' and is_assignee %}
+        <div class="ui-alert ui-alert-attn"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>Livraison déclarée. L’entreprise vérifie, valide et vous note : le paiement suit.</span></div>
+      {% elif task.status == 'paid' %}
+        <section class="ui-panel" style="border-color: var(--brand-600)">
+          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-circle-check" style="color: var(--success)" aria-hidden="true"></i> Tâche payée</h2><p class="ui-panel-sub">{% if task.paid_at %}le {{ task.paid_at|date:"d/m/Y à H:i" }}{% endif %}</p></div></div>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            {% include "components/wallet.html" with address=task.assigned_to.stellar_address name=task.assigned_to.display_name size="lg" %}
+            {% include "components/price.html" with amount=task.price size="text-xl" %}
+          </div>
+          {% if rating %}<p class="ui-meta mt-2"><i class="fa-solid fa-star text-[10px]" aria-hidden="true"></i> Note {{ rating.note }}/5{% if rating.comment %} · « {{ rating.comment }} »{% endif %}</p>{% endif %}
+        </section>
+      {% endif %}
     {% endif %}
   </aside>
 </div>
@@ -217,8 +170,10 @@
       apply: "{% url 'projects:apply_create' task.pk %}",
       choose: "{% url 'projects:task_choose' task.pk 0 %}",
       deliver: "{% url 'projects:task_deliver' task.pk %}",
-      validate: "{% url 'projects:task_validate' task.pk %}"
-    }
+      validate: "{% url 'projects:task_validate' task.pk %}",
+      pay: "{% url 'payments:task_pay' task.pk %}"
+    },
+    payAction: {% if pay_action %}{"step": "{{ pay_action.step|escapejs }}", "mine": {{ pay_action.mine|yesno:"true,false" }}, "prepareUrl": "{{ pay_action.prepare_url|default:''|escapejs }}"}{% else %}null{% endif %}
   };
 </script>
 <script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>

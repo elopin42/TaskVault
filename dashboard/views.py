@@ -1,5 +1,5 @@
 """Dashboard (signed-in home) and public wallet profiles. No models of its own: everything is
-read from auctions / payments through dashboard/services.py."""
+read from projects through dashboard/services.py."""
 
 import logging
 
@@ -29,7 +29,7 @@ def home(request: HttpRequest) -> HttpResponse:
             "wallet": wallet,
             "todo": todo,
             "todo_act": sum(1 for it in todo if it["tone"] == "act"),
-            "client_stats": services.client_stats(wallet),
+            "company_stats": services.company_stats(wallet),
             "freelancer_stats": services.freelancer_stats(wallet),
             "activity": services.recent_activity(wallet),
         },

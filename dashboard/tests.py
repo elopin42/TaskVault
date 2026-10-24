@@ -1,15 +1,12 @@
-from datetime import timedelta
 from decimal import Decimal
 
 from django.test import TestCase
 from django.urls import reverse
-from django.utils import timezone
 from stellar_sdk import Keypair
 
 from accounts.models import WalletUser
-from auctions import services as auctions
-from auctions.models import Need
-from payments.models import Escrow
+from projects import services as projects
+from projects.models import Application, Project, Task
 
 from . import services
 
@@ -25,156 +22,148 @@ def login(client, wallet: WalletUser) -> None:
     session.save()
 
 
-def make_need(owner: WalletUser, title: str, **kw) -> Need:
-    fields = {
-        "description": "Une description.",
-        "budget_max": Decimal("500"),
-        "delay_max_days": 10,
-        "tags": ["django", "stellar"],
-        "bidding_ends_at": timezone.now() + timedelta(hours=2),
-    }
-    fields.update(kw)
-    return Need.objects.create(client=owner, title=title, **fields)
-
-
 class ScenarioTest(TestCase):
-    """One client with needs in every state, two freelancers with active / outbid / won / lost bids."""
+    """One company with a project in every task state, two freelances (A chosen / paid, B pending / rejected)."""
 
     def setUp(self):
-        self.client_w = make_wallet("Claire")
-        self.f1 = make_wallet("Yanis")
-        self.f2 = make_wallet("Nora")
+        self.company = make_wallet("Studio Nova")
+        self.a = make_wallet("Yanis")
+        self.b = make_wallet("Nora")
 
-        # open need, f1 leads then f2 beats them → f1 is outbid-by-price (still `active`, but not best)
-        self.open = make_need(self.client_w, "Besoin ouvert")
-        auctions.place_bid(self.open, self.f1, "450", 8, ["django"], "")
-        auctions.place_bid(self.open, self.f2, "400", 9, ["stellar"], "")
-
-        # open need with no bid, ending in 30 minutes → "bientôt fermé" (wait)
-        self.soon = make_need(self.client_w, "Besoin bientôt fermé", bidding_ends_at=timezone.now() + timedelta(minutes=30))
-
-        # closed need with bids → the client must choose
-        self.closed = make_need(self.client_w, "Besoin terminé")
-        auctions.place_bid(self.closed, self.f1, "300", 5, [], "")
-        auctions.close_bidding_now(self.closed, self.client_w)
-
-        # awarded need (f2 won, f1 lost) with a direct-mode escrow still `created`
-        self.awarded = make_need(self.client_w, "Besoin attribué")
-        auctions.place_bid(self.awarded, self.f1, "200", 5, [], "")
-        won_bid = auctions.place_bid(self.awarded, self.f2, "150", 4, ["django"], "")
-        auctions.close_bidding_now(self.awarded, self.client_w)
-        auctions.award(self.awarded, won_bid, self.client_w)
-        self.escrow = Escrow.objects.create(
-            need=self.awarded,
-            mode=Escrow.Mode.DIRECT,
-            amount=Decimal("150"),
-            payer_address=self.client_w.stellar_address,
-            payee_address=self.f2.stellar_address,
-        )
-
-        # paid need (released) for the totals
-        self.paid = make_need(self.client_w, "Besoin payé")
-        paid_bid = auctions.place_bid(self.paid, self.f2, "100", 3, [], "")
-        auctions.close_bidding_now(self.paid, self.client_w)
-        auctions.award(self.paid, paid_bid, self.client_w)
-        Need.objects.filter(pk=self.paid.pk).update(status=Need.Status.RELEASED)
-        Escrow.objects.create(
-            need=self.paid,
-            mode=Escrow.Mode.DIRECT,
-            amount=Decimal("100"),
-            payer_address=self.client_w.stellar_address,
-            payee_address=self.f2.stellar_address,
-            status=Escrow.Status.PAID,
-            payment_tx_hash="a" * 64,
-            released_at=timezone.now(),
-        )
+        self.project = projects.create_project(self.company, "Plateforme de réservation", "Une description.")
+        self.t1 = projects.add_task(self.project, self.company, "Landing page", "", "300", ["django", "ui"])
+        self.t2 = projects.add_task(self.project, self.company, "Intégration Freighter", "", "500", ["stellar", "js"])
+        self.t3 = projects.add_task(self.project, self.company, "Dashboard", "", "400", ["django", "charts"])
+        self.t4 = projects.add_task(self.project, self.company, "Retouche photos", "", "120", ["photo"])
+        # T1: paid to A (note 5); B rejected
+        projects.apply(self.t1, self.a, "A", ["django", "ui"])
+        projects.apply(self.t1, self.b, "B", ["django"])
+        projects.choose(self.t1, Application.objects.get(task=self.t1, freelancer=self.a), self.company)
+        projects.deliver(self.t1, self.a, "https://example.com/pr/1")
+        projects.validate(self.t1, self.company, 5, "Parfait")
+        # T2: open with A + B pending → company must choose
+        projects.apply(self.t2, self.a, "", ["stellar"])
+        projects.apply(self.t2, self.b, "", ["stellar", "js"])
+        # T3: taken by A → A must deliver
+        projects.apply(self.t3, self.a, "", ["django"])
+        projects.choose(self.t3, Application.objects.get(task=self.t3, freelancer=self.a), self.company)
+        # T4: delivered by B → company must validate
+        projects.apply(self.t4, self.b, "", ["photo"])
+        projects.choose(self.t4, Application.objects.get(task=self.t4, freelancer=self.b), self.company)
+        projects.deliver(self.t4, self.b, "https://example.com/photos")
+        # an empty draft project
+        self.empty = projects.create_project(self.company, "Projet vide", "Rien dedans.")
 
 
 class TodoTests(ScenarioTest):
-    def test_client_todo(self):
-        items = services.todo_items(self.client_w)
+    def test_company_todo(self):
+        items = services.todo_items(self.company)
         headlines = [it["headline"] for it in items]
-        self.assertTrue(any("Choisir un freelance" in h and "Besoin terminé" in h for h in headlines))
-        self.assertTrue(any("Payer le freelance" in h and "Besoin attribué" in h for h in headlines))
-        self.assertTrue(any("Aucune offre" in h and "bientôt fermé" in h for h in headlines))
+        self.assertTrue(any("Valider et noter" in h and "Retouche photos" in h for h in headlines), headlines)
+        self.assertTrue(any("Choisir un freelance" in h and "Intégration Freighter" in h for h in headlines), headlines)
+        self.assertTrue(any("Ajouter des tâches" in h and "Projet vide" in h for h in headlines), headlines)
+        self.assertFalse(any("Landing page" in h for h in headlines), "a paid task needs nothing")
         tones = [it["tone"] for it in items]
         self.assertEqual(tones, sorted(tones, key=lambda t: 0 if t == "act" else 1), "act items come first")
         for it in items:
             self.assertEqual(set(it), {"tone", "kicker", "headline", "body", "href", "cta", "icon", "when"})
-            self.assertTrue(it["href"].startswith("/besoins/"))
+            self.assertTrue(it["href"].startswith("/taches/") or it["href"].startswith("/projets/"), it["href"])
+        validate = next(it for it in items if "Valider et noter" in it["headline"])
+        self.assertEqual(validate["tone"], "act")
+        self.assertTrue(validate["href"].endswith("#validate-panel"))
+        self.assertIn("https://example.com/photos", validate["body"])
 
-    def test_freelancer_todo(self):
-        f1 = services.todo_items(self.f1)
-        self.assertTrue(any(it["kicker"] == "Offre dépassée" and it["tone"] == "act" for it in f1), f1)
-        self.assertFalse(any(it["kicker"] == "Enchère gagnée" for it in f1))
-        f2 = services.todo_items(self.f2)
-        won = [it for it in f2 if it["kicker"] == "Enchère gagnée"]
-        self.assertEqual(len(won), 1)
-        self.assertEqual(won[0]["tone"], "act")
-        self.assertIn("Déclarer la livraison", won[0]["headline"])
-        self.assertFalse(any(it["kicker"] == "Offre dépassée" for it in f2), "f2 leads on the open need")
+    def test_freelance_todo(self):
+        a = services.todo_items(self.a)
+        deliver = [it for it in a if it["kicker"] == "Tâche prise"]
+        self.assertEqual(len(deliver), 1)
+        self.assertEqual(deliver[0]["tone"], "act")
+        self.assertIn("Livrer « Dashboard »", deliver[0]["headline"])
+        self.assertTrue(deliver[0]["href"].endswith("#deliver-panel"))
+        pending = [it for it in a if it["kicker"] == "Candidature envoyée"]
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["tone"], "wait")
+        self.assertIn("90.0/100", pending[0]["body"])
 
-    def test_todo_waits_when_the_other_party_must_act(self):
-        self.escrow.status = Escrow.Status.DELIVERED
-        self.escrow.save(update_fields=["status"])
-        Need.objects.filter(pk=self.awarded.pk).update(status=Need.Status.DELIVERED)
-        f2 = [it for it in services.todo_items(self.f2) if it["kicker"] == "Enchère gagnée"]
-        self.assertEqual(f2[0]["tone"], "wait")
-        client = [it for it in services.todo_items(self.client_w) if "Besoin attribué" in it["headline"]]
-        self.assertEqual(client[0]["tone"], "act")
-        self.assertIn("Valider et payer", client[0]["headline"])
+        b = services.todo_items(self.b)
+        self.assertTrue(any(it["kicker"] == "Livraison déclarée" and it["tone"] == "wait" for it in b), b)
+        self.assertFalse(any(it["kicker"] == "Tâche prise" for it in b))
+        self.assertEqual(sum(1 for it in b if it["kicker"] == "Candidature envoyée"), 1, "the rejected T1 application is gone")
+
+    def test_fresh_wallet_has_nothing_to_do(self):
+        self.assertEqual(services.todo_items(make_wallet()), [])
 
 
 class StatsTests(ScenarioTest):
-    def test_client_stats(self):
-        s = services.client_stats(self.client_w)
-        self.assertEqual(s["total"], 5)
-        self.assertEqual(s["open"], 2)
+    def test_company_stats(self):
+        s = services.company_stats(self.company)
+        self.assertEqual(s["projects"], 2)
+        self.assertEqual(s["draft"], 2)
+        self.assertEqual(s["tasks"], 4)
+        self.assertEqual(s["open"], 1)
         self.assertEqual(s["to_choose"], 1)
-        self.assertEqual(s["awarded"], 2)  # awarded + released
+        self.assertEqual(s["in_progress"], 1)
+        self.assertEqual(s["to_validate"], 1)
         self.assertEqual(s["paid"], 1)
-        self.assertEqual(s["committed_usdc"], Decimal("250"))
-        self.assertEqual(s["bids_received"], 6)
+        self.assertEqual(s["committed_usdc"], Decimal("1320"))
+        self.assertEqual(s["paid_usdc"], Decimal("300"))
+        self.assertEqual(s["applications_received"], 6)
 
     def test_freelancer_stats(self):
-        s2 = services.freelancer_stats(self.f2)
-        self.assertEqual(s2["active"], 1)
-        self.assertEqual(s2["leading"], 1)
-        self.assertEqual(s2["won"], 2)
-        self.assertEqual(s2["lost"], 0)
-        self.assertEqual(s2["earned_usdc"], Decimal("100"))
-        self.assertEqual(s2["win_rate"], 100)
-        s1 = services.freelancer_stats(self.f1)
-        self.assertEqual(s1["active"], 1)
-        self.assertEqual(s1["leading"], 0)
-        self.assertEqual(s1["won"], 0)
-        self.assertEqual(s1["lost"], 1)
-        self.assertEqual(s1["earned_usdc"], Decimal("0"))
-        self.assertEqual(s1["win_rate"], 0)
-        self.assertIsNone(services.freelancer_stats(self.client_w)["win_rate"])
+        a = services.freelancer_stats(self.a)
+        self.assertEqual(a["total"], 3)
+        self.assertEqual(a["pending"], 1)
+        self.assertEqual(a["chosen"], 2)
+        self.assertEqual(a["rejected"], 0)
+        self.assertEqual(a["in_progress"], 1)
+        self.assertEqual(a["paid"], 1)
+        self.assertEqual(a["earned_usdc"], Decimal("300"))
+        self.assertEqual(a["avg_note"], 5.0)
+        self.assertEqual(a["ratings"], 1)
+        self.assertEqual(a["success_rate"], 100)
+        b = services.freelancer_stats(self.b)
+        self.assertEqual(b["total"], 3)
+        self.assertEqual(b["chosen"], 1)
+        self.assertEqual(b["rejected"], 1)
+        self.assertEqual(b["delivered"], 1)
+        self.assertEqual(b["earned_usdc"], Decimal("0"))
+        self.assertIsNone(b["avg_note"])
+        self.assertEqual(b["success_rate"], 50)
+        self.assertIsNone(services.freelancer_stats(self.company)["success_rate"])
 
     def test_recent_activity_is_newest_first_and_merged(self):
-        events = services.recent_activity(self.client_w)
+        events = services.recent_activity(self.company)
         self.assertTrue(events)
         whens = [e["when"] for e in events]
         self.assertEqual(whens, sorted(whens, reverse=True))
         texts = " | ".join(e["text"] for e in events)
-        self.assertIn("Besoin publié", texts)
-        self.assertIn("retenue", texts)
+        self.assertIn("Projet créé", texts)
+        self.assertIn("choisi pour", texts)
         self.assertIn("Paiement envoyé", texts)
         for e in events:
             self.assertEqual(set(e), {"when", "icon", "text", "href", "tone"})
-        self.assertLessEqual(len(services.recent_activity(self.client_w, limit=3)), 3)
+        self.assertLessEqual(len(services.recent_activity(self.company, limit=3)), 3)
+        a_texts = " | ".join(e["text"] for e in services.recent_activity(self.a))
+        self.assertIn("Candidature sur", a_texts)
+        self.assertIn("Paiement reçu", a_texts)
+        self.assertIn("Note reçue : 5/5", a_texts)
 
     def test_profile_stats(self):
-        s = services.profile_stats(self.client_w)
-        self.assertEqual(s["needs_posted"], 5)
-        self.assertEqual(s["needs_completed"], 1)
-        self.assertEqual(s["bids_placed"], 0)
-        s2 = services.profile_stats(self.f2)
-        self.assertEqual(s2["bids_placed"], 3)
-        self.assertEqual(s2["bids_won"], 2)
-        self.assertEqual(len(s2["won_bids"]), 2)
+        s = services.profile_stats(self.company)
+        self.assertEqual(s["projects_posted"], 2)
+        self.assertEqual(s["tasks_paid_as_company"], 1)
+        self.assertEqual(s["applications"], 0)
+        self.assertIsNone(s["avg_note"])
+        self.assertEqual(s["projects"][0].tag_list[:2], [])  # the empty draft comes first (newest)
+        a = services.profile_stats(self.a)
+        self.assertEqual(a["applications"], 3)
+        self.assertEqual(a["tasks_won"], 2)
+        self.assertEqual(a["tasks_paid"], 1)
+        self.assertEqual(a["earned_usdc"], Decimal("300"))
+        self.assertEqual(a["avg_note"], 5.0)
+        self.assertEqual(a["ratings_count"], 1)
+        self.assertEqual(len(a["ratings"]), 1)
+        self.assertEqual(len(a["tasks"]), 2)
 
 
 class HomeViewTests(ScenarioTest):
@@ -184,14 +173,21 @@ class HomeViewTests(ScenarioTest):
         self.assertIn("next=", r["Location"])
 
     def test_home_renders_sections(self):
-        login(self.client, self.client_w)
+        login(self.client, self.company)
         r = self.client.get(reverse("dashboard:home"))
         self.assertEqual(r.status_code, 200)
         html = r.content.decode()
-        for marker in ("À faire", "Activité récente", "Côté client", "Côté freelance", "Choisir un freelance", "ui-timeline", "Claire"):
+        for marker in ("À faire", "Activité récente", "Côté entreprise", "Côté freelance", "Valider et noter", "ui-timeline", "Studio Nova"):
             self.assertIn(marker, html)
         self.assertNotIn("{%", html)
         self.assertNotIn("{{", html)
+
+    def test_home_shows_the_freelance_average_note(self):
+        login(self.client, self.a)
+        r = self.client.get(reverse("dashboard:home"))
+        self.assertContains(r, "data-avg-note")
+        self.assertContains(r, "5.0/5")
+        self.assertContains(r, "Livrer « Dashboard »")
 
     def test_home_without_anything_shows_done_card(self):
         fresh = make_wallet()
@@ -201,16 +197,16 @@ class HomeViewTests(ScenarioTest):
         self.assertContains(r, "Aucune activité")
 
     def test_navbar_links_to_dashboard(self):
-        login(self.client, self.client_w)
-        r = self.client.get(reverse("auctions:need_list"))
+        login(self.client, self.company)
+        r = self.client.get(reverse("projects:project_list"))
         self.assertContains(r, reverse("dashboard:home"))
-        self.assertContains(r, reverse("dashboard:profile", kwargs={"address": self.client_w.stellar_address}))
+        self.assertContains(r, reverse("dashboard:profile", kwargs={"address": self.company.stellar_address}))
 
     def test_landing_connect_button_targets_dashboard(self):
         r = self.client.get(reverse("core:landing"))
         self.assertContains(r, f'data-next="{reverse("dashboard:home")}"')
-        r = self.client.get(reverse("core:landing") + "?next=/mes-encheres/")
-        self.assertContains(r, 'data-next="/mes-encheres/"')
+        r = self.client.get(reverse("core:landing") + "?next=/taches/")
+        self.assertContains(r, 'data-next="/taches/"')
 
 
 class ProfileViewTests(ScenarioTest):
@@ -222,38 +218,53 @@ class ProfileViewTests(ScenarioTest):
         self.assertEqual(r.status_code, 404)
 
     def test_public_profile_renders_without_login(self):
-        r = self.client.get(self.url(self.f2))
+        r = self.client.get(self.url(self.a))
         self.assertEqual(r.status_code, 200)
         html = r.content.decode()
-        self.assertIn("Nora", html)
-        self.assertIn("Enchères gagnées", html)
-        self.assertIn("Besoin attribué", html)
+        self.assertIn("Yanis", html)
+        self.assertIn("Tâches réalisées", html)
+        self.assertIn("Notes reçues", html)
+        self.assertIn('data-avg-note="5.0"', html)
+        self.assertIn("Landing page", html)
         self.assertNotIn("Éditer mon nom", html)
-        r = self.client.get(self.url(self.client_w))
-        self.assertContains(r, "Besoin ouvert")
-        self.assertContains(r, "need-card")
+        r = self.client.get(self.url(self.company))
+        self.assertContains(r, "Plateforme de réservation")
+        self.assertContains(r, "project-card")
+        self.assertContains(r, "aucune note reçue")
 
     def test_owner_sees_and_uses_the_name_form(self):
-        login(self.client, self.f1)
-        r = self.client.get(self.url(self.f1))
+        login(self.client, self.a)
+        r = self.client.get(self.url(self.a))
         self.assertContains(r, "Éditer mon nom")
-        r = self.client.post(self.url(self.f1), {"display_name": "  Yanis Dev  "}, follow=True)
+        r = self.client.post(self.url(self.a), {"display_name": "  Yanis Dev  "}, follow=True)
         self.assertEqual(r.status_code, 200)
-        self.f1.refresh_from_db()
-        self.assertEqual(self.f1.display_name, "Yanis Dev")
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.display_name, "Yanis Dev")
         self.assertContains(r, "Nom affiché mis à jour")
 
     def test_name_is_truncated_to_80_chars(self):
-        login(self.client, self.f1)
-        self.client.post(self.url(self.f1), {"display_name": "x" * 100})
-        self.f1.refresh_from_db()
-        self.assertEqual(len(self.f1.display_name), 80)
+        login(self.client, self.a)
+        self.client.post(self.url(self.a), {"display_name": "x" * 100})
+        self.a.refresh_from_db()
+        self.assertEqual(len(self.a.display_name), 80)
 
     def test_other_wallet_cannot_rename(self):
-        login(self.client, self.f1)
-        r = self.client.post(self.url(self.f2), {"display_name": "Pirate"})
+        login(self.client, self.a)
+        r = self.client.post(self.url(self.b), {"display_name": "Pirate"})
         self.assertEqual(r.status_code, 403)
-        r = self.client.logout() or self.client.post(self.url(self.f2), {"display_name": "Pirate"})
+        r = self.client.logout() or self.client.post(self.url(self.b), {"display_name": "Pirate"})
         self.assertEqual(r.status_code, 403)
-        self.f2.refresh_from_db()
-        self.assertEqual(self.f2.display_name, "Nora")
+        self.b.refresh_from_db()
+        self.assertEqual(self.b.display_name, "Nora")
+
+
+class ModelHelpersTests(ScenarioTest):
+    def test_project_progress_and_totals(self):
+        p = Project.objects.with_totals().get(pk=self.project.pk)
+        self.assertEqual(p.total_amount, Decimal("1320"))
+        self.assertEqual(p.tasks_count, 4)
+        self.assertEqual(p.paid_count, 1)
+        self.assertEqual(p.open_count, 1)
+        self.assertEqual(p.progress_pct, 25)
+        self.assertEqual(Project.objects.get(pk=self.empty.pk).progress_pct, 0)
+        self.assertEqual(Task.objects.get(pk=self.t1.pk).status_label, "Payé")

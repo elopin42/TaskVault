@@ -16,16 +16,16 @@ def site(request):
     }
 
 
-# Navbar entries. Each one names the URL the `auctions` app is expected to
-# register; until it exists the literal fallback path is used, so the shell
-# renders before the domain apps land. `wallet` marks links that need a session.
-# `short` is the label of the mobile tab bar (partials/tabbar.html); `primary` renders the raised tab.
+# Navbar entries. Each one names the URL the `projects` / `dashboard` app registers; until it
+# exists the literal fallback path is used, so the shell renders before the domain apps land.
+# `wallet` marks links that need a session. `short` is the label of the mobile tab bar
+# (partials/tabbar.html); `primary` renders the raised tab.
 NAV_LINKS = (
-    {"label": "Besoins", "short": "Besoins", "url_name": "auctions:need_list", "fallback": "/besoins/", "icon": "fa-list-ul", "wallet": False},
-    {"label": "Mes enchères", "short": "Enchères", "url_name": "auctions:my_bids", "fallback": "/mes-encheres/", "icon": "fa-gavel", "wallet": True},
-    {"label": "Poster un besoin", "short": "Poster", "url_name": "auctions:need_create", "fallback": "/besoins/nouveau/", "icon": "fa-plus", "wallet": True, "primary": True},
-    {"label": "Mes besoins", "short": "Mes besoins", "url_name": "auctions:my_needs", "fallback": "/mes-besoins/", "icon": "fa-folder-open", "wallet": True},
-    {"label": "Tableau de bord", "short": "Tableau", "url_name": "dashboard:home", "fallback": "/tableau-de-bord/", "icon": "fa-gauge-high", "wallet": True},
+    {"label": "Projets", "short": "Projets", "url_name": "projects:project_list", "fallback": "/projets/", "icon": "fa-diagram-project", "wallet": False},
+    {"label": "Tableau", "short": "Tableau", "url_name": "projects:board", "fallback": "/taches/", "icon": "fa-table-columns", "wallet": True},
+    {"label": "Nouveau projet", "short": "Créer", "url_name": "projects:project_create", "fallback": "/projets/nouveau/", "icon": "fa-plus", "wallet": True, "primary": True},
+    {"label": "Mes projets", "short": "Mes projets", "url_name": "projects:my_projects", "fallback": "/mes-projets/", "icon": "fa-folder-open", "wallet": True},
+    {"label": "Tableau de bord", "short": "Bord", "url_name": "dashboard:home", "fallback": "/tableau-de-bord/", "icon": "fa-gauge-high", "wallet": True},
 )
 
 
@@ -52,7 +52,7 @@ def nav_links(request):
                 "active": False,
             }
         )
-    # Only the most specific match is active: /besoins/nouveau/ must not also light up "Besoins".
+    # Only the most specific match is active: /projets/nouveau/ must not also light up "Projets".
     matching = [link for link in links if link["href"] != "/" and path.startswith(link["href"])]
     if matching:
         max(matching, key=lambda link: len(link["href"]))["active"] = True

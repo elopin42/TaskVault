@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% load static lowbid_extras %}
+{% block title %}Tableau des tâches · Lowbid{% endblock %}
+{% block meta_description %}Votre kanban freelance : tâches ouvertes à prendre, en cours, livrées, payées.{% endblock %}
+
+{% block content %}
+<div class="ui-page-header">
+  <div class="min-w-0">
+    <h1 class="ui-page-title">Tableau des tâches</h1>
+    <p class="ui-page-sub">Les tâches ouvertes de toutes les entreprises, puis les vôtres : prises, livrées, payées.</p>
+  </div>
+  <div class="ui-page-actions">
+    <a href="{% url 'projects:project_list' %}" class="ui-btn"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Projets</a>
+  </div>
+</div>
+
+<section class="ui-kpi-band mb-5" aria-label="Résumé">
+  {% include "components/kpi.html" with label="À prendre" value=counts.open hint="tâches ouvertes" icon="fa-bolt" %}
+  {% include "components/kpi.html" with label="Postulé" value=applied_count hint="candidatures en attente" icon="fa-paper-plane" %}
+  {% include "components/kpi.html" with label="En cours" value=counts.taken hint="à livrer" icon="fa-truck-fast" %}
+  {% include "components/kpi.html" with label="Encaissé" value=earned_usdc|usdc:"" unit="USDC" hint="tâches payées" icon="fa-money-bill-transfer" %}
+</section>
+
+<div class="kanban-wrap"><div class="kanban" data-kanban>
+  {% for col in columns %}
+    <section class="kanban-col" data-col="{{ col.key }}" aria-labelledby="col-{{ col.key }}">
+      <header class="kanban-col-head">
+        <h2 class="kanban-col-title" id="col-{{ col.key }}"><span class="ui-dot is-{{ col.key }}" aria-hidden="true"></span>{{ col.label }}</h2>
+        <span class="kanban-count ui-num" data-col-count>{{ col.tasks|length }}</span>
+      </header>
+      <p class="kanban-col-hint ui-meta">{{ col.hint }}</p>
+      <div class="kanban-cards">
+        {% for task in col.tasks %}
+          {% include "projects/_board_card.html" with task=task col=col.key %}
+        {% empty %}
+          <div class="kanban-empty ui-meta">{% if col.key == 'open' %}Aucune tâche ouverte pour l’instant.{% elif col.key == 'taken' %}Aucune tâche en cours : postulez à une tâche ouverte.{% elif col.key == 'delivered' %}Rien en attente de validation.{% else %}Aucune tâche payée pour l’instant.{% endif %}</div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+</div></div>
+{% endblock %}
+
+{% block extra_js %}<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

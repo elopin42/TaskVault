@@ -1,7 +1,7 @@
 /* Lowbid design tokens — ONE :root palette, dark-first, light via html[data-theme="light"].
    base.html loads this FIRST; lowbid-components.css and tailwind.css read these var(--*).
    DNA inherited from SIPS (glass surfaces, soft borders, 44px targets); the brand hue is
-   warm amber — it reads "auction / finance" and stays legible on both canvases. */
+   warm amber — it reads "work / finance" and stays legible on both canvases. */
 
 :root {
     /* Brand (amber) */

@@ -1,0 +1,39 @@
+{% load lowbid_extras %}
+{% comment %}Inline "add a task" form on the project page (company, project draft). Posts through Lowbid.api to LOWBID_PROJECT.urls.addTask.{% endcomment %}
+<section class="ui-panel ui-form-scope" id="task-form-panel" aria-labelledby="task-form-title">
+  <div class="ui-panel-head">
+    <div>
+      <h2 class="ui-panel-title" id="task-form-title"><i class="fa-solid fa-plus" style="color: var(--brand-500)" aria-hidden="true"></i> Ajouter une tâche</h2>
+      <p class="ui-panel-sub">Un livrable, un prix fixe en USDC, jusqu’à 3 compétences. Modifiable tant que le projet n’est pas financé.</p>
+    </div>
+  </div>
+  <form id="task-form" class="ui-form-grid" novalidate>
+    <div class="ui-field ui-field-wide">
+      <label for="task-title" class="ui-label">Titre</label>
+      <input id="task-title" name="title" class="ui-input" type="text" maxlength="120" required placeholder="Landing page" autocomplete="off">
+      <span class="ui-error" data-error-for="title" hidden></span>
+    </div>
+    <div class="ui-field ui-field-wide">
+      <label for="task-description" class="ui-label">Description <span class="normal-case font-normal">(optionnel)</span></label>
+      <textarea id="task-description" name="description" class="ui-textarea" rows="3" placeholder="Le livrable attendu, les contraintes…" style="min-height: 84px"></textarea>
+    </div>
+    <div class="ui-field">
+      <label for="task-price" class="ui-label">Prix</label>
+      <div class="ui-input-group"><input id="task-price" name="price" class="ui-input" type="number" inputmode="decimal" step="0.01" min="0.01" required placeholder="300"><span class="ui-input-addon">USDC</span></div>
+      <span class="ui-error" data-error-for="price" hidden></span>
+    </div>
+    <div class="ui-field">
+      <label for="task-tags" class="ui-label">Compétences</label>
+      <input id="task-tags" name="tags" class="ui-input" type="text" autocomplete="off" placeholder="django, ui">
+      <span class="ui-help" data-tags-help="task-tags">Jusqu’à 3, séparées par des virgules.</span>
+      <span class="ui-error" data-error-for="tags" hidden></span>
+    </div>
+    <div class="ui-field-wide">
+      <span class="ui-error" data-error-for="_" hidden></span>
+      <div class="ui-sticky-actions">
+        <span class="ui-meta me-auto">Total du projet : <strong class="text-strong ui-num" data-project-total>{{ project.total_amount|usdc }}</strong></span>
+        <button type="submit" class="ui-btn ui-btn-primary" data-task-add><i class="fa-solid fa-plus" aria-hidden="true"></i> Ajouter la tâche</button>
+      </div>
+    </div>
+  </form>
+</section>

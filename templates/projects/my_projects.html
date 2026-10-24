@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% load static lowbid_extras %}
+{% block title %}Mes projets · Lowbid{% endblock %}
+
+{% block content %}
+<div class="ui-page-header">
+  <div class="min-w-0">
+    <h1 class="ui-page-title">Mes projets</h1>
+    <p class="ui-page-sub">Les projets que vous avez publiés : candidats à choisir, livraisons à valider.</p>
+  </div>
+  <div class="ui-page-actions">
+    <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Nouveau projet</a>
+  </div>
+</div>
+
+<section class="ui-kpi-band mb-5" aria-label="Résumé">
+  {% include "components/kpi.html" with label="Brouillons" value=kpis.draft hint="tâches modifiables" icon="fa-pen-to-square" %}
+  {% include "components/kpi.html" with label="À choisir" value=kpis.to_choose hint="tâches avec candidats" icon="fa-user-check" %}
+  {% include "components/kpi.html" with label="À valider" value=kpis.to_validate hint="livraisons déclarées" icon="fa-star" %}
+  {% include "components/kpi.html" with label="Terminés" value=kpis.closed hint="toutes les tâches payées" icon="fa-circle-check" %}
+</section>
+
+<nav class="seg-tabs mb-4" aria-label="Filtrer mes projets">
+  {% for key, label in tabs %}<a href="?tab={{ key }}" class="seg-tab{% if tab == key %} is-active{% endif %}" {% if tab == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+
+{% if projects %}
+<div class="ui-panel">
+  <div class="rcard">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 34%">Projet</th>
+          <th>Statut</th>
+          <th class="ui-col-end">Tâches</th>
+          <th class="ui-col-end">Candidatures</th>
+          <th class="ui-col-end">Budget</th>
+          <th class="ui-col-end"><span class="sr-only">Action</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for project in projects %}
+        <tr{% if project.attention %} class="is-attn"{% endif %} data-project-id="{{ project.pk }}">
+          <td data-label="Projet">
+            <a href="{% url 'projects:project_detail' project.pk %}" class="ui-link font-semibold">{{ project.title }}</a>
+            <div class="ui-meta">créé le {{ project.created_at|date:"d/m/Y" }}{% if project.to_validate %} · <strong class="text-strong">{{ project.to_validate }} livraison{{ project.to_validate|pluralize }} à valider</strong>{% elif project.to_choose %} · {{ project.to_choose }} tâche{{ project.to_choose|pluralize }} avec candidats{% endif %}</div>
+          </td>
+          <td data-label="Statut">{% include "components/status_badge.html" with obj=project %}</td>
+          <td data-label="Tâches" class="ui-col-end ui-num">{{ project.paid_count }}/{{ project.tasks_count }} <span class="ui-meta">payée{{ project.paid_count|pluralize }}</span></td>
+          <td data-label="Candidatures" class="ui-col-end ui-num">{{ project.pending_apps }}</td>
+          <td data-label="Budget" class="ui-col-end ui-num"><span class="ui-price">{{ project.total_amount|usdc }}</span></td>
+          <td data-label="" class="ui-col-end">
+            <a href="{% url 'projects:project_detail' project.pk %}" class="ui-btn ui-btn-sm{% if project.attention %} ui-btn-primary{% endif %}">{% if project.to_validate %}Valider{% elif project.to_choose %}Choisir{% else %}Voir{% endif %}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+  {% url 'projects:project_create' as create_url %}
+  {% if tab == 'active' %}
+    {% include "components/empty_state.html" with icon="fa-pen-to-square" title="Aucun projet en cours" desc="Décrivez votre projet, découpez-le en tâches à prix fixe et laissez les freelances postuler." cta_href=create_url cta_label="Nouveau projet" cta_icon="fa-plus" %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="fa-folder-open" title="Rien ici" desc="Aucun projet dans cet onglet." %}
+  {% endif %}
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

@@ -1,0 +1,322 @@
+"""Business rules of the task board in one place (SPEC §3). Views only translate
+ProjectError codes into HTTP; templates never decide a rule.
+
+Payment hooks (Phase 2 wires them to the payments app):
+  - `mark_paid(task)`      the ONLY function that flips a task to `paid` (idempotent);
+  - `_after_validate(task)` called by `validate()` once the Rating is stored — Phase 1 marks the
+    task paid right away, Phase 2 calls `payments.services.on_task_validated(task)` instead.
+"""
+
+import logging
+import re
+from decimal import Decimal, InvalidOperation
+
+from django.db import IntegrityError, transaction
+from django.utils import timezone
+from django.utils.text import slugify
+
+from .models import Application, Project, Rating, Task
+from .scoring import company_history, score_application
+
+logger = logging.getLogger(__name__)
+
+MAX_TAGS = 3
+MAX_TAG_LENGTH = 24
+MAX_MESSAGE = 280
+MAX_LINK = 500
+USDC_PLACES = 7
+TITLE_MIN = 3
+TITLE_MAX = 120
+
+__all__ = [
+    "ProjectError",
+    "add_task",
+    "apply",
+    "choose",
+    "clean_tags",
+    "company_history",
+    "create_project",
+    "dec_str",
+    "delete_task",
+    "deliver",
+    "mark_paid",
+    "parse_note",
+    "parse_price",
+    "rescore",
+    "validate",
+]
+
+
+class ProjectError(Exception):
+    """A refused action. `code` is stable (JS/tests), `message` is French UI copy."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+# --- parsing helpers ------------------------------------------------------------------
+
+def dec_str(value) -> str:
+    """'450', '400.5' — never '4.5E+2' (data-* attributes, JSON)."""
+    return f"{Decimal(value).normalize():f}"
+
+
+def clean_tags(raw) -> list[str]:
+    """Accept a list or a comma/space-separated string → ≤3 unique lowercase slugs."""
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        parts = re.split(r"[,\s;]+", raw)
+    elif isinstance(raw, (list, tuple)):
+        parts = [str(p) for p in raw]
+    else:
+        raise ProjectError("bad_tags", "Les compétences doivent être une liste de mots.")
+    tags: list[str] = []
+    for part in parts:
+        slug = slugify(part.strip().lower())
+        if not slug:
+            continue
+        if len(slug) > MAX_TAG_LENGTH:
+            raise ProjectError("bad_tags", f"Une compétence fait au plus {MAX_TAG_LENGTH} caractères.")
+        if slug not in tags:
+            tags.append(slug)
+    if len(tags) > MAX_TAGS:
+        raise ProjectError("bad_tags", f"Au plus {MAX_TAGS} compétences.")
+    return tags
+
+
+def parse_price(raw) -> Decimal:
+    """Strictly positive, at most 7 decimals (USDC precision on Stellar)."""
+    try:
+        price = Decimal(str(raw).strip().replace(",", "."))
+    except (InvalidOperation, ValueError, AttributeError):
+        raise ProjectError("invalid", "Prix invalide.") from None
+    if not price.is_finite() or price <= 0:
+        raise ProjectError("invalid", "Le prix doit être strictement positif.")
+    exponent = price.as_tuple().exponent
+    if isinstance(exponent, int) and -exponent > USDC_PLACES:
+        raise ProjectError("invalid", f"Au plus {USDC_PLACES} décimales (précision USDC).")
+    if price >= Decimal(10) ** 11:
+        raise ProjectError("invalid", "Prix trop élevé.")
+    return price
+
+
+def parse_note(raw) -> int:
+    try:
+        note = int(str(raw).strip())
+    except (ValueError, TypeError, AttributeError):
+        raise ProjectError("invalid", "La note doit être un entier de 1 à 5.") from None
+    if note < 1 or note > 5:
+        raise ProjectError("invalid", "La note doit être comprise entre 1 et 5.")
+    return note
+
+
+def _clean_title(raw, label: str) -> str:
+    title = str(raw or "").strip()
+    if len(title) < TITLE_MIN:
+        raise ProjectError("invalid", f"Le titre {label} est trop court.")
+    if len(title) > TITLE_MAX:
+        raise ProjectError("invalid", f"Le titre {label} fait au plus {TITLE_MAX} caractères.")
+    return title
+
+
+def _clean_link(raw) -> str:
+    link = str(raw or "").strip()
+    if not link:
+        raise ProjectError("invalid", "Indiquez le lien de la livraison (PR, démo, dépôt…).")
+    if len(link) > MAX_LINK:
+        raise ProjectError("invalid", f"Le lien fait au plus {MAX_LINK} caractères.")
+    if not re.match(r"^https?://", link, re.IGNORECASE):
+        raise ProjectError("invalid", "Le lien doit commencer par http:// ou https://.")
+    return link
+
+
+def _require_company(project: Project, wallet) -> None:
+    if wallet is None or project.company_id != wallet.pk:
+        raise ProjectError("forbidden", "Seule l’entreprise à l’origine du projet peut faire cela.")
+
+
+def _locked_task(task: Task) -> Task:
+    return Task.objects.select_for_update().select_related("project").get(pk=task.pk)
+
+
+# --- company: project + tasks -------------------------------------------------------------
+
+def create_project(company, title, description) -> Project:
+    title = _clean_title(title, "du projet")
+    description = str(description or "").strip()
+    if not description:
+        raise ProjectError("invalid", "Décrivez le projet en quelques lignes.")
+    project = Project.objects.create(company=company, title=title, description=description)
+    logger.info("project created project=%s company=%s", project.pk, company.pk)
+    return project
+
+
+def add_task(project: Project, company, title, description, price, tags) -> Task:
+    """Only the company, only while the project is `draft` (after funding the amount is locked)."""
+    _require_company(project, company)
+    title = _clean_title(title, "de la tâche")
+    price = parse_price(price)
+    tags = clean_tags(tags)
+    description = str(description or "").strip()
+    with transaction.atomic():
+        locked = Project.objects.select_for_update().get(pk=project.pk)
+        if locked.status != Project.Status.DRAFT:
+            raise ProjectError("wrong_state", "Le projet est financé : ses tâches ne peuvent plus changer.")
+        position = (locked.tasks.count() or 0) + 1
+        task = Task.objects.create(
+            project=locked, title=title, description=description, price=price, tags=tags, position=position
+        )
+    logger.info("task added project=%s task=%s price=%s", project.pk, task.pk, price)
+    return task
+
+
+def delete_task(task: Task, company) -> None:
+    """Allowed while the project is draft and the task still open (applications go with it)."""
+    _require_company(task.project, company)
+    with transaction.atomic():
+        locked = _locked_task(task)
+        if locked.project.status != Project.Status.DRAFT:
+            raise ProjectError("wrong_state", "Le projet est financé : ses tâches ne peuvent plus être supprimées.")
+        if locked.status != Task.Status.OPEN:
+            raise ProjectError("wrong_state", "Seule une tâche ouverte peut être supprimée.")
+        pk = locked.pk
+        locked.delete()
+    logger.info("task deleted task=%s", pk)
+
+
+# --- freelance: apply / deliver ------------------------------------------------------------
+
+def apply(task: Task, freelancer, message, tags) -> Application:
+    """Anyone with a wallet (validated or not) may apply once to an open task — except the company."""
+    tags = clean_tags(tags)
+    message = str(message or "").strip()
+    if len(message) > MAX_MESSAGE:
+        raise ProjectError("invalid", f"Le message fait au plus {MAX_MESSAGE} caractères.")
+    with transaction.atomic():
+        locked = _locked_task(task)
+        if locked.status != Task.Status.OPEN:
+            raise ProjectError("wrong_state", "Cette tâche n’est plus ouverte aux candidatures.")
+        if locked.project.company_id == freelancer.pk:
+            raise ProjectError("own_task", "Vous ne pouvez pas postuler à votre propre tâche.")
+        if locked.applications.filter(freelancer=freelancer).exists():
+            raise ProjectError("duplicate", "Vous avez déjà postulé à cette tâche.")
+        score = score_application(locked, freelancer, tags)
+        try:
+            with transaction.atomic():
+                app = Application.objects.create(
+                    task=locked, freelancer=freelancer, message=message, tags=tags, score=score
+                )
+        except IntegrityError:
+            raise ProjectError("duplicate", "Vous avez déjà postulé à cette tâche.") from None
+    logger.info("application created task=%s application=%s freelancer=%s score=%s", task.pk, app.pk, freelancer.pk, score)
+    return app
+
+
+def choose(task: Task, application: Application, company) -> Task:
+    """The company picks ANY candidate of an open task (the score is only a hint)."""
+    _require_company(task.project, company)
+    with transaction.atomic():
+        locked = _locked_task(task)
+        if locked.status != Task.Status.OPEN:
+            raise ProjectError("wrong_state", "Un freelance a déjà été choisi pour cette tâche.")
+        fresh = Application.objects.filter(pk=application.pk, task=locked).select_related("freelancer").first()
+        if fresh is None:
+            raise ProjectError("invalid", "Cette candidature n’existe pas sur cette tâche.")
+        locked.applications.exclude(pk=fresh.pk).update(status=Application.Status.REJECTED)
+        Application.objects.filter(pk=fresh.pk).update(status=Application.Status.CHOSEN)
+        locked.status = Task.Status.TAKEN
+        locked.assigned_to = fresh.freelancer
+        locked.save(update_fields=["status", "assigned_to", "updated_at"])
+    logger.info("task taken task=%s application=%s freelancer=%s", locked.pk, fresh.pk, fresh.freelancer_id)
+    return locked
+
+
+def deliver(task: Task, freelancer, delivery_link) -> Task:
+    """Only the assignee, only a `taken` task; the link must be http(s), ≤500 chars."""
+    link = _clean_link(delivery_link)
+    with transaction.atomic():
+        locked = _locked_task(task)
+        if freelancer is None or locked.assigned_to_id != freelancer.pk:
+            raise ProjectError("not_assigned", "Seul le freelance choisi peut livrer cette tâche.")
+        if locked.status != Task.Status.TAKEN:
+            raise ProjectError("wrong_state", "Cette tâche n’est pas en cours : rien à livrer.")
+        locked.status = Task.Status.DELIVERED
+        locked.delivery_link = link
+        locked.delivered_at = timezone.now()
+        locked.save(update_fields=["status", "delivery_link", "delivered_at", "updated_at"])
+    logger.info("task delivered task=%s freelancer=%s", locked.pk, freelancer.pk)
+    return locked
+
+
+# --- company: validate + rate → payment hook ----------------------------------------------------
+
+def validate(task: Task, company, note, comment: str = "") -> Task:
+    """Store the Rating (one per task) then hand over to the payment hook (`_after_validate`)."""
+    _require_company(task.project, company)
+    note = parse_note(note)
+    comment = str(comment or "").strip()[:MAX_MESSAGE]
+    with transaction.atomic():
+        locked = _locked_task(task)
+        if locked.status != Task.Status.DELIVERED:
+            raise ProjectError("wrong_state", "La tâche doit être livrée avant d’être validée.")
+        if Rating.objects.filter(task=locked).exists():
+            raise ProjectError("duplicate", "Cette tâche a déjà été notée.")
+        Rating.objects.create(task=locked, company=company, freelancer=locked.assigned_to, note=note, comment=comment)
+        logger.info("task validated task=%s note=%s freelancer=%s", locked.pk, note, locked.assigned_to_id)
+        _rescore_company(locked.project.company_id)
+        _after_validate(locked)
+    locked.refresh_from_db()
+    return locked
+
+
+def _after_validate(task: Task) -> None:
+    """Payment hook. Phase 1: no money, the task is paid right away.
+    Phase 2 replaces this body with `payments.services.on_task_validated(task)`."""
+    mark_paid(task)
+
+
+def mark_paid(task: Task) -> Task:
+    """Flip a task to `paid` (idempotent). Closes the project when every task is paid.
+    Phase 2 calls this after the on-chain release / direct payment is confirmed."""
+    with transaction.atomic():
+        locked = _locked_task(task)
+        if locked.status == Task.Status.PAID:
+            return locked
+        locked.status = Task.Status.PAID
+        locked.paid_at = timezone.now()
+        locked.save(update_fields=["status", "paid_at", "updated_at"])
+        project = Project.objects.select_for_update().get(pk=locked.project_id)
+        if not project.tasks.exclude(status=Task.Status.PAID).exists():
+            project.status = Project.Status.CLOSED
+            project.save(update_fields=["status", "updated_at"])
+            logger.info("project closed project=%s", project.pk)
+        logger.info("task paid task=%s freelancer=%s", locked.pk, locked.assigned_to_id)
+        _rescore_company(project.company_id)
+    return locked
+
+
+# --- scoring maintenance ----------------------------------------------------------------------
+
+def rescore(task: Task) -> int:
+    """Recompute the score of every PENDING application of `task`. Returns the row count."""
+    company_id = task.project.company_id
+    cache: dict[int, dict] = {}
+    n = 0
+    for app in task.applications.filter(status=Application.Status.PENDING):
+        history = cache.get(app.freelancer_id)
+        if history is None:
+            history = cache[app.freelancer_id] = company_history(company_id, app.freelancer_id)
+        score = score_application(task, app.freelancer_id, app.tags, history)
+        if score != app.score:
+            Application.objects.filter(pk=app.pk).update(score=score)
+        n += 1
+    return n
+
+
+def _rescore_company(company_id: int) -> None:
+    """A Rating / paid task changed the history with this company: refresh its open tasks."""
+    for task in Task.objects.filter(project__company_id=company_id, status=Task.Status.OPEN).select_related("project"):
+        rescore(task)

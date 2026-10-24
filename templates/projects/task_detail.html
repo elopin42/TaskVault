@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% load static lowbid_extras %}
+{% block title %}{{ task.title }} · {{ project.title }} · Lowbid{% endblock %}
+{% block meta_description %}{{ task.title }} — tâche à {{ task.price|usdc }} du projet « {{ project.title }} ».{% endblock %}
+
+{% block content %}
+<div class="ui-page-header">
+  <div class="min-w-0">
+    <p class="ui-meta mb-1"><a href="{% url 'projects:project_list' %}" class="ui-link"><i class="fa-solid fa-arrow-left text-[10px]" aria-hidden="true"></i> Projets</a> · <a href="{% url 'projects:project_detail' project.pk %}" class="ui-link">{{ project.title }}</a> · tâche #{{ task.pk }}</p>
+    <h1 class="ui-page-title flex flex-wrap items-center gap-2">{{ task.title }} {% include "components/status_badge.html" with obj=task live=True %}</h1>
+    <p class="ui-page-sub flex flex-wrap items-center gap-x-3 gap-y-1">
+      {% include "components/wallet.html" with address=project.company.stellar_address name=project.company.display_name label="Entreprise" you=viewer_is_company %}
+      {% if task.assigned_to %}<span class="inline-flex items-center gap-1"><i class="fa-solid fa-user-check" aria-hidden="true"></i> {% include "components/wallet.html" with address=task.assigned_to.stellar_address name=task.assigned_to.display_name label="Freelance" you=is_assignee %}</span>{% endif %}
+      <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> publiée <span data-time-ago="{{ task.created_at|date:'c' }}">le {{ task.created_at|date:"d/m/Y à H:i" }}</span></span>
+    </p>
+    {% include "components/tags.html" with tags=task.tags linked=True class="mt-2" %}
+  </div>
+  <div class="ui-page-actions">
+    <details class="ui-menu">
+      <summary class="ui-btn" aria-label="Plus d’actions" title="Partager"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span class="hidden sm:inline"> Partager</span></summary>
+      <div class="ui-menu-panel">
+        <button type="button" class="ui-menu-item" data-share="{{ request.build_absolute_uri }}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Partager cette tâche</button>
+        <button type="button" class="ui-menu-item" data-copy="{{ request.build_absolute_uri }}"><i class="fa-regular fa-copy" aria-hidden="true"></i> Copier le lien</button>
+        <div class="ui-menu-sep"></div>
+        <a href="{% url 'projects:project_detail' project.pk %}" class="ui-menu-item"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Voir le projet</a>
+      </div>
+    </details>
+  </div>
+</div>
+
+<section class="ui-kpi-band mb-6" aria-label="Chiffres clés">
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Prix fixe</span><span class="ui-kpi-value">{{ task.price|usdc:"" }}<span class="ui-price-unit">USDC</span></span><span class="ui-kpi-hint ui-meta">versé à la validation</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Candidats</span><span class="ui-kpi-value" data-kpi-count>{{ rows|length }}</span><span class="ui-kpi-hint ui-meta">{% if task_open %}l’entreprise choisit{% else %}candidatures closes{% endif %}</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Projet</span><span class="ui-kpi-value text-base"><a href="{% url 'projects:project_detail' project.pk %}" class="ui-link">{{ project.title|truncatechars:28 }}</a></span><span class="ui-kpi-hint ui-meta">{{ project.paid_count }}/{{ project.tasks_count }} tâche{{ project.tasks_count|pluralize }} payée{{ project.paid_count|pluralize }}</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Étape</span><span class="ui-kpi-value text-base">{{ task.status_label }}</span><span class="ui-kpi-hint ui-meta">{% if task.status == 'open' %}candidatures ouvertes{% elif task.status == 'taken' %}livraison attendue{% elif task.status == 'delivered' %}validation attendue{% else %}payée {% if task.paid_at %}le {{ task.paid_at|date:"d/m" }}{% endif %}{% endif %}</span></div>
+</section>
+
+<div class="ui-split">
+  <div class="ui-stack">
+    {% if task.description %}
+    <section class="ui-panel">
+      <div class="ui-panel-head"><h2 class="ui-panel-title">La tâche</h2></div>
+      <p class="whitespace-pre-line leading-relaxed">{{ task.description }}</p>
+    </section>
+    {% endif %}
+
+    {% if task.delivery_link %}
+    <section class="ui-panel" id="delivery-panel" style="border-color: var(--brand-600)">
+      <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-truck-fast" style="color: var(--brand-500)" aria-hidden="true"></i> Livraison</h2><p class="ui-panel-sub">déclarée {% if task.delivered_at %}le {{ task.delivered_at|date:"d/m/Y à H:i" }}{% endif %} par {{ task.assigned_to.display_name|default:task.assigned_to.short_address }}</p></div></div>
+      <a href="{{ task.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-delivery-link><i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i> {{ task.delivery_link }}</a>
+      {% if rating %}
+        <div class="ui-alert ui-alert-ok mt-4" data-rating="{{ rating.note }}"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Validée et notée <strong class="text-strong">{{ rating.note }}/5</strong>{% if rating.comment %} — « {{ rating.comment }} »{% endif %}{% if task.status == 'paid' %} · {{ task.price|usdc }} versés au freelance.{% endif %}</span></div>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <section class="ui-panel" id="candidates-panel">
+      <div class="ui-panel-head">
+        <div>
+          <h2 class="ui-panel-title">Candidats{% if rows %} classés{% endif %}</h2>
+          <p class="ui-panel-sub">{% if task_open %}Mise à jour automatique toutes les 5 s. Score sur 100 : historique avec l’entreprise 40 · note moyenne ×8 · compétences communes 20.{% if viewer_is_company %} « Recommandé » est une aide : vous choisissez qui vous voulez.{% endif %}{% else %}Classement figé au choix du freelance.{% endif %}</p>
+        </div>
+        <span class="ui-live whitespace-nowrap" data-live-dot hidden><span class="ui-live-dot" aria-hidden="true"></span> live</span>
+      </div>
+      <div id="candidates-list" data-fingerprint="{{ fingerprint }}">
+        {% include "projects/_candidates.html" %}
+      </div>
+    </section>
+
+    {% if siblings %}
+    <section class="ui-panel">
+      <div class="ui-panel-head"><div><h2 class="ui-panel-title">Autres tâches du projet</h2></div><a href="{% url 'projects:project_detail' project.pk %}" class="ui-link whitespace-nowrap">Tout le projet <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a></div>
+      <div class="ui-list">
+        {% for s in siblings %}
+          <a href="{% url 'projects:task_detail' s.pk %}" class="ui-list-row">
+            <span class="flex-1 min-w-0 font-medium truncate">{{ s.title }}</span>
+            {% include "components/status_badge.html" with obj=s %}
+            <span class="ui-num whitespace-nowrap">{{ s.price|usdc }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+  </div>
+
+  <aside class="ui-stack">
+    {% if task_open %}
+      {% if can_apply %}
+        <section class="ui-panel ui-form-scope" id="apply-panel">
+          <div class="ui-panel-head">
+            <div>
+              <h2 class="ui-panel-title">Postuler</h2>
+              <p class="ui-panel-sub">Prix fixe : <strong class="text-strong">{{ task.price|usdc }}</strong>. Un mot sur votre approche et vos compétences : l’entreprise choisit.</p>
+            </div>
+          </div>
+          <form id="apply-form" class="ui-form-grid" novalidate>
+            <div class="ui-field ui-field-wide">
+              <label for="apply-message" class="ui-label">Message <span class="normal-case font-normal">(optionnel, 280 car.)</span></label>
+              <textarea id="apply-message" name="message" class="ui-textarea" rows="3" maxlength="280" placeholder="Pourquoi vous, comment vous vous y prenez…" style="min-height: 84px"></textarea>
+              <span class="ui-error" data-error-for="message" hidden></span>
+            </div>
+            <div class="ui-field ui-field-wide">
+              <label for="apply-tags" class="ui-label">Mes compétences</label>
+              <input id="apply-tags" name="tags" class="ui-input" type="text" autocomplete="off" placeholder="{{ task.tags|join:', ' }}">
+              <span class="ui-help" data-tags-help="apply-tags">Jusqu’à 3, séparées par des virgules.{% if task.tags %} Demandées : {% for t in task.tags %}<button type="button" class="ui-tag" data-add-tag="{{ t }}" data-target="apply-tags">{{ t }}</button> {% endfor %}{% endif %}</span>
+              <span class="ui-error" data-error-for="tags" hidden></span>
+            </div>
+            <div class="ui-field-wide">
+              <span class="ui-error" data-error-for="_" hidden></span>
+              <div class="ui-sticky-actions">
+                <button type="submit" class="ui-btn ui-btn-primary" data-apply-submit><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Envoyer ma candidature</button>
+              </div>
+            </div>
+          </form>
+        </section>
+      {% elif my_application %}
+        <section class="ui-panel" id="my-application">
+          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-paper-plane" style="color: var(--brand-500)" aria-hidden="true"></i> Votre candidature</h2><p class="ui-panel-sub">envoyée <span data-time-ago="{{ my_application.created_at|date:'c' }}">{{ my_application.created_at|date:"d/m H:i" }}</span> · score <strong class="text-strong ui-num">{{ my_application.score|stringformat:".1f" }}</strong>/100</p></div></div>
+          {% if my_application.message %}<p class="text-sm break-words">{{ my_application.message }}</p>{% endif %}
+          {% include "components/tags.html" with tags=my_application.tags matched=task.tags class="mt-2" %}
+          <div class="ui-alert ui-alert-info mt-4"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>L’entreprise choisit un freelance parmi les candidats. Vous serez prévenu sur votre tableau.</span></div>
+        </section>
+      {% elif viewer_is_company %}
+        <section class="ui-panel">
+          <div class="ui-panel-head"><div><h2 class="ui-panel-title">Votre tâche</h2><p class="ui-panel-sub">{% if rows %}Comparez les candidats et cliquez sur <strong>Choisir</strong>. Le score et le badge « Recommandé » ne sont qu’une aide.{% else %}Partagez le lien : toute personne avec un wallet peut postuler.{% endif %}</p></div></div>
+          <div class="ui-alert ui-alert-info"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>« Validé » = a déjà livré pour vous avec une note moyenne ≥ 3.</span></div>
+        </section>
+      {% else %}
+        <section class="ui-panel text-center">
+          <div class="empty-state-icon"><i class="fa-solid fa-wallet" aria-hidden="true"></i></div>
+          <h2 class="ui-panel-title mb-1">Postuler à cette tâche</h2>
+          <p class="ui-panel-sub mb-4">Connectez votre wallet Freighter (testnet) pour postuler. Prix fixe : {{ task.price|usdc }}.</p>
+          <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-wallet-connect data-next="{{ request.path }}"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Connecter mon wallet</button>
+        </section>
+      {% endif %}
+
+    {% elif task.status == 'taken' %}
+      {% if can_deliver %}
+        <section class="ui-panel ui-form-scope" id="deliver-panel" style="border-color: var(--brand-600)">
+          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-truck-fast" style="color: var(--brand-500)" aria-hidden="true"></i> Livrer</h2><p class="ui-panel-sub">Vous êtes choisi pour cette tâche. Déposez le lien de votre livraison (PR, démo, dépôt) : l’entreprise valide et vous note.</p></div></div>
+          <form id="deliver-form" class="ui-form-grid" novalidate>
+            <div class="ui-field ui-field-wide">
+              <label for="deliver-link" class="ui-label">Lien de la livraison</label>
+              <input id="deliver-link" name="delivery_link" class="ui-input" type="url" inputmode="url" maxlength="500" required placeholder="https://github.com/…/pull/42" autocomplete="off">
+              <span class="ui-error" data-error-for="delivery_link" hidden></span>
+            </div>
+            <div class="ui-field-wide">
+              <div class="ui-sticky-actions">
+                <button type="submit" class="ui-btn ui-btn-primary" data-deliver><i class="fa-solid fa-truck-fast" aria-hidden="true"></i> Déclarer la livraison</button>
+              </div>
+            </div>
+          </form>
+        </section>
+      {% elif viewer_is_company %}
+        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>En cours : {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} travaille sur la tâche. Vous validerez et noterez à la livraison.</span></div>
+      {% else %}
+        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-user-check" aria-hidden="true"></i><span>Un freelance a été choisi pour cette tâche.{% if my_application %} Votre candidature n’a pas été retenue.{% endif %}</span></div>
+      {% endif %}
+
+    {% elif task.status == 'delivered' %}
+      {% if can_validate %}
+        <section class="ui-panel ui-form-scope" id="validate-panel" style="border-color: var(--brand-600)">
+          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-star" style="color: var(--brand-500)" aria-hidden="true"></i> Valider + noter</h2><p class="ui-panel-sub">Vérifiez la livraison, puis notez {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} de 1 à 5. La validation déclenche le paiement de {{ task.price|usdc }}.</p></div></div>
+          <form id="validate-form" class="ui-form-grid" novalidate data-validate>
+            <fieldset class="ui-field ui-field-wide">
+              <legend class="ui-label">Note</legend>
+              <div class="ui-stars" role="radiogroup" aria-label="Note de 1 à 5">
+                {% for n in "12345" %}
+                  <input type="radio" name="note" id="rate-{{ n }}" value="{{ n }}" data-rate="{{ n }}"{% if n == "5" %} checked{% endif %}>
+                  <label for="rate-{{ n }}" title="{{ n }}/5"><i class="fa-solid fa-star" aria-hidden="true"></i><span class="sr-only">{{ n }} sur 5</span></label>
+                {% endfor %}
+              </div>
+              <span class="ui-help" data-rate-help>5/5 — excellent</span>
+              <span class="ui-error" data-error-for="note" hidden></span>
+            </fieldset>
+            <div class="ui-field ui-field-wide">
+              <label for="validate-comment" class="ui-label">Commentaire <span class="normal-case font-normal">(optionnel)</span></label>
+              <textarea id="validate-comment" name="comment" class="ui-textarea" rows="2" maxlength="280" placeholder="Un mot sur la collaboration…" style="min-height: 64px"></textarea>
+            </div>
+            <div class="ui-field-wide">
+              <span class="ui-error" data-error-for="_" hidden></span>
+              <div class="ui-sticky-actions">
+                <button type="submit" class="ui-btn ui-btn-primary" data-validate-submit><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Valider et payer {{ task.price|usdc }}</button>
+              </div>
+            </div>
+          </form>
+        </section>
+      {% elif is_assignee %}
+        <div class="ui-alert ui-alert-attn"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>Livraison déclarée. L’entreprise vérifie, valide et vous note : le paiement suit.</span></div>
+      {% else %}
+        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-truck-fast" aria-hidden="true"></i><span>Tâche livrée, en attente de validation par l’entreprise.</span></div>
+      {% endif %}
+
+    {% else %}
+      <section class="ui-panel" style="border-color: var(--brand-600)">
+        <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-circle-check" style="color: var(--success)" aria-hidden="true"></i> Tâche payée</h2><p class="ui-panel-sub">{% if task.paid_at %}le {{ task.paid_at|date:"d/m/Y à H:i" }}{% endif %}</p></div></div>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          {% include "components/wallet.html" with address=task.assigned_to.stellar_address name=task.assigned_to.display_name size="lg" %}
+          {% include "components/price.html" with amount=task.price size="text-xl" %}
+        </div>
+        {% if rating %}<p class="ui-meta mt-2"><i class="fa-solid fa-star text-[10px]" aria-hidden="true"></i> Note {{ rating.note }}/5{% if rating.comment %} · « {{ rating.comment }} »{% endif %}</p>{% endif %}
+      </section>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  window.LOWBID_TASK = {
+    id: {{ task.pk }},
+    status: "{{ task.status|escapejs }}",
+    isCompany: {{ viewer_is_company|yesno:"true,false" }},
+    isAssignee: {{ is_assignee|yesno:"true,false" }},
+    urls: {
+      candidates: "{{ candidates_url }}",
+      apply: "{% url 'projects:apply_create' task.pk %}",
+      choose: "{% url 'projects:task_choose' task.pk 0 %}",
+      deliver: "{% url 'projects:task_deliver' task.pk %}",
+      validate: "{% url 'projects:task_validate' task.pk %}"
+    }
+  };
+</script>
+<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
+{% endblock %}

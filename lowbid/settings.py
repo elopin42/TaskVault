@@ -59,8 +59,8 @@ INSTALLED_APPS = [
     # Lowbid apps
     "core",
     "accounts",
-    "auctions",
-    "payments",
+    "projects",
+    # "payments" is re-enabled in Phase 2 (escrow per project, one milestone per task).
     "dashboard",
 ]
 
@@ -175,7 +175,7 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 30
 
 # Bump whenever css/lowbid-*.css or js/lowbid-*.js changes (30-day static cache).
-LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-v2"
+LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261026-v3"
 
 # --- Stellar ------------------------------------------------------------------
 

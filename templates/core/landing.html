@@ -1,26 +1,26 @@
 {% extends "base.html" %}
 {% load static lowbid_extras %}
-{% block title %}Lowbid — l’enchère inversée des freelances, sur Stellar{% endblock %}
+{% block title %}Lowbid — le tableau de tâches des freelances, payé en USDC sur Stellar{% endblock %}
 
 {% block content %}
 <section class="lb-hero">
   <span class="ui-badge ui-badge-brand mb-4"><i class="fa-solid fa-bolt" aria-hidden="true"></i>&nbsp;Hack Meridian · Stellar testnet</span>
-  <h1 class="lb-hero-title">Postez un besoin, les freelances <span class="lb-hero-accent">enchérissent à la baisse</span>, le paiement attend en escrow USDC.</h1>
-  <p class="lb-hero-sub">Une enchère inversée transparente : chaque offre doit être moins chère que la précédente. À la fin du compte à rebours, Lowbid classe les offres (prix, délai, compétences), vous choisissez, et les fonds sont libérés à la livraison validée — sans intermédiaire.</p>
+  <h1 class="lb-hero-title">Découpez un projet en tâches à <span class="lb-hero-accent">prix fixe</span>, choisissez vos freelances, payez en USDC à la validation.</h1>
+  <p class="lb-hero-sub">Pas de négociation ni de compte à rebours : l’entreprise fixe le prix de chaque tâche, les freelances postulent avec un message et leurs compétences, un score transparent (historique, notes, compétences) aide à choisir. À la livraison validée, la part de la tâche est versée — sans intermédiaire.</p>
   <div class="lb-hero-cta">
     {% if wallet_address %}
-      <a href="{% url 'auctions:need_create' %}" class="ui-btn ui-btn-primary ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> Poster un besoin</a>
-      <a href="{% url 'auctions:need_list' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Voir les besoins</a>
+      <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> Nouveau projet</a>
+      <a href="{% url 'projects:board' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> Tableau des tâches</a>
     {% else %}
       <button type="button" class="ui-btn ui-btn-primary ui-btn-lg" data-wallet-connect data-next="{% if next_url %}{{ next_url }}{% else %}{% url 'dashboard:home' %}{% endif %}">
         <i class="fa-solid fa-wallet" aria-hidden="true"></i> Connecter mon wallet Freighter
       </button>
-      <a href="{% url 'auctions:need_list' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Parcourir les besoins</a>
+      <a href="{% url 'projects:project_list' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Parcourir les projets</a>
     {% endif %}
   </div>
   <p class="ui-meta mt-5 flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Chiffres en direct" data-landing-stats>
-    <span><strong class="text-strong ui-num">{{ stats.open_needs }}</strong> besoin{{ stats.open_needs|pluralize }} ouvert{{ stats.open_needs|pluralize }}</span>
-    <span><strong class="text-strong ui-num">{{ stats.bids }}</strong> enchère{{ stats.bids|pluralize }} placée{{ stats.bids|pluralize }}</span>
+    <span><strong class="text-strong ui-num">{{ stats.open_tasks }}</strong> tâche{{ stats.open_tasks|pluralize }} ouverte{{ stats.open_tasks|pluralize }}</span>
+    <span><strong class="text-strong ui-num">{{ stats.projects }}</strong> projet{{ stats.projects|pluralize }}</span>
     <span><strong class="text-strong ui-num">{{ stats.paid_usdc|usdc }}</strong> payés aux freelances</span>
   </p>
   {% if next_url %}
@@ -31,27 +31,27 @@
 <section class="lb-steps" aria-label="Comment ça marche">
   <article class="glass-card lb-step">
     <div class="lb-step-num">1</div>
-    <h2 class="lb-step-title"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i> Le client poste un besoin</h2>
-    <p class="lb-step-desc">Titre, description, budget maximum en USDC, délai maximum, jusqu’à 3 compétences et une date de fin d’enchère.</p>
+    <h2 class="lb-step-title"><i class="fa-solid fa-list-check" aria-hidden="true"></i> L’entreprise découpe le projet</h2>
+    <p class="lb-step-desc">Un projet, des tâches : titre, description, prix fixe en USDC et jusqu’à 3 compétences par tâche. Le montant total est bloqué en escrow Soroban.</p>
   </article>
   <article class="glass-card lb-step">
     <div class="lb-step-num">2</div>
-    <h2 class="lb-step-title"><i class="fa-solid fa-arrow-trend-down" aria-hidden="true"></i> Les freelances enchérissent à la baisse</h2>
-    <p class="lb-step-desc">Chaque offre doit être moins chère que la précédente. À la clôture, un score (40 % prix, 30 % délai, 30 % compétences) désigne l’offre <span class="ui-badge ui-badge-brand">Recommandé</span>.</p>
+    <h2 class="lb-step-title"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Les freelances postulent, l’entreprise choisit</h2>
+    <p class="lb-step-desc">Un message, des compétences, pas de prix à proposer. Un score transparent (historique avec vous 40 · notes ×8 · compétences 20) désigne le candidat <span class="ui-badge ui-badge-brand">Recommandé</span> ; le badge <span class="ui-badge ui-badge-ok">Validé</span> signale qui a déjà livré pour vous.</p>
   </article>
   <article class="glass-card lb-step">
     <div class="lb-step-num">3</div>
-    <h2 class="lb-step-title"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Escrow USDC sur Soroban</h2>
-    <p class="lb-step-desc">Le client paie dans un escrow Trustless Work, valide la livraison, et les fonds sont libérés au freelance. Identité = wallet Stellar.</p>
+    <h2 class="lb-step-title"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Livré, validé, noté, payé</h2>
+    <p class="lb-step-desc">Le freelance livre un lien, l’entreprise valide avec une note de 1 à 5 et la part de la tâche est libérée de l’escrow Trustless Work vers son wallet. Identité = wallet Stellar.</p>
   </article>
 </section>
 
-{% if latest_needs %}
-<section class="ui-section" aria-label="Besoins ouverts">
-  {% url 'auctions:need_list' as list_url %}
-  {% include "components/section_head.html" with title="Enchères en cours" sub="Les besoins qui se terminent le plus tôt." icon="fa-bolt" link_href=list_url link_label="Tous les besoins" %}
+{% if latest_projects %}
+<section class="ui-section" aria-label="Projets ouverts">
+  {% url 'projects:project_list' as list_url %}
+  {% include "components/section_head.html" with title="Projets avec des tâches ouvertes" sub="Les plus récents." icon="fa-bolt" link_href=list_url link_label="Tous les projets" %}
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-    {% for need in latest_needs %}{% include "auctions/_need_card.html" with need=need %}{% endfor %}
+    {% for project in latest_projects %}{% include "projects/_project_card.html" with project=project %}{% endfor %}
   </div>
 </section>
 {% endif %}
@@ -64,4 +64,4 @@
 </section>
 {% endblock %}
 
-{% block extra_js %}<script src="{% static 'js/lowbid-auctions.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

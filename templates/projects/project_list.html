@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% load static lowbid_extras %}
+{% block title %}Projets · Lowbid{% endblock %}
+{% block meta_description %}Les projets découpés en tâches à prix fixe en USDC : postulez à une tâche ouverte, livrez, soyez payé.{% endblock %}
+
+{% block content %}
+<div class="ui-page-header">
+  <div class="min-w-0">
+    <h1 class="ui-page-title">Projets</h1>
+    <p class="ui-page-sub">Chaque projet est découpé en tâches à prix fixe. Les freelances postulent, l’entreprise choisit, la tâche validée est payée en USDC.</p>
+  </div>
+  <div class="ui-page-actions">
+    {% if wallet_address %}
+      <a href="{% url 'projects:board' %}" class="ui-btn"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> Tableau des tâches</a>
+      <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Nouveau projet</a>
+    {% else %}
+      <button type="button" class="ui-btn ui-btn-primary" data-wallet-connect data-next="{% url 'projects:project_create' %}"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Connecter pour publier</button>
+    {% endif %}
+  </div>
+</div>
+
+<form method="get" class="ui-toolbar" role="search" aria-label="Rechercher et filtrer les projets">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  {% if tag %}<input type="hidden" name="tag" value="{{ tag }}">{% endif %}
+  <div class="ui-search ui-toolbar-grow">
+    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+    <input type="search" name="q" value="{{ q }}" class="ui-input" placeholder="Rechercher un projet, une tâche, une compétence…" aria-label="Rechercher" autocomplete="off">
+    {% if q %}<button type="button" class="ui-search-clear" data-search-clear aria-label="Effacer la recherche"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>{% endif %}
+  </div>
+  <nav class="seg-tabs" aria-label="Filtrer les projets">
+    {% for key, label in tabs %}
+      <a href="{% qs tab=key page=None %}" class="seg-tab{% if tab == key %} is-active{% endif %}" {% if tab == key %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <div class="ui-toolbar-end">
+    <label class="ui-select-inline">
+      <span class="ui-meta"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i><span class="sr-only">Trier</span></span>
+      <select name="sort" class="ui-select" data-auto-submit aria-label="Trier les projets">
+        {% for key, label in sorts %}<option value="{{ key }}" {% if sort == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <span class="ui-meta whitespace-nowrap" data-result-count>{{ total }} projet{{ total|pluralize }} · {{ open_tasks }} tâche{{ open_tasks|pluralize }} ouverte{{ open_tasks|pluralize }}</span>
+  </div>
+</form>
+
+{% if popular_tags %}
+<div class="ui-chip-row mb-5" aria-label="Compétences les plus demandées">
+  {% for t in popular_tags %}
+    {% if t == tag %}
+      <a href="{% qs tag=None page=None %}" class="ui-tag is-match" title="Retirer le filtre"><i class="fa-solid fa-filter text-[10px]" aria-hidden="true"></i> {{ t }} <i class="fa-solid fa-xmark text-[10px]" aria-hidden="true"></i></a>
+    {% else %}
+      <a href="{% qs tag=t page=None %}" class="ui-tag">{{ t }}</a>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if projects %}
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {% for project in projects %}
+      {% include "projects/_project_card.html" with project=project %}
+    {% endfor %}
+  </div>
+  {% include "components/pager.html" with page=page %}
+{% else %}
+  {% if wallet_address %}
+    {% url 'projects:project_create' as create_url %}
+    {% include "components/empty_state.html" with icon="fa-diagram-project" title="Aucun projet" desc="Créez le premier projet : décrivez-le, découpez-le en tâches à prix fixe, et les freelances postulent." cta_href=create_url cta_label="Nouveau projet" cta_icon="fa-plus" %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="fa-diagram-project" title="Aucun projet" desc="Connectez votre wallet Freighter pour publier un projet ou postuler à une tâche." %}
+  {% endif %}
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

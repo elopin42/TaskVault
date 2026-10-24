@@ -12,6 +12,28 @@ class LandingTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Lowbid")
         self.assertContains(resp, "data-wallet-connect")
+        self.assertContains(resp, "prix fixe")
+        self.assertContains(resp, "Recommandé")
+        self.assertContains(resp, "data-landing-stats")
+        self.assertNotContains(resp, "enchère")
+
+    def test_landing_stats_and_latest_projects(self):
+        from decimal import Decimal
+
+        from stellar_sdk import Keypair
+
+        from accounts.models import WalletUser
+        from projects import services
+
+        company = WalletUser.objects.create(stellar_address=Keypair.random().public_key)
+        project = services.create_project(company, "Projet vitrine", "Une description.")
+        services.add_task(project, company, "Landing page", "", "300", ["django", "ui"])
+        resp = self.client.get(reverse("core:landing"))
+        self.assertEqual(resp.context["stats"], {"open_tasks": 1, "projects": 1, "paid_usdc": 0})
+        self.assertEqual([p.pk for p in resp.context["latest_projects"]], [project.pk])
+        self.assertEqual(resp.context["latest_projects"][0].tag_list, ["django", "ui"])
+        self.assertContains(resp, "project-card")
+        self.assertEqual(resp.context["latest_projects"][0].total_amount, Decimal("300"))
 
     def test_landing_ignores_offsite_next(self):
         resp = self.client.get(reverse("core:landing") + "?next=https://evil.example/")
@@ -19,8 +41,8 @@ class LandingTests(TestCase):
         self.assertEqual(resp.context["next_url"], "")
 
     def test_landing_keeps_relative_next(self):
-        resp = self.client.get(reverse("core:landing") + "?next=/besoins/nouveau/")
-        self.assertEqual(resp.context["next_url"], "/besoins/nouveau/")
+        resp = self.client.get(reverse("core:landing") + "?next=/projets/nouveau/")
+        self.assertEqual(resp.context["next_url"], "/projets/nouveau/")
 
 
 class HealthzTests(TestCase):
@@ -57,14 +79,26 @@ class NavLinksTests(TestCase):
         return [link["label"] for link in resp.context["nav_links"] if link["active"]]
 
     def test_only_the_most_specific_link_is_active(self):
-        self.assertEqual(self._active(reverse("auctions:need_list")), ["Besoins"])
-        # /besoins/nouveau/ redirects anonymous users to the landing: inspect the context processor directly.
+        self.assertEqual(self._active(reverse("projects:project_list")), ["Projets"])
+        # /projets/nouveau/ redirects anonymous users to the landing: inspect the context processor directly.
         from django.test import RequestFactory
 
         from core.context_processors import nav_links
 
-        links = nav_links(RequestFactory().get(reverse("auctions:need_create")))["nav_links"]
-        self.assertEqual([link["label"] for link in links if link["active"]], ["Poster un besoin"])
+        links = nav_links(RequestFactory().get(reverse("projects:project_create")))["nav_links"]
+        self.assertEqual([link["label"] for link in links if link["active"]], ["Nouveau projet"])
+        links = nav_links(RequestFactory().get(reverse("projects:board")))["nav_links"]
+        self.assertEqual([link["label"] for link in links if link["active"]], ["Tableau"])
+
+    def test_nav_links_cover_the_task_board(self):
+        resp = self.client.get(reverse("core:landing"))
+        labels = [link["label"] for link in resp.context["nav_links"]]
+        self.assertEqual(labels, ["Projets", "Tableau", "Nouveau projet", "Mes projets", "Tableau de bord"])
+        hrefs = {link["label"]: link["href"] for link in resp.context["nav_links"]}
+        self.assertEqual(hrefs["Tableau"], "/taches/")
+        self.assertEqual(hrefs["Mes projets"], "/mes-projets/")
+        public = [link["label"] for link in resp.context["nav_links"] if not link["wallet"]]
+        self.assertEqual(public, ["Projets"])
 
     def test_landing_has_no_active_link(self):
         self.assertEqual(self._active(reverse("core:landing")), [])

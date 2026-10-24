@@ -29,7 +29,7 @@ run: venv env
 
 dev: venv env migrate run
 
-# Demo dataset: 3 wallets (LOWBID_DEMO_* or random), 4 needs in every state, bids. Flushes needs/bids first.
+# Demo dataset: 3 wallets (LOWBID_DEMO_* or random), 2 projects with tasks / applications / a paid task. Flushes projects first.
 seed: venv env migrate
 	$(PYTHON) manage.py seed_demo --flush
 

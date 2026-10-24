@@ -2,6 +2,13 @@
 is mocked in both payments.trustless_work and payments.stellar). Complements payments/tests.py
 (unit tests of the two clients), which is left untouched."""
 
+import unittest
+
+from django.apps import apps
+
+if not apps.is_installed("payments"):  # Phase 1 of the task-board pivot: payments is rewired in Phase 2.
+    raise unittest.SkipTest("payments app disabled until Phase 2 (escrow per project)")
+
 import json
 from datetime import timedelta
 from decimal import Decimal

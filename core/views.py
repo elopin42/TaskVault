@@ -18,28 +18,38 @@ def safe_next(request: HttpRequest, raw: str | None) -> str:
 
 
 def landing_stats() -> dict:
-    """Live figures for the hero: open needs, bids placed, USDC actually paid out (escrow released / direct paid)."""
+    """Live figures for the hero: open tasks, projects, USDC actually paid to freelances."""
     from django.db.models import Sum
 
-    from auctions.models import Bid, Need
-    from payments.models import Escrow
+    from projects.models import Project, Task
 
-    paid = Escrow.objects.filter(status__in=(Escrow.Status.RELEASED, Escrow.Status.PAID)).aggregate(s=Sum("amount"))["s"]
+    paid = Task.objects.filter(status=Task.Status.PAID).aggregate(s=Sum("price"))["s"]
     return {
-        "open_needs": Need.objects.open_now().count(),
-        "bids": Bid.objects.count(),
+        "open_tasks": Task.objects.filter(status=Task.Status.OPEN).count(),
+        "projects": Project.objects.count(),
         "paid_usdc": paid or 0,
     }
 
 
 def landing(request: HttpRequest) -> HttpResponse:
-    from auctions.models import Need  # local import: core must stay importable without the domain apps
+    from projects.models import Project  # local import: core must stay importable without the domain apps
 
-    latest_needs = Need.objects.with_stats().select_related("client").open_now().order_by("bidding_ends_at")[:3]
+    latest_projects = list(
+        Project.objects.with_totals()
+        .select_related("company")
+        .prefetch_related("tasks")
+        .filter(open_total__gt=0)
+        .order_by("-created_at")[:3]
+    )
+    for project in latest_projects:
+        seen: list[str] = []
+        for task in project.tasks.all():
+            seen.extend(t for t in (task.tags or []) if t not in seen)
+        project.tag_list = seen
     return render(
         request,
         "core/landing.html",
-        {"next_url": safe_next(request, request.GET.get("next")), "latest_needs": latest_needs, "stats": landing_stats()},
+        {"next_url": safe_next(request, request.GET.get("next")), "latest_projects": latest_projects, "stats": landing_stats()},
     )
 
 

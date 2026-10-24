@@ -9,7 +9,7 @@
  * the server also accepts the older raw-message scheme. signedMessage arrives as a
  * base64 string (API v4+) or a Buffer-like object (older) — both are normalised here.
  *
- * Public API (for the auctions / payments pages):
+ * Public API (for the projects / payments pages):
  *   Lowbid.wallet.connect(next?)          -> Promise<address>   (full login)
  *   Lowbid.wallet.disconnect()            -> Promise (server logout + reload)
  *   Lowbid.wallet.getAddress()            -> Promise<address|"">  (no prompt)

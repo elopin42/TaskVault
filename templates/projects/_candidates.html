@@ -1,0 +1,55 @@
+{% load lowbid_extras %}
+{% comment %}
+Ranked candidates of one task. Rendered in task_detail / project_detail AND returned as `html` by
+candidats.json so the page swaps it in place. Context: task, rows (see views._candidate_rows),
+viewer_is_company, task_open, can_choose. ({# #} comments are single-line in Django: never use them here.)
+{% endcomment %}
+{% if rows %}
+<div class="ui-list" data-candidates data-count="{{ rows|length }}" data-task="{{ task.pk }}">
+  {% for r in rows %}
+  <div class="ui-list-row cand-row{% if r.is_chosen %} is-chosen{% elif r.is_rejected %} is-rejected{% endif %}" data-app-id="{{ r.app.pk }}" data-freelancer="{{ r.app.freelancer.stellar_address }}">
+    <span class="ui-rank" data-rank>{{ r.rank }}</span>
+    <div class="flex-1 min-w-0">
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {% include "components/wallet.html" with address=r.app.freelancer.stellar_address name=r.app.freelancer.display_name %}
+        {% if r.is_mine %}<span class="ui-badge ui-badge-neutral">Vous</span>{% endif %}
+        {% if r.validated %}<span class="ui-badge ui-badge-ok badge-validated" data-badge="valide" title="A déjà livré pour cette entreprise avec une note moyenne ≥ 3"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Validé</span>{% endif %}
+        {% if r.is_chosen %}<span class="ui-badge ui-badge-brand"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Choisi</span>
+        {% elif r.is_rejected %}<span class="ui-badge ui-badge-neutral">Non retenu</span>
+        {% elif r.recommended %}<span class="ui-badge ui-badge-brand" data-recommended title="Meilleur score parmi les candidats"><i class="fa-solid fa-star" aria-hidden="true"></i> Recommandé</span>{% endif %}
+      </div>
+      {% if r.app.message %}<p class="mt-1 break-words text-sm">{{ r.app.message }}</p>{% endif %}
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+        {% if r.tags %}<span class="flex flex-wrap gap-1">{% for t in r.tags %}<span class="ui-tag{% if t.match %} is-match{% endif %}">{{ t.name }}</span>{% endfor %}</span>{% endif %}
+        <span class="ui-meta">{% if r.history.paid_count %}{{ r.history.paid_count }} tâche{{ r.history.paid_count|pluralize }} payée{{ r.history.paid_count|pluralize }} avec vous{% else %}première collaboration{% endif %}{% if r.history.avg_note is not None %} · <i class="fa-solid fa-star text-[10px]" aria-hidden="true"></i> {{ r.history.avg_note|stringformat:".1f" }}/5{% endif %}</span>
+        <span class="ui-timeline-time"><span data-time-ago="{{ r.app.created_at|date:'c' }}">{{ r.app.created_at|date:"d/m H:i" }}</span></span>
+      </div>
+      <div class="flex items-center gap-2 mt-2" title="Historique {{ r.fmt.history }} · Notes {{ r.fmt.rating }} · Compétences {{ r.fmt.tags }}">
+        <div class="ui-scorebar" aria-hidden="true">
+          <span class="ui-scorebar-seg is-history" style="width: {{ r.fmt.history }}%"></span>
+          <span class="ui-scorebar-seg is-rating" style="width: {{ r.fmt.rating }}%"></span>
+          <span class="ui-scorebar-seg is-skills" style="width: {{ r.fmt.tags }}%"></span>
+        </div>
+        <span class="ui-meta ui-num"><strong class="text-strong" data-score="{{ r.fmt.score }}">{{ r.fmt.score }}</strong> / 100</span>
+      </div>
+    </div>
+    {% if can_choose %}
+      <button type="button" class="ui-btn ui-btn-primary ui-btn-sm" data-choose="{{ r.app.pk }}" data-choose-url="{{ r.choose_url }}" data-choose-label="{{ r.app.freelancer.display_name|default:r.app.freelancer.short_address }}">
+        <i class="fa-solid fa-check" aria-hidden="true"></i> Choisir
+      </button>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+<p class="ui-meta mt-3 flex flex-wrap gap-x-3 gap-y-1" aria-hidden="true">
+  <span><span class="inline-block w-2 h-2 rounded-full align-middle" style="background: var(--brand-500)"></span> Historique (40)</span>
+  <span><span class="inline-block w-2 h-2 rounded-full align-middle" style="background: var(--info)"></span> Notes (×8)</span>
+  <span><span class="inline-block w-2 h-2 rounded-full align-middle" style="background: var(--success)"></span> Compétences (20)</span>
+</p>
+{% else %}
+<div class="empty-state" data-candidates data-count="0" data-task="{{ task.pk }}">
+  <div class="empty-state-icon"><i class="fa-solid fa-user-plus" aria-hidden="true"></i></div>
+  <div class="empty-state-title">Aucun candidat{% if not task_open %} retenu{% endif %}</div>
+  <p class="empty-state-desc">{% if task_open %}Soyez le premier à postuler : un court message et vos compétences suffisent.{% else %}Cette tâche n’est plus ouverte aux candidatures.{% endif %}</p>
+</div>
+{% endif %}

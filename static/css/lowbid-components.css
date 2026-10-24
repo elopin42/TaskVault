@@ -148,9 +148,7 @@ body { font-size: var(--text-body); line-height: 1.5; }
 .ui-kpi-value { font-size: 1.375rem; font-weight: 700; color: var(--text); line-height: 1.15; font-variant-numeric: tabular-nums; }
 .ui-kpi-hint { margin: 0; }
 
-/* ====== Countdown / price ====== */
-.ui-countdown { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
-.ui-countdown.is-urgent { color: var(--error); }
+/* ====== Price ====== */
 .ui-price { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--text); }
 .ui-price-unit { font-size: 0.7em; font-weight: 600; color: var(--muted); margin-inline-start: 0.25em; }
 
@@ -306,23 +304,54 @@ html[data-theme="light"] .lb-theme-dark { display: none; }
 .lb-step-title i { color: var(--brand-500); font-size: 0.9rem; }
 .lb-step-desc { color: var(--muted); font-size: var(--text-body); line-height: 1.55; margin: 0; }
 
-/* ====== Auctions: score bar, weight sliders, bid rows ====== */
+/* ====== Task board: score bar, candidate rows, project cards, kanban, star rating ====== */
 .ui-scorebar {
     display: flex; flex: none; width: 160px; max-width: 45vw; height: 6px; overflow: hidden;
     border-radius: 9999px; background: var(--soft-bg); border: 1px solid var(--soft-border);
 }
 .ui-scorebar-seg { display: block; height: 100%; min-width: 0; transition: width 0.25s ease; }
-.ui-scorebar-seg.is-price  { background: var(--brand-500); }
-.ui-scorebar-seg.is-delay  { background: var(--info); }
-.ui-scorebar-seg.is-skills { background: var(--success); }
-.ui-range { width: 100%; min-height: 44px; margin: 0; accent-color: var(--brand-600); cursor: pointer; background: transparent; }
-.bid-row { align-items: flex-start; padding-block: 0.85rem; transition: background 0.2s ease, opacity 0.2s ease; }
-.bid-row .ui-rank { padding-top: 0.15rem; }
-.bid-row.is-won { background: var(--brand-soft); border-radius: 0.7rem; padding-inline: 0.6rem; border-bottom-color: transparent; }
-.bid-row.is-lost { opacity: 0.55; }
-.bid-row.is-lost:hover { opacity: 0.85; }
-.need-card { transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
-.need-card:hover { transform: translateY(-1px); }
+.ui-scorebar-seg.is-history { background: var(--brand-500); }
+.ui-scorebar-seg.is-rating  { background: var(--info); }
+.ui-scorebar-seg.is-skills  { background: var(--success); }
+.cand-row { align-items: flex-start; padding-block: 0.85rem; transition: background 0.2s ease, opacity 0.2s ease; }
+.cand-row .ui-rank { padding-top: 0.15rem; }
+.cand-row.is-chosen { background: var(--brand-soft); border-radius: 0.7rem; padding-inline: 0.6rem; border-bottom-color: transparent; }
+.cand-row.is-rejected { opacity: 0.55; }
+.cand-row.is-rejected:hover { opacity: 0.85; }
+.project-card { transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
+.project-card:hover { transform: translateY(-1px); }
+
+/* Kanban: 4 columns on wide screens, horizontal snap-scroll of full-width columns under 640px of CONTAINER width. */
+.kanban-wrap { container-type: inline-size; container-name: kanban; width: 100%; }
+.kanban { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+.kanban-col {
+    display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; padding: 0.75rem;
+    border-radius: var(--radius-md); background: var(--soft-bg); border: 1px solid var(--soft-border);
+}
+.kanban-col-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.kanban-col-title { display: inline-flex; align-items: center; gap: 0.45rem; margin: 0; font-size: var(--text-body); font-weight: 600; color: var(--text); text-transform: uppercase; letter-spacing: 0.04em; }
+.kanban-col-hint { margin: -0.25rem 0 0; }
+.kanban-count { font-size: var(--text-meta); font-weight: 600; color: var(--muted); padding: 0.1rem 0.5rem; border-radius: 999px; background: var(--glass-bg); border: 1px solid var(--glass-border); }
+.kanban-cards { display: flex; flex-direction: column; gap: 0.6rem; }
+.kanban-card { display: flex; flex-direction: column; gap: 0.45rem; padding: 0.8rem; }
+.kanban-card.is-applied { border-color: var(--brand-600); }
+.kanban-card-title { margin: 0; font-size: var(--text-body); font-weight: 600; line-height: 1.35; }
+.kanban-empty { padding: 1rem 0.5rem; text-align: center; border: 1px dashed var(--soft-border); border-radius: 0.75rem; }
+.ui-dot.is-open { color: var(--info); } .ui-dot.is-taken { color: var(--brand-500); } .ui-dot.is-delivered { color: var(--warning); } .ui-dot.is-paid { color: var(--success); }
+@container kanban (max-width: 1023px) { .kanban { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container kanban (max-width: 639px) {
+    /* One full-width column at a time, horizontal snap-scroll between them (tables never scroll sideways; a kanban may). */
+    .kanban { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 0.75rem; padding-bottom: 0.5rem; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+    .kanban-col { flex: 0 0 86%; scroll-snap-align: start; }
+}
+
+/* Star rating: 5 radios, the labels are the stars (keyboard-friendly, 44px targets). */
+.ui-stars { display: inline-flex; flex-direction: row-reverse; gap: 0.15rem; }
+.ui-stars input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.ui-stars label { display: grid; place-items: center; width: 44px; height: 44px; font-size: 1.5rem; color: var(--muted); cursor: pointer; border-radius: 0.5rem; transition: color 0.15s ease, transform 0.15s ease; }
+.ui-stars label:hover, .ui-stars label:hover ~ label, .ui-stars input:checked ~ label { color: var(--brand-500); }
+.ui-stars label:hover { transform: scale(1.1); }
+.ui-stars input:focus-visible + label { box-shadow: 0 0 0 3px var(--brand-soft); }
 
 /* ====== Payments: stepper + live USDC balance ====== */
 .ui-stepper { display: flex; align-items: flex-start; gap: 0; margin: 0.9rem 0 0; padding: 0; list-style: none; counter-reset: step; }

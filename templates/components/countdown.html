@@ -1,1 +1,0 @@
-{% comment %}Live countdown (ticked by lowbid-auctions.js): {% include "components/countdown.html" with need=need main=True %}{% endcomment %}<span class="ui-countdown{% if class %} {{ class }}{% endif %}" data-ends-at="{{ need.bidding_ends_at|date:'c' }}" data-status="{{ need.effective_status }}"{% if main %} data-countdown-main{% endif %}>…</span>

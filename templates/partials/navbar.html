@@ -1,0 +1,67 @@
+{% load static lowbid_extras %}
+<header class="lb-nav" role="banner">
+  <div class="lb-nav-inner">
+    <a href="{% url 'core:landing' %}" class="lb-brand" aria-label="Lowbid — accueil">
+      <span class="lb-brand-mark" aria-hidden="true"><i class="fa-solid fa-gavel"></i></span>
+      <span class="lb-brand-name">Lowbid</span>
+      <span class="ui-badge ui-badge-brand hidden sm:inline-flex">{{ STELLAR_NETWORK }}</span>
+    </a>
+
+    <nav class="lb-nav-links" aria-label="Navigation principale">
+      {% for link in nav_links %}
+        <a href="{% if link.wallet and not wallet_address %}{% url 'core:landing' %}?next={{ link.href|urlencode }}{% else %}{{ link.href }}{% endif %}"
+           class="lb-nav-link{% if link.active %} is-active{% endif %}"
+           {% if link.active %}aria-current="page"{% endif %}>
+          <i class="fa-solid {{ link.icon }}" aria-hidden="true"></i><span>{{ link.label }}</span>
+        </a>
+      {% endfor %}
+    </nav>
+
+    <div class="lb-nav-actions">
+      <button type="button" class="lb-icon-btn" data-theme-toggle aria-label="Changer de thème" title="Thème clair / sombre">
+        <i class="fa-solid fa-moon lb-theme-dark" aria-hidden="true"></i>
+        <i class="fa-solid fa-sun lb-theme-light" aria-hidden="true"></i>
+      </button>
+
+      {% if wallet_address %}
+        <details class="lb-wallet-menu">
+          <summary class="lb-wallet-btn is-connected" title="{{ wallet_address }}">
+            <span class="lb-wallet-dot" aria-hidden="true"></span>
+            <span class="font-mono">{{ wallet_address|short_addr }}</span>
+            <i class="fa-solid fa-chevron-down text-[10px] opacity-60" aria-hidden="true"></i>
+          </summary>
+          <div class="lb-wallet-dropdown glass-card">
+            <div class="px-3 py-2 ui-meta break-all">{{ wallet_address }}</div>
+            <button type="button" class="lb-dropdown-item" data-copy="{{ wallet_address }}">
+              <i class="fa-regular fa-copy" aria-hidden="true"></i> Copier l’adresse
+            </button>
+            <form method="post" action="{% url 'accounts:logout' %}">
+              {% csrf_token %}
+              <button type="submit" class="lb-dropdown-item text-[color:var(--error)]">
+                <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Déconnexion
+              </button>
+            </form>
+          </div>
+        </details>
+      {% else %}
+        <button type="button" class="lb-wallet-btn" data-wallet-connect data-next="{{ next_url|default:'' }}">
+          <i class="fa-solid fa-wallet" aria-hidden="true"></i>
+          <span>Connecter<span class="hidden sm:inline"> le wallet</span></span>
+        </button>
+      {% endif %}
+
+      <button type="button" class="lb-icon-btn lg:hidden" data-nav-toggle aria-expanded="false" aria-controls="lb-mobile-nav" aria-label="Menu">
+        <i class="fa-solid fa-bars" aria-hidden="true"></i>
+      </button>
+    </div>
+  </div>
+
+  <nav id="lb-mobile-nav" class="lb-mobile-nav" aria-label="Navigation mobile" hidden>
+    {% for link in nav_links %}
+      <a href="{% if link.wallet and not wallet_address %}{% url 'core:landing' %}?next={{ link.href|urlencode }}{% else %}{{ link.href }}{% endif %}"
+         class="lb-nav-link{% if link.active %} is-active{% endif %}">
+        <i class="fa-solid {{ link.icon }}" aria-hidden="true"></i><span>{{ link.label }}</span>
+      </a>
+    {% endfor %}
+  </nav>
+</header>

@@ -1,0 +1,148 @@
+/* Lowbid design tokens — ONE :root palette, dark-first, light via html[data-theme="light"].
+   base.html loads this FIRST; lowbid-components.css and tailwind.css read these var(--*).
+   DNA inherited from SIPS (glass surfaces, soft borders, 44px targets); the brand hue is
+   warm amber — it reads "auction / finance" and stays legible on both canvases. */
+
+:root {
+    /* Brand (amber) */
+    --brand-500: #FBBF24;
+    --brand-600: #F59E0B;
+    --brand-700: #D97706;
+    --brand-800: #B45309;
+    --brand-soft: rgba(245,158,11,0.14);
+    --brand-ink: #1a1200;          /* text on a filled brand button */
+
+    /* Brand RGB triplets for Tailwind alpha utilities (bg-brand-500/20 …) */
+    --brand-50-rgb:  255 251 235;
+    --brand-100-rgb: 254 243 199;
+    --brand-200-rgb: 253 230 138;
+    --brand-300-rgb: 252 211 77;
+    --brand-400-rgb: 251 191 36;
+    --brand-500-rgb: 245 158 11;
+    --brand-600-rgb: 217 119 6;
+    --brand-700-rgb: 180 83 9;
+    --brand-800-rgb: 146 64 14;
+    --brand-900-rgb: 120 53 15;
+    --brand-950-rgb: 69 26 3;
+
+    /* Secondary (sky) + accent (violet) */
+    --secondary-500: #0ea5e9;
+    --secondary-soft: rgba(14,165,233,0.12);
+    --accent-500: #8b5cf6;
+    --accent-soft: rgba(139,92,246,0.12);
+
+    /* Status */
+    --success: #34D399;
+    --success-soft: rgba(16,185,129,0.15);
+    --warning: #fb923c;
+    --warning-soft: rgba(251,146,60,0.15);
+    --error: #f87171;
+    --error-soft: rgba(220,38,38,0.15);
+    --info: #7dd3fc;
+    --info-soft: rgba(14,165,233,0.14);
+
+    /* Badge text — passes >= 4.5:1 on its soft fill over the dark surface */
+    --ui-badge-ok-text:     var(--success);
+    --ui-badge-attn-text:   var(--warning);
+    --ui-badge-danger-text: var(--error);
+    --ui-badge-brand-text:  var(--brand-500);
+    --ui-badge-info-text:   var(--info);
+
+    /* Type scale — Meta 12 / Body 14 / Heading 16 / Display 28 */
+    --text-meta:    0.75rem;
+    --text-body:    0.875rem;
+    --text-heading: 1rem;
+    --text-display: 1.75rem;
+    --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    /* Surfaces / text / borders */
+    --bg-1: #0b0e14;
+    --bg-2: #080a10;
+    --bg-3: #05060a;
+    --surface: #121722;
+    --surface-soft: #0e131c;
+    --text-main: rgba(255,255,255,0.92);
+    --text-muted: rgba(255,255,255,0.56);
+    --text: var(--text-main);
+    --muted: var(--text-muted);
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,0.24), 0 4px 12px rgba(0,0,0,0.32);
+    --radius-lg: 16px;
+    --radius-md: 12px;
+
+    --glass-bg: var(--surface);
+    --glass-border: rgba(255,255,255,0.06);
+    --glass-shadow: var(--shadow);
+    --soft-bg: var(--surface-soft);
+    --soft-border: rgba(255,255,255,0.04);
+    --hover-border: rgba(245,158,11,0.22);
+    --hover-shadow: 0 1px 2px rgba(245,158,11,0.10), 0 4px 14px rgba(0,0,0,0.36);
+    --glow-1: rgba(245,158,11,0.13);
+    --glow-2: rgba(251,191,36,0.06);
+    --divider: var(--border);
+    --row-hover: rgba(245,158,11,0.08);
+
+    /* Navbar */
+    --nav-bg: rgba(8,10,16,0.78);
+    --nav-border: rgba(255,255,255,0.07);
+    --nav-link-hover-bg: rgba(245,158,11,0.10);
+    --nav-active: var(--brand-500);
+}
+
+/* LIGHT — flat white canvas, neutral hairlines, darker amber for 4.5:1 on white. */
+html[data-theme="light"] {
+    --bg-1: #ffffff;
+    --bg-2: #ffffff;
+    --bg-3: #ffffff;
+
+    --brand-500: #B45309;   /* 5.0:1 on white */
+    --brand-600: #B45309;
+    --brand-700: #92400E;
+    --brand-800: #78350F;
+    --brand-soft: rgba(180,83,9,0.10);
+    --brand-ink: #ffffff;
+
+    --success: #047857;
+    --success-soft: rgba(4,120,87,0.10);
+    --warning: #c2410c;
+    --warning-soft: rgba(194,65,12,0.10);
+    --error: #b91c1c;
+    --error-soft: rgba(185,28,28,0.09);
+    --info: #0369a1;
+    --info-soft: rgba(3,105,161,0.10);
+
+    --ui-badge-ok-text:     #047857;
+    --ui-badge-attn-text:   #9a3412;
+    --ui-badge-danger-text: #991b1b;
+    --ui-badge-brand-text:  #92400E;
+    --ui-badge-info-text:   #075985;
+
+    --text-main: #0b1220;
+    --text-muted: #46566b;
+    --text: var(--text-main);
+    --muted: var(--text-muted);
+    --border: #e5e7eb;
+    --border-strong: #d1d5db;
+    --shadow: 0 1px 2px rgba(11,18,32,0.04);
+
+    --surface: #ffffff;
+    --surface-soft: #f4f5f7;
+    --glass-bg: #ffffff;
+    --glass-border: #e5e7eb;
+    --glass-shadow: 0 1px 2px rgba(11,18,32,0.04);
+    --soft-bg: #f4f5f7;
+    --soft-border: #e5e7eb;
+    --hover-border: #d1d5db;
+    --hover-shadow: 0 1px 2px rgba(11,18,32,0.06), 0 2px 10px rgba(11,18,32,0.05);
+    --glow-1: transparent;
+    --glow-2: transparent;
+    --divider: var(--border);
+    --row-hover: rgba(180,83,9,0.05);
+
+    --nav-bg: rgba(255,255,255,0.88);
+    --nav-border: #e5e7eb;
+    --nav-link-hover-bg: rgba(180,83,9,0.07);
+    --nav-active: #B45309;
+}

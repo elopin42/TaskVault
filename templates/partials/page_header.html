@@ -1,0 +1,8 @@
+{# Usage: {% include "partials/page_header.html" with title="…" subtitle="…" %} + optional {% block header_actions %} via `actions` HTML-safe string #}
+<div class="ui-page-header">
+  <div class="min-w-0">
+    <h1 class="ui-page-title">{{ title }}</h1>
+    {% if subtitle %}<p class="ui-page-sub">{{ subtitle }}</p>{% endif %}
+  </div>
+  {% if actions %}<div class="ui-page-actions">{{ actions }}</div>{% endif %}
+</div>

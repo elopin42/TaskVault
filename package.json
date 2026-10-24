@@ -1,0 +1,21 @@
+{
+  "name": "lowbid-frontend-assets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted frontend asset build for Lowbid: Tailwind CSS v3 + vendored Font Awesome, @stellar/freighter-api (UMD, global `freighterApi`) and @stellar/stellar-sdk (global `StellarSdk`). Nothing loads from a CDN; every output is committed.",
+  "scripts": {
+    "build:css": "tailwindcss -c tailwind.config.js -i static/css/tailwind.src.css -o static/css/tailwind.css --minify",
+    "watch:css": "tailwindcss -c tailwind.config.js -i static/css/tailwind.src.css -o static/css/tailwind.css --watch",
+    "vendor:fontawesome": "rm -rf static/vendor/fontawesome && mkdir -p static/vendor/fontawesome && cp -R node_modules/@fortawesome/fontawesome-free/css static/vendor/fontawesome/css && cp -R node_modules/@fortawesome/fontawesome-free/webfonts static/vendor/fontawesome/webfonts",
+    "vendor:freighter": "cp node_modules/@stellar/freighter-api/build/index.min.js static/vendor/freighter-api.js",
+    "vendor:stellar-sdk": "cp node_modules/@stellar/stellar-sdk/dist/stellar-sdk.min.js static/vendor/stellar-sdk.min.js",
+    "vendor": "npm run vendor:fontawesome && npm run vendor:freighter && npm run vendor:stellar-sdk",
+    "build": "npm run build:css && npm run vendor"
+  },
+  "devDependencies": {
+    "@fortawesome/fontawesome-free": "6.7.2",
+    "@stellar/freighter-api": "6.0.1",
+    "@stellar/stellar-sdk": "17.3.0",
+    "tailwindcss": "3.4.19"
+  }
+}

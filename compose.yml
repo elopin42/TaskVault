@@ -1,0 +1,36 @@
+# Optional: `docker compose up --build` → http://localhost:8000 with PostgreSQL.
+# The default dev loop is `make dev` (SQLite, no Docker).
+name: lowbid
+
+services:
+  django:
+    build: .
+    env_file: .env
+    environment:
+      DJANGO_DB_HOST: postgres
+      DJANGO_DB_PORT: "5432"
+      DJANGO_DB_NAME: ${DJANGO_DB_NAME:-lowbid}
+      DJANGO_DB_USER: ${DJANGO_DB_USER:-lowbid}
+      DJANGO_DB_PASSWORD: ${DJANGO_DB_PASSWORD:-lowbid}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DJANGO_DB_NAME:-lowbid}
+      POSTGRES_USER: ${DJANGO_DB_USER:-lowbid}
+      POSTGRES_PASSWORD: ${DJANGO_DB_PASSWORD:-lowbid}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DJANGO_DB_USER:-lowbid} -d ${DJANGO_DB_NAME:-lowbid}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

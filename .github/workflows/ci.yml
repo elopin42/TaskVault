@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Linter gate (ruff, baseline rules only — see ruff.toml).
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install ruff (pinned in requirements-dev.txt)
+        run: pip install "$(grep '^ruff==' requirements-dev.txt)"
+      - name: ruff check
+        run: ruff check .
+
+  # Django system checks, migration drift, unit tests (SQLite).
+  test:
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_DEBUG: "1"
+      DJANGO_SECRET_KEY: ci-only-secret-key
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Django check
+        run: python manage.py check
+      - name: Migrations are committed
+        run: python manage.py makemigrations --check --dry-run
+      - name: Tests
+        run: python manage.py test -v 2
+
+  # The committed static/css/tailwind.css must match a fresh build.
+  tailwind-in-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Rebuild Tailwind CSS
+        run: npm run build:css
+      - name: Committed tailwind.css is up to date
+        # Any diff means the checked-in build lags the source — rerun `npm run build:css` and commit.
+        run: git diff --exit-code -- static/css/tailwind.css

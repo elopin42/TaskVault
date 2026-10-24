@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}404 — Page introuvable · Lowbid{% endblock %}
+{% block content %}
+<div class="empty-state glass-card max-w-lg mx-auto mt-10">
+  <div class="empty-state-icon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></div>
+  <div class="empty-state-title">404 · Page introuvable</div>
+  <p class="empty-state-desc">Cette page n’existe pas ou plus.</p>
+  <a href="{% url 'core:landing' %}" class="ui-btn ui-btn-primary mt-4"><i class="fa-solid fa-house" aria-hidden="true"></i> Retour à l’accueil</a>
+</div>
+{% endblock %}

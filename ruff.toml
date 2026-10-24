@@ -1,0 +1,23 @@
+# Ruff — linter gate run by CI (`ruff check .`). Baseline rules only (pyflakes +
+# pycodestyle error classes): every finding is a real defect, not style.
+target-version = "py313"
+line-length = 120
+extend-exclude = [
+    ".venv",
+    "node_modules",
+    "**/migrations",
+    "staticfiles",
+    "data",
+]
+
+[lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    "E731",  # lambda assignment
+    "E741",  # ambiguous variable name
+]
+
+[lint.per-file-ignores]
+"**/__init__.py" = ["F401"]
+"**/tests*.py" = ["E402"]
+"**/test_*.py" = ["E402"]

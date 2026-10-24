@@ -52,6 +52,32 @@ class BaseAuctionTest(TestCase):
         return services.place_bid(self.need, freelancer, price, delay, list(tags), message)
 
 
+# --- templates ---------------------------------------------------------------------
+
+class DetailTemplateTests(BaseAuctionTest):
+    def test_no_template_syntax_leaks_into_the_page(self):
+        """`{# #}` comments are single-line in Django: a multi-line one renders as text (seen on _bids_list)."""
+        self.bid(self.f1, "450")
+        self.bid(self.f2, "419.5", delay=9, tags=("ui",))
+        session = self.client.session
+        session["wallet_user_id"] = self.f1.pk
+        session["wallet_address"] = self.f1.stellar_address
+        session.save()
+        html = self.client.get(reverse("auctions:need_detail", args=[self.need.pk])).content.decode()
+        for token in ("{#", "#}", "{%", "%}", "{{", "}}"):
+            self.assertNotIn(token, html, token)
+        fragment = self.client.get(reverse("auctions:need_bids_json", args=[self.need.pk])).json()["html"]
+        self.assertNotIn("{#", fragment)
+        # Numbers the JS parses must be plain decimals with a dot: neither the 7-place Decimal repr
+        # nor the fr-localised "419,5000000" (LANGUAGE_CODE=fr localises bare {{ decimal }}).
+        self.assertIn('max="419.5"', html)
+        self.assertIn('placeholder="419.5"', html)
+        self.assertIn('data-price="419.5"', html)
+        self.assertIn('data-price="450"', html)
+        self.assertNotIn("419,5", html)
+        self.assertNotIn("0000000", html.split("LOWBID_NEED")[0])
+
+
 # --- services.place_bid (R1–R7) --------------------------------------------------
 
 class PlaceBidTests(BaseAuctionTest):

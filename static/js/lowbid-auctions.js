@@ -57,6 +57,19 @@
   tickCountdowns();
   setInterval(tickCountdowns, 1000);
 
+  /* ---------- classic forms: one submission only (#need-form) ---------- */
+  document.querySelectorAll("form[data-submit-once]").forEach(function (f) {
+    f.addEventListener("submit", function (ev) {
+      if (f.dataset.submitted === "1") { ev.preventDefault(); return; }
+      f.dataset.submitted = "1";
+      f.querySelectorAll('button[type="submit"]').forEach(function (b) {
+        b.classList.add("is-loading"); b.setAttribute("aria-busy", "true");
+        // disabled buttons are dropped from the POST body; the form has none named, so this is safe
+        setTimeout(function () { b.disabled = true; }, 0);
+      });
+    });
+  });
+
   /* ---------- need detail page ---------- */
   var cfg = window.LOWBID_NEED;
   if (!cfg) return;
@@ -163,7 +176,7 @@
         applyWeights();
         var count = document.querySelector("[data-kpi-count]"); if (count) count.textContent = String(data.count);
         var best = document.querySelector("[data-kpi-best]");
-        if (best && data.best_price) best.innerHTML = Lowbid.escapeHtml(Lowbid.formatUsdc(data.best_price, "")).trim() + '<span class="ui-price-unit">USDC</span>';
+        if (best && data.best_price) best.innerHTML = Lowbid.escapeHtml(Lowbid.formatUsdc(data.best_price, "")) + '<span class="ui-price-unit">USDC</span>';
         updatePriceCap(data.best_price || data.budget_max);
       }
     }).catch(function (err) {
@@ -219,10 +232,13 @@
 
     var CODE_FIELD = { not_lower: "price", over_budget: "price", over_delay: "delay_days", bad_tags: "tags", invalid: "price" };
 
+    var submitting = false;
     form.addEventListener("submit", function (ev) {
       ev.preventDefault();
+      if (submitting) return; // Enter pressed twice / double click while the request is in flight
       ["price", "delay_days", "tags", "_"].forEach(function (f) { showError(f, ""); });
       if (!validatePrice()) return;
+      submitting = true;
       var body = {
         price: document.getElementById("bid-price").value,
         delay_days: document.getElementById("bid-delay").value,
@@ -232,11 +248,12 @@
       var btn = form.querySelector("[data-bid-submit]");
       setBusy(btn, true, "Envoi…");
       Lowbid.api(cfg.urls.bid, { method: "POST", body: body }).then(function (data) {
-        setBusy(btn, false);
         Lowbid.toast(data.message || "Offre enregistrée.", "success", { title: "Enchère" });
         // Reload: the panel title / "votre offre actuelle" line and the list all change.
+        // The button stays disabled until then so a second click cannot post twice.
         setTimeout(function () { location.reload(); }, 500);
       }).catch(function (err) {
+        submitting = false;
         setBusy(btn, false);
         var code = err && err.data && err.data.error;
         var msg = toastError(err, "Offre refusée.");

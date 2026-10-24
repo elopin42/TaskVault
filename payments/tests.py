@@ -312,6 +312,18 @@ class StellarBuildersTests(SimpleTestCase):
                 stellar.build_payment_xdr(source=CLIENT, destination=FREELANCER, amount=Decimal("2"))
         self.assertIn("friendbot", str(ctx.exception))
 
+    def test_build_payment_xdr_horizon_down_is_not_account_not_found(self):
+        """A proxy 403 / 5xx / transport error must say "Horizon injoignable", not "financez-le"."""
+        for failing in (
+            {"return_value": _resp(403, {"status": 403})},
+            {"return_value": _resp(503, {})},
+            {"side_effect": requests.ConnectionError("down")},
+        ):
+            with patch("payments.stellar.requests.get", **failing):
+                with self.assertRaises(stellar.StellarError) as ctx:
+                    stellar.build_payment_xdr(source=CLIENT, destination=FREELANCER, amount=Decimal("2"))
+            self.assertEqual(str(ctx.exception), stellar.ERR_HORIZON_UNREACHABLE)
+
     def test_build_change_trust_xdr_offline(self):
         xdr = stellar.build_change_trust_xdr(source=FREELANCER, sequence=42)
         tx = TransactionEnvelope.from_xdr(xdr, TESTNET).transaction

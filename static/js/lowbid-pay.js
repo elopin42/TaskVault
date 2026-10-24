@@ -12,7 +12,7 @@
  *           [data-loading-label="Signature…"] [data-no-reload]>Financer</button>
  *   <p data-pay-error hidden></p>                       (nearest ancestor's one gets the server error)
  *   <button data-pay-trustline>Ajouter la trustline USDC</button>   (uses LOWBID.urls.trustlinePrepare)
- *   <span data-usdc-balance="G…" data-watch>0.00 USDC</span>          (polled from Horizon for 2 min)
+ *   <span data-usdc-balance="G…" data-watch>0.00 USDC</span>          (polled from Horizon: 5 s for 2 min, then 15 s, up to 15 min)
  *
  * Public API:
  *   Lowbid.pay.signAndSend({xdr, sendUrl, extra})  -> Promise<serverJson>
@@ -29,8 +29,12 @@
   var CFG = window.LOWBID || {};
 
   var DECLINED_CODE = -4; // FreighterApiDeclinedError
-  var BALANCE_INTERVAL_MS = 5000;
-  var BALANCE_MAX_MS = 120000;
+  var BALANCE_INTERVAL_MS = 5000;        // first 2 minutes
+  var BALANCE_SLOW_AFTER_MS = 120000;
+  var BALANCE_SLOW_INTERVAL_MS = 15000;  // then, until BALANCE_MAX_MS — the release moment must not be missed
+  var BALANCE_MAX_MS = 15 * 60 * 1000;
+  var BALANCE_MAX_FAILURES = 3; // consecutive Horizon failures before a watcher gives up
+  var balanceWarned = false;
 
   /* ---------- helpers ---------- */
   function toast(msg, type, opts) {
@@ -268,7 +272,10 @@
           return "0";
         });
       }).catch(function (err) {
-        console.warn("lowbid-pay: balance fetch failed", err);
+        if (!balanceWarned) {
+          balanceWarned = true;
+          console.warn("lowbid-pay: balance fetch failed (Horizon unreachable?) — further failures are silent", err);
+        }
         return null;
       });
     },
@@ -285,9 +292,22 @@
       var last = null;
       var timer = null;
       var stopped = false;
+      var failures = 0;
+
+      function nodesFor() {
+        return document.querySelectorAll('[data-usdc-balance="' + address.replace(/"/g, "") + '"]');
+      }
+
+      function renderUnavailable() {
+        nodesFor().forEach(function (n) {
+          if (n.getAttribute("data-balance")) return; // keep the last good value
+          n.textContent = "—";
+          n.title = "Solde indisponible (Horizon injoignable).";
+        });
+      }
 
       function render(balance) {
-        var nodes = document.querySelectorAll('[data-usdc-balance="' + address.replace(/"/g, "") + '"]');
+        var nodes = nodesFor();
         var text = Lowbid.formatUsdc ? Lowbid.formatUsdc(balance, (CFG.usdc || {}).code) : balance + " USDC";
         nodes.forEach(function (n) {
           var changed = n.textContent.trim() !== text;
@@ -309,6 +329,17 @@
         if (stopped) return;
         pay.fetchUsdcBalance(address).then(function (balance) {
           if (stopped) return;
+          if (balance === null) {
+            failures += 1;
+            if (failures >= BALANCE_MAX_FAILURES) {
+              // Horizon is down or blocked: stop polling instead of logging a network error every 5 s.
+              renderUnavailable();
+              stop();
+              return;
+            }
+          } else {
+            failures = 0;
+          }
           if (balance !== null) {
             if (balance !== last) {
               render(balance);
@@ -318,7 +349,8 @@
               last = balance;
             }
           }
-          if (Date.now() - started < maxMs) timer = setTimeout(tick, interval);
+          var elapsed = Date.now() - started;
+          if (elapsed < maxMs) timer = setTimeout(tick, elapsed < BALANCE_SLOW_AFTER_MS ? interval : Math.max(interval, BALANCE_SLOW_INTERVAL_MS));
         });
       }
       tick();

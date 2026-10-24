@@ -240,11 +240,25 @@ def _memo_text(memo: str | None) -> str | None:
     return raw.decode("utf-8", errors="ignore") or None
 
 
+def _sequence_or_raise(source: str) -> int:
+    """Current sequence from Horizon; 404 → ERR_ACCOUNT_NOT_FOUND, anything else that is
+    not a 200 → ERR_HORIZON_UNREACHABLE (a proxy 403 or a 5xx is not an unfunded account)."""
+    status, data = _horizon_get(f"/accounts/{source}")
+    if status == 404:
+        logger.info("stellar: account not found address=%s", source)
+        raise StellarError(ERR_ACCOUNT_NOT_FOUND)
+    if status != 200:
+        raise StellarError(ERR_HORIZON_UNREACHABLE)
+    try:
+        return int(data["sequence"])
+    except (KeyError, TypeError, ValueError):
+        logger.warning("stellar: bad sequence in horizon account payload address=%s", source)
+        raise StellarError(ERR_HORIZON_UNREACHABLE) from None
+
+
 def _builder(source: str, sequence: int | None, base_fee: int | None) -> TransactionBuilder:
     if sequence is None:
-        sequence = load_sequence(source)
-        if sequence is None:
-            raise StellarError(ERR_ACCOUNT_NOT_FOUND)
+        sequence = _sequence_or_raise(source)
         if base_fee is None:
             base_fee = horizon_base_fee()
     if base_fee is None:

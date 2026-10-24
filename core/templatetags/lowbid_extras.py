@@ -15,6 +15,17 @@ def short_addr(value, keep: int = 4) -> str:
 
 
 @register.filter
+def plain(value) -> str:
+    """'500' / '400.5' for a Decimal(18,7) — never '500.0000000' (input max/placeholder, data-*)."""
+    if value in (None, ""):
+        return ""
+    try:
+        return f"{Decimal(str(value)).normalize():f}"
+    except (InvalidOperation, ValueError):
+        return str(value)
+
+
+@register.filter
 def usdc(value, code: str = "USDC") -> str:
     """'1,234.50 USDC' — two decimals, thousands separator; '—' when empty."""
     if value in (None, ""):

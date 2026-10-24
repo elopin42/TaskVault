@@ -704,6 +704,30 @@ class PanelTests(BasePayTest):
         self.assertIn("En attente de la livraison", html)
         self.assertNotIn('data-pay-step="deliver"', html)
 
+    def test_platform_fallback_alert_only_for_the_client_when_address_missing(self):
+        """Empty LOWBID_PLATFORM_ADDRESS merges the platform roles onto the client (escrow mode):
+        the client gets a one-line warning in the panel, nobody else does, direct mode never does."""
+        with override_settings(LOWBID_PLATFORM_ADDRESS=""):
+            login(self.client, self.owner)
+            html = self.detail().content.decode()
+            self.assertIn("data-platform-fallback", html)
+            self.assertIn("Adresse plateforme non configurée", html)
+            login(self.client, self.winner)
+            self.assertNotIn("data-platform-fallback", self.detail().content.decode())
+        login(self.client, self.owner)
+        self.assertNotIn("data-platform-fallback", self.detail().content.decode())  # PLATFORM configured
+        with override_settings(LOWBID_PLATFORM_ADDRESS="", LOWBID_PAYMENT_MODE="direct"):
+            self.assertNotIn("data-platform-fallback", self.detail().content.decode())
+
+    def test_platform_fallback_follows_the_frozen_escrow_row(self):
+        from payments.services import ensure_escrow, platform_fallback_in_use
+
+        with override_settings(LOWBID_PLATFORM_ADDRESS=""):
+            escrow = ensure_escrow(self.need)  # frozen with the client as platform address
+        self.assertEqual(escrow.platform_address, self.owner.stellar_address)
+        self.assertTrue(platform_fallback_in_use(self.need, escrow, Escrow.Mode.ESCROW))
+        self.assertFalse(platform_fallback_in_use(self.need, None, Escrow.Mode.DIRECT))
+
     @override_settings(LOWBID_PAYMENT_MODE="direct")
     def test_direct_mode_panel(self):
         login(self.client, self.owner)

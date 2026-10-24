@@ -116,10 +116,12 @@ if os.environ.get("DJANGO_DB_HOST"):
 else:
     _data_dir = BASE_DIR / "data"
     _data_dir.mkdir(exist_ok=True)
+    # LOWBID_SQLITE_PATH lets a throwaway run (make e2e) use its own file.
+    _sqlite_path = Path(os.environ.get("LOWBID_SQLITE_PATH", "").strip() or (_data_dir / "db.sqlite3"))
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": _data_dir / "db.sqlite3",
+            "NAME": _sqlite_path,
         }
     }
 
@@ -172,7 +174,7 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 30
 
 # Bump whenever css/lowbid-*.css or js/lowbid-*.js changes (30-day static cache).
-LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261024-payments"
+LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261024-qa"
 
 # --- Stellar ------------------------------------------------------------------
 

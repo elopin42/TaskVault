@@ -36,6 +36,7 @@ def escrow_panel(context, need, wallet=None):
         "action": action,
         "role": role,
         "is_party": role in ("client", "winner"),
+        "platform_fallback": services.platform_fallback_in_use(need, escrow, mode),
         "amount": amount,
         "payee": payee,
         "payer": need.client.stellar_address,

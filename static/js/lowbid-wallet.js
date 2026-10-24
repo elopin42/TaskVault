@@ -120,6 +120,8 @@
           });
         });
       }).then(function (res) {
+        // The server validates `next` (same host, relative): remember its answer for the redirect.
+        wallet.lastNext = typeof res.next === "string" ? res.next : "";
         return res.address;
       });
     },
@@ -190,7 +192,8 @@
       setLoading(connectBtn, true);
       wallet.connect(next).then(function (address) {
         Lowbid.toast("Connecté en tant que " + Lowbid.shortAddr(address) + ".", "success", { title: "Wallet" });
-        setTimeout(function () { window.location.href = next || window.location.pathname; }, 350);
+        var target = wallet.lastNext || window.location.pathname;
+        setTimeout(function () { window.location.href = target; }, 350);
       }).catch(function (err) {
         setLoading(connectBtn, false);
         explain(err);

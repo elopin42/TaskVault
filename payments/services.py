@@ -213,10 +213,20 @@ def _platform_address(need: Need) -> str:
     if not address:
         address = need.client.stellar_address
         logger.warning(
-            "payments: LOWBID_PLATFORM_ADDRESS is empty, using the client wallet as disputeResolver/platformAddress need=%s",
+            "payments: LOWBID_PLATFORM_ADDRESS is empty — using the CLIENT wallet as disputeResolver AND platformAddress "
+            "need=%s; Trustless Work may refuse identical roles, set LOWBID_PLATFORM_ADDRESS in .env",
             need.pk,
         )
     return address
+
+
+def platform_fallback_in_use(need: Need, escrow: Escrow | None, mode: str) -> bool:
+    """True when escrow mode will (or did) merge the platform roles onto the client wallet."""
+    if mode != M.ESCROW:
+        return False
+    if escrow is not None and escrow.platform_address:
+        return escrow.platform_address == need.client.stellar_address
+    return not (getattr(settings, "LOWBID_PLATFORM_ADDRESS", "") or "").strip()
 
 
 def ensure_escrow(need: Need) -> Escrow:

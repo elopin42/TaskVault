@@ -67,7 +67,7 @@
           <form id="bid-form" class="ui-form-grid" novalidate>
             <div class="ui-field">
               <label for="bid-price" class="ui-label">Mon prix</label>
-              <div class="ui-input-group"><input id="bid-price" name="price" class="ui-input" type="number" inputmode="decimal" step="0.01" min="0.01" max="{{ need.current_price }}" required placeholder="{{ need.current_price }}"><span class="ui-input-addon">USDC</span></div>
+              <div class="ui-input-group"><input id="bid-price" name="price" class="ui-input" type="number" inputmode="decimal" step="0.01" min="0.01" max="{{ need.current_price|plain }}" required placeholder="{{ need.current_price|plain }}"><span class="ui-input-addon">USDC</span></div>
               <span class="ui-help" data-price-hint>Doit être inférieur à <strong class="text-strong" data-price-cap>{{ need.current_price|usdc }}</strong>.</span>
               <span class="ui-error" data-error-for="price" hidden></span>
             </div>

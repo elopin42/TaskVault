@@ -39,13 +39,9 @@ def nav_links(request):
     links = []
     for item in NAV_LINKS:
         href = _resolve(item["url_name"], item["fallback"])
-        links.append(
-            {
-                "label": item["label"],
-                "href": href,
-                "icon": item["icon"],
-                "wallet": item["wallet"],
-                "active": href != "/" and path.startswith(href),
-            }
-        )
+        links.append({"label": item["label"], "href": href, "icon": item["icon"], "wallet": item["wallet"], "active": False})
+    # Only the most specific match is active: /besoins/nouveau/ must not also light up "Besoins".
+    matching = [link for link in links if link["href"] != "/" and path.startswith(link["href"])]
+    if matching:
+        max(matching, key=lambda link: len(link["href"]))["active"] = True
     return {"nav_links": links}

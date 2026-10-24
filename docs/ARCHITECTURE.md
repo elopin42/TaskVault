@@ -36,10 +36,27 @@ make test         # manage.py check + makemigrations --check + test
 make lint         # ruff check .
 make css          # npm ci + tailwind build  (commit static/css/tailwind.css!)
 make vendor       # re-copy Font Awesome / freighter-api / stellar-sdk from node_modules
+make e2e          # Playwright end-to-end with a simulated Freighter (see E2E below)
 ```
 
 Settings come from `.env` (python-dotenv). `DJANGO_DEBUG=0` **requires** `DJANGO_SECRET_KEY`.
-Set `DJANGO_DB_HOST` to switch from SQLite to PostgreSQL (`DJANGO_DB_NAME/USER/PASSWORD/PORT`).
+Set `DJANGO_DB_HOST` to switch from SQLite to PostgreSQL (`DJANGO_DB_NAME/USER/PASSWORD/PORT`);
+`LOWBID_SQLITE_PATH` moves the SQLite file (default `data/db.sqlite3`, `make e2e` uses `data/e2e.sqlite3`).
+
+## E2E
+
+`make e2e` boots `runserver` on a free port against a fresh `data/e2e.sqlite3` (`LOWBID_SQLITE_PATH`), runs
+`node tests/e2e/run.js` (plain `playwright` library, Chromium, no `@playwright/test`) and kills the server.
+`tests/e2e/fake-freighter.js` is injected with `addInitScript` before any page script and replaces
+`window.freighterApi` with a keypair-backed fake: SEP-53 `signMessage` and `signTransaction` via the vendored
+`window.StellarSdk`, so the real login (`/auth/challenge/` → `/auth/verify/`) runs end to end. Three contexts
+(client, freelance1, freelance2) walk the whole flow at 1280×800 — post, descending bids with the `not_lower`
+refusal, polling, close, sliders, choosing a non-recommended bid, Mes enchères / Mes besoins, the client's payment
+button ("Payer le freelance" / "Valider et payer" in direct mode, "Créer l’escrow" / "Bloquer les fonds" in escrow
+mode) failing gracefully without network, theme + logout — and the key screens are re-checked at 390×844 (no horizontal
+scroll, tap targets). Screenshots land in `docs/screenshots/` (`01-landing.png` … `10-mobile-liste.png`, used by
+the pitch). Any uncaught page error or unexpected `console.error` fails the run; on-chain steps (Horizon,
+Trustless Work) are out of scope.
 
 ## Apps
 

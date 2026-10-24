@@ -27,10 +27,14 @@
     return addr.length > keep * 2 + 1 ? addr.slice(0, keep) + "…" + addr.slice(-keep) : addr;
   };
 
+  /* Lowbid.formatUsdc(value, code?) -> "1,234.50 USDC". Pass code = "" for the bare number
+     (callers that render their own <span class="ui-price-unit">). */
   Lowbid.formatUsdc = function (value, code) {
     var n = Number(value);
     if (!isFinite(n)) return "—";
-    return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + (code || (window.LOWBID && LOWBID.usdc.code) || "USDC");
+    var num = n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (code === "") return num;
+    return num + " " + (code || (window.LOWBID && window.LOWBID.usdc && window.LOWBID.usdc.code) || "USDC");
   };
 
   /* Lowbid.api(url, {method, body}) -> parsed JSON. Sends CSRF + JSON, marks itself

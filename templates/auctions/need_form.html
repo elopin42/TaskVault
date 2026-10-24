@@ -5,7 +5,7 @@
 {% block content %}
 {% include "partials/page_header.html" with title="Poster un besoin" subtitle="Budget max, délai max, compétences : les freelances enchérissent à la baisse jusqu’à la fin du compte à rebours." %}
 
-<form method="post" class="ui-panel max-w-3xl" novalidate id="need-form">
+<form method="post" class="ui-panel max-w-3xl" novalidate id="need-form" data-submit-once>
   {% csrf_token %}
   {% if form.non_field_errors %}
     <div class="ui-alert ui-alert-danger mb-4"><i class="fa-solid fa-circle-xmark" aria-hidden="true"></i><span>{{ form.non_field_errors|join:" " }}</span></div>

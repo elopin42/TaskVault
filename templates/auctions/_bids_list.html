@@ -1,13 +1,15 @@
 {% load lowbid_extras %}
-{# Ranked bids. Rendered server-side in the detail page AND returned as `html` by
-   encheres.json so the page swaps it in place. The data-* attributes carry the
-   per-part ratios the client-side sliders re-weight (no round-trip). #}
+{% comment %}
+Ranked bids. Rendered server-side in the detail page AND returned as `html` by encheres.json so
+the page swaps it in place. The data-* attributes carry the per-part ratios the client-side
+sliders re-weight (no round-trip). ({# #} comments are single-line in Django: never use them here.)
+{% endcomment %}
 {% if rows %}
 <div class="ui-list" data-bids data-count="{{ rows|length }}">
   {% for r in rows %}
   <div class="ui-list-row bid-row{% if r.is_winner %} is-won{% elif need.winning_bid_id and not r.is_winner %} is-lost{% endif %}"
        data-bid-id="{{ r.bid.pk }}"
-       data-price="{{ r.bid.price }}"
+       data-price="{{ r.bid.price|plain }}"
        data-created="{{ r.bid.created_at|date:'U' }}"
        data-price-ratio="{{ r.fmt.price_ratio }}"
        data-delay-ratio="{{ r.fmt.delay_ratio }}"

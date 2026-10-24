@@ -35,11 +35,18 @@ payee, payer, links, last_error, pending_hash.
     <dt class="ui-label mb-0">Freelance</dt>
     <dd class="text-end flex items-center justify-end gap-1.5 min-w-0">
       <a href="{{ payee_explorer_url }}" target="_blank" rel="noopener" class="ui-link font-mono truncate" title="{{ payee }}">{{ payee|short_addr }}</a>
-      <button type="button" class="ui-btn ui-btn-ghost ui-btn-sm !min-h-0 !px-1.5 !py-0.5" data-copy="{{ payee }}" title="Copier l’adresse" aria-label="Copier l’adresse du freelance"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
+      <button type="button" class="ui-btn ui-btn-ghost ui-btn-sm !px-2 shrink-0" data-copy="{{ payee }}" title="Copier l’adresse" aria-label="Copier l’adresse du freelance"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
     </dd>
     <dt class="ui-label mb-0">Solde USDC du freelance</dt>
     <dd class="text-end"><span class="ui-num font-semibold text-strong ui-balance" data-usdc-balance="{{ payee }}" data-watch title="Lu sur Horizon toutes les 5 s">…</span></dd>
   </dl>
+
+  {% if platform_fallback and role == 'client' and not is_done %}
+    <div class="ui-alert ui-alert-attn mt-4" role="status" data-platform-fallback>
+      <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      <span>Adresse plateforme non configurée : rôles fusionnés avec le client (<code class="font-mono">LOWBID_PLATFORM_ADDRESS</code> vide).</span>
+    </div>
+  {% endif %}
 
   {% if last_error %}
     <div class="ui-alert {% if pending_hash %}ui-alert-info{% else %}ui-alert-attn{% endif %} mt-4" role="status">

@@ -378,3 +378,98 @@ curl -s $TW/helper/send-transaction -H "x-api-key: $KEY" -H 'content-type: appli
 | stellar-sdk 17.3.0 UMD `dist/stellar-sdk.min.js`, global `StellarSdk` | verified-source | |
 | Plan B JS/Python payment + trustline code | Python verified-offline (XDR parses in JS SDK); JS from SDK API, not executed in a browser | |
 | Soroban timelock signatures | verified-source (`soroban-examples` clone); CLI flags from-memory | |
+
+---
+
+## 7. Payments modules (wave 1 — built 2026-10-24, offline-tested)
+
+Shipped: `payments/trustless_work.py`, `payments/stellar.py`, `static/js/lowbid-pay.js`, `payments/tests.py` (41 tests, `requests` mocked, XDR round-tripped through `TransactionEnvelope.from_xdr`). No models/views/urls yet — that is wave 2, once `auctions.Need` exists. **Nothing has hit the live testnet from this sandbox** (egress 403): the first real run must be the §6 smoke test, now runnable from a Django shell (docstring of `payments/trustless_work.py`).
+
+### 7.1 Settings (`lowbid/settings.py`, `.env.example`)
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `TRUSTLESS_WORK_API_URL` / `TRUSTLESS_WORK_API_KEY` | `https://dev.api.trustlesswork.com` / `""` | v1 host + `x-api-key`. Empty key ⇒ every TW call short-circuits to `{"ok": False, "status": 0, "error": "…clé API…"}` without HTTP. |
+| `LOWBID_PAYMENT_MODE` | `""` | **THE Plan B switch**: `escrow` \| `direct` \| empty = auto (`escrow` when the key is set, else `direct`). Read through `payments.stellar.payment_mode()`, never directly. |
+| `LOWBID_PLATFORM_ADDRESS` | `""` | Platform wallet (G…) = `disputeResolver` + `platformAddress`. Must hold a USDC trustline when the fee > 0. |
+| `LOWBID_PLATFORM_FEE` | `Decimal("1")` | v1 `platformFee` JSON number. Unit unverified (bps vs %); keep `1` until `get_escrow()` reads it back. |
+
+### 7.2 Python API
+
+Every network function returns the same envelope and **never raises** on HTTP/transport errors:
+`{"ok": bool, "status": int, "data": dict, "error": str | None}` (`status == 0` ⇒ the request never left: transport error or missing key). Errors are French, user-facing; the API key is never logged.
+
+`payments.trustless_work` (v1, all keyword-only):
+
+| Function | Endpoint | Signs (Freighter) | Notes |
+|---|---|---|---|
+| `is_configured()` | — | — | key present |
+| `deploy_single_release(signer, engagement_id, title, description, amount, approver, service_provider, receiver, release_signer, dispute_resolver, platform_address, platform_fee, milestone_description)` | `POST /deployer/single-release` | client | body exactly §1.3 (`roles{}`, numbers in USDC units, `milestones:[{description}]`, `trustline` from `STELLAR_USDC_*`); title/description clipped to 100/500 |
+| `fund_escrow(contract_id, signer, amount)` | `POST /escrow/single-release/fund-escrow` | client | |
+| `change_milestone_status(contract_id, milestone_index="0", new_status="completed", evidence="", service_provider)` | `POST /escrow/single-release/change-milestone-status` | freelancer | `milestoneIndex` sent as a string, `newEvidence` `""` when empty |
+| `approve_milestone(contract_id, milestone_index="0", approver)` | `POST /escrow/single-release/approve-milestone` | client | |
+| `release_funds(contract_id, release_signer)` | `POST /escrow/single-release/release-funds` | client | |
+| `send_transaction(signed_xdr)` | `POST /helper/send-transaction` | — | `data["contractId"]` after a deploy; `status:"FAILED"` ⇒ `ok False` |
+| `set_trustline(address)` | `POST /helper/set-trustline` | the user | optional alternative to `stellar.build_change_trust_xdr` |
+| `get_escrow(contract_id, signer=None, validate_on_chain=False)` | `GET /escrow/single-release/get-escrow` | — | read back `platformFee` / `flags` / `balance` |
+
+The unsigned XDR of every build is `env["data"]["unsignedTransaction"]`.
+
+`payments.stellar` (Plan B + Horizon helpers, python `stellar_sdk` 16):
+
+- `payment_mode() -> "escrow" | "direct"` — the switch (above).
+- `usdc_asset() -> Asset`; `network_passphrase()`; `horizon_url()`.
+- `build_payment_xdr(*, source, destination, amount: Decimal, memo=None, sequence=None, base_fee=None) -> str` — one USDC `payment` op, text memo trimmed to 28 UTF-8 bytes (`lowbid:<need_id>`), timeout 300 s. `sequence=None` loads the account (and `/fee_stats`) from Horizon; passing `sequence` builds fully offline with base fee 100. Raises `StellarError` (French message) on bad amount / unfunded source.
+- `build_change_trust_xdr(*, source, sequence=None, base_fee=None) -> str` — USDC trustline (limit max).
+- `parse_payment_xdr(xdr) -> dict | None` — `{source, destination, amount, asset_code, asset_issuer, memo, hash, op_type}`; **views must use it to check the signed XDR matches the Need** (source = session wallet, destination = winner, amount = winning bid, issuer = USDC) before submitting.
+- `submit_xdr(signed_xdr) -> envelope + "hash"` — `POST {Horizon}/transactions`; `hash` is computed locally so it is known even on 504 (`ERR_TIMEOUT`) → show the explorer link instead of retrying blindly. Horizon `result_codes` → French (`op_no_trust`, `op_underfunded`, `op_no_destination`, `tx_bad_seq`, `tx_bad_auth`, …) via `explain_result_codes()`.
+- `has_usdc_trustline(address) -> bool | None`, `usdc_balance(address) -> Decimal | None` (`None` only when Horizon is unreachable; 404 ⇒ `False` / `0`), `load_account`, `load_sequence`, `horizon_base_fee`.
+- `explorer_tx_url(hash)`, `explorer_account_url(addr)`, `explorer_contract_url(contract_id)` → stellar.expert (`testnet` unless `STELLAR_NETWORK == "public"`).
+
+### 7.3 JS API (`static/js/lowbid-pay.js`, `window.Lowbid.pay`)
+
+Load it in `base.html` after `lowbid-wallet.js` (`<script src="{% static 'js/lowbid-pay.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>`) — wave 2 owns the template. Same IIFE style as the wallet module, events delegated on `document`, so buttons rendered later work.
+
+- `Lowbid.pay.signAndSend({xdr, sendUrl, extra})` → `Lowbid.signTransaction(xdr, {networkPassphrase: LOWBID.networkPassphrase, address: LOWBID.walletAddress})` → `Lowbid.api(sendUrl, {method:"POST", body:{signed_xdr, ...extra}})` → resolves with the server JSON. Toasts: *Signature demandée* → *Envoi* → *Confirmé (hash)*. Freighter decline ⇒ warning toast and a rejected promise with `.handled = true` (no error toast).
+- `Lowbid.pay.runStep(button)` — bound to `[data-pay-step]`: `POST data-prepare-url` (body = `data-pay-body` JSON + `step`) expecting `{ok, xdr, send_url, extra?}` (or `{ok:true, redirect}` with no `xdr` when the server did it alone) → `signAndSend` → on `{ok:true}` follows `redirect` or reloads (unless `data-no-reload`). Sets `.is-loading` / `disabled` / `aria-busy`, blocks double clicks, writes the server `error` into the nearest `[data-pay-error]` and toasts it.
+- `Lowbid.pay.ensureTrustline(button?)` — bound to `[data-pay-trustline]`: `POST LOWBID.urls.trustlinePrepare` (or the button's `data-prepare-url`) with `{address}` → same `{ok, xdr, send_url}` contract (`{ok:true, message}` without `xdr` = already has it) → sign & send.
+- `Lowbid.pay.watchBalance(el, {interval=5000, maxMs=120000, onIncrease})` → polls Horizon `/accounts/{addr}` with `fetch` (public CORS) and refreshes every `[data-usdc-balance="<addr>"]` (adds `.is-bumped` for 1.2 s on change); auto-started for elements that also carry `data-watch`. Returns `stop()`.
+- `Lowbid.pay.fetchUsdcBalance(addr)`, `explorerTxUrl(hash)`, `explorerAccountUrl(addr)`, `explorerContractUrl(id)`.
+
+Markup contract the templates must follow:
+
+```html
+<button class="ui-btn ui-btn-primary" data-pay-step="fund" data-prepare-url="{% url 'payments:prepare' need.id 'fund' %}"
+        data-loading-label="Signature…">Financer l’escrow</button>
+<p class="ui-error" data-pay-error hidden></p>
+<button class="ui-btn ui-btn-ghost" data-pay-trustline>Ajouter la trustline USDC</button>
+<span class="ui-num" data-usdc-balance="{{ need.winner.stellar_address }}" data-watch>{{ balance|usdc }}</span>
+```
+
+### 7.4 Wave 2 wiring (views + urls + model fields)
+
+One prepare/send pair per step, all under `/pay/` (`payments:` namespace), all `@wallet_required`, JSON in/out, every `signer`/role field pinned to the **session wallet** (`get_wallet_address(request)`), never to a form value:
+
+| step | prepare `POST /pay/<need_id>/<step>/prepare/` builds | session wallet must be | send `POST /pay/<need_id>/<step>/send/ {signed_xdr}` does | persist |
+|---|---|---|---|---|
+| `deploy` | `tw.deploy_single_release(signer=client, engagement_id=f"lowbid-need-{id}", amount=winning bid, approver=client, service_provider=receiver=winner, release_signer=client, dispute_resolver=platform_address=LOWBID_PLATFORM_ADDRESS, platform_fee=LOWBID_PLATFORM_FEE, …)` | **client** (`need.client`) | `tw.send_transaction` → `data["contractId"]` | `need.escrow_contract_id`, `deploy_tx_hash`, status `escrow_created` |
+| `fund` | `tw.fund_escrow(contract_id, signer=client, amount)` | client | `tw.send_transaction` | `fund_tx_hash`, status `funded` |
+| `deliver` | `tw.change_milestone_status(contract_id, evidence=<delivery URL/text>, service_provider=winner)` | **winner** (freelancer) | `tw.send_transaction` | `delivered_at`, status `delivered` |
+| `approve` | `tw.approve_milestone(contract_id, approver=client)` | client | `tw.send_transaction` | `approved_at`, status `approved` |
+| `release` | `tw.release_funds(contract_id, release_signer=client)` | client | `tw.send_transaction` | `release_tx_hash`, status `paid` |
+| `direct_pay` (Plan B, when `payment_mode() == "direct"`) | `stellar.build_payment_xdr(source=client, destination=winner, amount=bid, memo=f"lowbid:{id}")` | client | `stellar.parse_payment_xdr` check (source/destination/amount/issuer) → `stellar.submit_xdr` | `payment_tx_hash` (= envelope `hash`), status `paid` |
+| `trustline` (no need id: `/pay/trustline/prepare|send/`, exposed as `LOWBID.urls.trustlinePrepare`) | `stellar.has_usdc_trustline(wallet)` → `{ok:true, message}` if present, else `stellar.build_change_trust_xdr(source=wallet)` | any signed-in wallet | `stellar.submit_xdr` | nothing (re-read Horizon) |
+
+Response shapes: prepare → `{"ok": true, "xdr": "...", "send_url": "..."}` or `{"ok": false, "error": "<French>"}` (HTTP 400; 403 when the session wallet is not the role for that step; 409 when the Need status does not allow the step). send → `{"ok": true, "hash": "...", "contract_id": "...", "explorer_url": "...", "redirect": "<need detail>"}` or `{"ok": false, "error": env["error"]}` (keep HTTP 200 with `ok:false` for business errors so `Lowbid.api` resolves and the JS shows `error`). Pass the TW/Horizon envelope `error` straight through — it is already French or the vendor's message.
+
+Model fields to add on `Need` (or a `Payment` row 1-1 with `Need`): `payment_mode` (`escrow`/`direct`, frozen at the first prepare from `stellar.payment_mode()`), `escrow_contract_id`, `deploy_tx_hash`, `fund_tx_hash`, `release_tx_hash`, `payment_tx_hash`, `delivered_at`, `approved_at`, `paid_at`, `payment_status`. The status gate must be checked server-side in both prepare and send (an XDR can be replayed only within its 300 s window, but the DB write must still be idempotent: ignore a second `send` for a step already recorded with the same hash).
+
+Before the demo: `LOWBID_PLATFORM_ADDRESS` set + funded + USDC trustline; winner shown a `[data-pay-trustline]` button whenever `stellar.has_usdc_trustline(winner) is False` (release fails on chain otherwise); client holds ≥ bid USDC (Circle faucet, §2.5).
+
+### 7.5 Open risks
+
+1. Nothing live-tested: TW field names/types follow the SDK sources, but a 400 on the first deploy is the most likely first failure → `env["error"]` carries the vendor message; the smoke test in the `trustless_work.py` docstring is step one on a real network.
+2. `platformFee` unit (bps vs percent) — read it back with `get_escrow()`; `1` is safe either way.
+3. `send-transaction` success detection relies on HTTP 2xx + `status != "FAILED"`; if TW ever returns 200 with another failure marker, `ok` would be wrongly true — log the payload on the first live run.
+4. `submit_xdr` 504: Horizon may have applied the tx; the response carries `hash` so the view should store it as *pending* and let the user open the explorer rather than re-sign.
+5. `watchBalance` hits Horizon from the browser (public CORS, rate-limited ~3600 req/h per IP) — one watcher per page is fine, do not multiply.

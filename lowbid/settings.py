@@ -8,6 +8,7 @@ testnet.
 
 import logging
 import os
+from decimal import Decimal
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -188,6 +189,14 @@ STELLAR_USDC_ISSUER = os.environ.get("STELLAR_USDC_ISSUER", "GBBD47IF6LWK7P7MDEV
 STELLAR_USDC_CODE = os.environ.get("STELLAR_USDC_CODE", "USDC")
 TRUSTLESS_WORK_API_URL = os.environ.get("TRUSTLESS_WORK_API_URL", "https://dev.api.trustlesswork.com").rstrip("/")
 TRUSTLESS_WORK_API_KEY = os.environ.get("TRUSTLESS_WORK_API_KEY", "")
+# Plan B switch — "escrow" (Trustless Work) | "direct" (one USDC payment op) | "" (auto:
+# escrow when TRUSTLESS_WORK_API_KEY is set, else direct). Read via payments.stellar.payment_mode().
+LOWBID_PAYMENT_MODE = os.environ.get("LOWBID_PAYMENT_MODE", "").strip().lower()
+# Platform wallet (G…): escrow disputeResolver + platformAddress (fee receiver; needs a USDC trustline).
+LOWBID_PLATFORM_ADDRESS = os.environ.get("LOWBID_PLATFORM_ADDRESS", "").strip()
+# Trustless Work v1 `platformFee` (JSON number). Unit unverified (bps vs percent) — keep 1 until
+# a get-escrow read-back on testnet settles it (docs/STELLAR_NOTES.md §1.3).
+LOWBID_PLATFORM_FEE = Decimal(os.environ.get("LOWBID_PLATFORM_FEE", "1").strip() or "1")
 
 # --- Logging ------------------------------------------------------------------
 # Structured key=value lines on stdout; level from DJANGO_LOG_LEVEL (default INFO).

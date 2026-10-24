@@ -120,6 +120,15 @@ async function shot(page, name, opts) {
   await page.waitForTimeout(250); // let countdowns / fonts settle
   await page.screenshot(Object.assign({ path: path.join(SHOTS, name + ".png"), fullPage: true }, opts || {}));
 }
+/* The app confirms destructive actions in its own <dialog id="lb-confirm"> (Lowbid.confirm), not window.confirm. */
+async function acceptConfirm(page, label) {
+  const dlg = page.locator("#lb-confirm[open]");
+  await dlg.waitFor({ timeout: 5000 });
+  const body = (await dlg.locator("[data-modal-body]").innerText()).trim();
+  assert(body.length > 0, `${label}: confirm dialog has a message`);
+  await dlg.locator("[data-modal-ok]").click();
+  await page.locator("#lb-confirm[open]").waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+}
 async function connect(page, who, selector) {
   await page.locator(selector || ".lb-nav [data-wallet-connect]").first().click();
   const btn = page.locator(".lb-wallet-btn.is-connected");
@@ -363,7 +372,8 @@ async function main() {
 
     // 5 ------------------------------------------------------------------------------------------
     await step("5. client closes bidding → Terminé, Recommandé on the best score, 3 sliders", async () => {
-      await cp.locator("[data-need-close]").first().click(); // confirm() auto-accepted
+      await cp.locator("[data-need-close]").first().click();
+      await acceptConfirm(cp, "close bidding");
       await cp.locator("[data-status-badge]", { hasText: "Terminé" }).waitFor({ timeout: 15000 });
       assert((await cp.locator("[data-countdown-main]").innerText()).trim() === "Terminé", "countdown reads Terminé");
       assert(await cp.locator("[data-weight]").count() === 3, "3 sliders");
@@ -408,7 +418,8 @@ async function main() {
       assert(await other.count() === 1, "one non-recommended row");
       const label = await other.locator("[data-choose]").getAttribute("data-choose-label");
       assert(label.includes(f2.short) && label.includes("420.00"), `non-recommended is f2 at 420 (${label})`);
-      await other.locator("[data-choose]").click(); // confirm() auto-accepted
+      await other.locator("[data-choose]").click();
+      await acceptConfirm(cp, "choose bid");
       await cp.locator("[data-status-badge]", { hasText: "Attribué" }).waitFor({ timeout: 15000 });
       winner = f2; loser = f1;
       assert(await cp.locator(".bid-row.is-won").count() === 1, "winner row highlighted");

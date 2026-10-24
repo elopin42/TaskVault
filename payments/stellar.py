@@ -1,13 +1,18 @@
-"""Plan B (direct USDC payment) + Horizon helpers, built with the python `stellar_sdk`.
+"""Direct payment (fallback mode) + Horizon helpers, built with the python `stellar_sdk`.
 
 Spec: docs/STELLAR_NOTES.md §2. Django builds the UNSIGNED XDR, Freighter signs it
 in the browser (`Lowbid.pay.signAndSend`), Django submits it to Horizon so the
 result lands in the DB whatever the browser does.
 
-THE Plan B switch is :func:`payment_mode`: ``settings.LOWBID_PAYMENT_MODE`` =
-``"escrow"`` (Trustless Work) | ``"direct"`` (one `payment` op) | ``""`` (auto:
-escrow when the Trustless Work key is configured, else direct). Views pick the
-flow from it; both flows end on the same stellar.expert link.
+The payment asset is :func:`asset`: ``settings.STELLAR_ASSET_CODE`` / ``STELLAR_ASSET_ISSUER``
+(defaults: the legacy ``STELLAR_USDC_*`` values, Circle's testnet USDC). ``XLM`` with an empty
+issuer is the NATIVE asset: payments, balances and trustline checks handle it; the Trustless Work
+escrow cannot (it needs an issuer), so :func:`payment_mode` refuses "escrow" for it.
+
+THE mode switch is :func:`payment_mode`: ``settings.LOWBID_PAYMENT_MODE`` =
+``"escrow"`` (Trustless Work, one escrow per task) | ``"direct"`` (one `payment` op at
+validation) | ``""`` (auto: escrow when the Trustless Work key is configured, else direct).
+Views pick the flow from it; both flows end on the same stellar.expert link.
 
 Horizon is reached with plain `requests` (one dependency to mock, same error
 envelope shape as `payments.trustless_work`). XDR building is offline when the
@@ -37,15 +42,15 @@ ERR_ACCOUNT_NOT_FOUND = "Compte Stellar introuvable sur le réseau : financez-le
 ERR_BAD_XDR = "Transaction signée illisible."
 ERR_TIMEOUT = "Horizon n’a pas confirmé à temps — vérifiez la transaction sur l’explorateur avant de réessayer."
 
-# Horizon `extras.result_codes` → French user message. Operation codes win over the
-# transaction code (`tx_failed` alone says nothing useful).
+# Horizon `extras.result_codes` → French user message (`{code}` = the configured asset code).
+# Operation codes win over the transaction code (`tx_failed` alone says nothing useful).
 RESULT_CODE_MESSAGES = {
-    "op_no_trust": "Le destinataire n’a pas de trustline USDC.",
-    "op_underfunded": "Solde USDC insuffisant.",
+    "op_no_trust": "Le destinataire n’a pas de trustline {code}.",
+    "op_underfunded": "Solde {code} insuffisant.",
     "op_no_destination": "Le compte destinataire n’existe pas encore sur le réseau (financez-le via friendbot).",
     "op_line_full": "La trustline du destinataire est pleine.",
     "op_not_authorized": "Le destinataire n’est pas autorisé à détenir cet actif.",
-    "op_no_issuer": "Émetteur USDC introuvable (mauvais réseau ?).",
+    "op_no_issuer": "Émetteur {code} introuvable (mauvais réseau ?).",
     "op_low_reserve": "Réserve XLM insuffisante pour ajouter la trustline (≈ 0,5 XLM).",
     "op_malformed": "Opération mal formée.",
     "tx_bad_seq": "Réessayez (numéro de séquence dépassé).",
@@ -76,19 +81,44 @@ def horizon_url() -> str:
     return settings.STELLAR_HORIZON_URL.rstrip("/")
 
 
-def usdc_asset() -> Asset:
-    """The USDC asset from settings (Circle testnet issuer by default)."""
-    return Asset(settings.STELLAR_USDC_CODE, settings.STELLAR_USDC_ISSUER)
+def asset_code() -> str:
+    """Configured asset code ("USDC" by default; legacy STELLAR_USDC_CODE honoured)."""
+    code = getattr(settings, "STELLAR_ASSET_CODE", None) or getattr(settings, "STELLAR_USDC_CODE", "USDC")
+    return (code or "USDC").strip().upper()
+
+
+def asset_issuer() -> str:
+    """Configured issuer (G…), "" for the native asset."""
+    issuer = getattr(settings, "STELLAR_ASSET_ISSUER", None)
+    if issuer is None:
+        issuer = getattr(settings, "STELLAR_USDC_ISSUER", "")
+    return (issuer or "").strip()
+
+
+def is_native() -> bool:
+    """True when the configured asset is native XLM (code XLM, no issuer)."""
+    return asset_code() == "XLM" and not asset_issuer()
+
+
+def asset() -> Asset:
+    """The payment asset from settings: Asset.native() for XLM without issuer, else the credit asset."""
+    if is_native():
+        return Asset.native()
+    return Asset(asset_code(), asset_issuer())
 
 
 def payment_mode() -> str:
-    """THE Plan B switch: "escrow" (Trustless Work) or "direct" (single payment op)."""
+    """THE mode switch: "escrow" (Trustless Work, one escrow per task) or "direct" (one payment op).
+    A native asset cannot be escrowed through Trustless Work v1 → "direct" with a logged warning."""
     mode = (getattr(settings, "LOWBID_PAYMENT_MODE", "") or "").strip().lower()
-    if mode in ("escrow", "direct"):
-        return mode
-    from payments.trustless_work import is_configured  # local import: no import cycle at module load
+    if mode not in ("escrow", "direct"):
+        from payments.trustless_work import is_configured  # local import: no import cycle at module load
 
-    return "escrow" if is_configured() else "direct"
+        mode = "escrow" if is_configured() else "direct"
+    if mode == "escrow" and is_native():
+        logger.warning("stellar: escrow mode refused for the native asset (Trustless Work needs an issuer) — falling back to direct")
+        return "direct"
+    return mode
 
 
 # --- stellar.expert links -----------------------------------------------------
@@ -166,19 +196,26 @@ def horizon_base_fee() -> int:
     return DEFAULT_BASE_FEE
 
 
-def _usdc_balance_entry(account: dict) -> dict | None:
-    asset = usdc_asset()
+def _balance_entry(account: dict) -> dict | None:
+    """The Horizon balance line of the configured asset (the `native` line for XLM)."""
+    a = asset()
     for bal in account.get("balances") or []:
-        if bal.get("asset_code") == asset.code and bal.get("asset_issuer") == asset.issuer:
+        if a.is_native():
+            if bal.get("asset_type") == "native":
+                return bal
+        elif bal.get("asset_code") == a.code and bal.get("asset_issuer") == a.issuer:
             return bal
     return None
 
 
-def has_usdc_trustline(address: str) -> bool | None:
-    """True/False from Horizon; None when Horizon could not be reached. An unfunded account → False."""
+def has_trustline(address: str) -> bool | None:
+    """True/False from Horizon; None when Horizon could not be reached. An unfunded account → False.
+    The native asset needs no trustline → True without a Horizon call."""
+    if is_native():
+        return True
     status, data = _horizon_get(f"/accounts/{address}")
     if status == 200:
-        return _usdc_balance_entry(data) is not None
+        return _balance_entry(data) is not None
     if status == 404:
         return False
     return None
@@ -198,14 +235,15 @@ def transaction_status(tx_hash: str) -> bool | None:
     return None
 
 
-def usdc_balance(address: str) -> Decimal | None:
-    """USDC balance as Decimal (0 without trustline / unfunded); None when Horizon could not be reached."""
+def asset_balance(address: str) -> Decimal | None:
+    """Balance of the configured asset as Decimal (0 without trustline / unfunded); None when Horizon
+    could not be reached. Native: the XLM balance."""
     status, data = _horizon_get(f"/accounts/{address}")
     if status == 404:
         return Decimal("0")
     if status != 200:
         return None
-    entry = _usdc_balance_entry(data)
+    entry = _balance_entry(data)
     if not entry:
         return Decimal("0")
     try:
@@ -276,7 +314,7 @@ def build_payment_xdr(
     sequence: int | None = None,
     base_fee: int | None = None,
 ) -> str:
-    """Unsigned XDR: one USDC `payment` op `source` → `destination`, optional text memo (≤ 28 bytes).
+    """Unsigned XDR: one `payment` op of the configured asset `source` → `destination`, optional text memo (≤ 28 bytes).
 
     `sequence` = the source account's CURRENT sequence (as Horizon reports it; the SDK
     increments). Omit it to load the account from Horizon. Raises StellarError.
@@ -284,7 +322,7 @@ def build_payment_xdr(
     amount_str = _amount_str(amount)
     try:
         builder = _builder(source, sequence, base_fee)
-        builder.append_payment_op(destination=destination, asset=usdc_asset(), amount=amount_str)
+        builder.append_payment_op(destination=destination, asset=asset(), amount=amount_str)
         text = _memo_text(memo)
         if text:
             builder.add_text_memo(text)
@@ -298,10 +336,13 @@ def build_payment_xdr(
 
 
 def build_change_trust_xdr(*, source: str, sequence: int | None = None, base_fee: int | None = None) -> str:
-    """Unsigned XDR adding the USDC trustline on `source` (limit = max). Raises StellarError."""
+    """Unsigned XDR adding the asset trustline on `source` (limit = max). Raises StellarError
+    (the native asset has no trustline)."""
+    if is_native():
+        raise StellarError("L’actif natif XLM n’a pas besoin de trustline.")
     try:
         builder = _builder(source, sequence, base_fee)
-        tx = builder.append_change_trust_op(asset=usdc_asset()).set_timeout(TX_TIMEOUT_SECONDS).build()
+        tx = builder.append_change_trust_op(asset=asset()).set_timeout(TX_TIMEOUT_SECONDS).build()
     except StellarError:
         raise
     except Exception as exc:
@@ -353,14 +394,15 @@ def parse_payment_xdr(xdr: str) -> dict | None:
 
 
 def explain_result_codes(codes: dict | None) -> str:
-    """Pick the most specific Horizon result code and translate it."""
+    """Pick the most specific Horizon result code and translate it (asset code filled in)."""
     codes = codes or {}
+    code = asset_code()
     for op_code in codes.get("operations") or []:
         if op_code and op_code != "op_success":
-            return RESULT_CODE_MESSAGES.get(op_code, f"Opération rejetée ({op_code}).")
+            return RESULT_CODE_MESSAGES.get(op_code, f"Opération rejetée ({op_code}).").format(code=code)
     tx_code = codes.get("transaction")
     if tx_code:
-        return RESULT_CODE_MESSAGES.get(tx_code, f"Transaction rejetée ({tx_code}).")
+        return RESULT_CODE_MESSAGES.get(tx_code, f"Transaction rejetée ({tx_code}).").format(code=code)
     return RESULT_CODE_MESSAGES["tx_failed"]
 
 
@@ -412,14 +454,19 @@ def submit_xdr(signed_xdr: str, timeout: float = 30.0) -> Envelope:
 
 __all__ = [
     "StellarError",
+    "asset",
+    "asset_balance",
+    "asset_code",
+    "asset_issuer",
     "build_change_trust_xdr",
     "build_payment_xdr",
     "explain_result_codes",
     "explorer_account_url",
     "explorer_contract_url",
     "explorer_tx_url",
-    "has_usdc_trustline",
+    "has_trustline",
     "horizon_base_fee",
+    "is_native",
     "load_account",
     "load_sequence",
     "network_passphrase",
@@ -427,6 +474,4 @@ __all__ = [
     "payment_mode",
     "submit_xdr",
     "transaction_status",
-    "usdc_asset",
-    "usdc_balance",
 ]

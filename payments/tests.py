@@ -10,7 +10,7 @@ from stellar_sdk.operation import ChangeTrust, Payment
 
 from payments import stellar, trustless_work as tw
 
-CLIENT = Keypair.random().public_key
+CLIENT = Keypair.random().public_key  # the company wallet
 FREELANCER = Keypair.random().public_key
 PLATFORM = Keypair.random().public_key
 USDC_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
@@ -47,8 +47,8 @@ def _horizon_account(with_usdc: bool = True, balance: str = "42.5", sequence: st
 @override_settings(
     TRUSTLESS_WORK_API_URL=TW_URL,
     TRUSTLESS_WORK_API_KEY="tw-test-key",
-    STELLAR_USDC_ISSUER=USDC_ISSUER,
-    STELLAR_USDC_CODE="USDC",
+    STELLAR_ASSET_ISSUER=USDC_ISSUER,
+    STELLAR_ASSET_CODE="USDC",
 )
 class TrustlessWorkClientTests(SimpleTestCase):
     def _post_ok(self, extra=None):
@@ -73,9 +73,9 @@ class TrustlessWorkClientTests(SimpleTestCase):
         with self._post_ok() as post:
             env = tw.deploy_single_release(
                 signer=CLIENT,
-                engagement_id="lowbid-need-42",
+                engagement_id="lowbid-task-42",
                 title="T" * 120,
-                description="Reverse-auction job #42",
+                description="Task #42 of the yoga studio project",
                 amount=Decimal("25"),
                 approver=CLIENT,
                 service_provider=FREELANCER,
@@ -98,7 +98,7 @@ class TrustlessWorkClientTests(SimpleTestCase):
         self.assertEqual(kwargs["headers"]["Content-Type"], "application/json")
         body = kwargs["json"]
         self.assertEqual(body["signer"], CLIENT)
-        self.assertEqual(body["engagementId"], "lowbid-need-42")
+        self.assertEqual(body["engagementId"], "lowbid-task-42")
         self.assertEqual(len(body["title"]), 100)  # clipped to the v1 limit
         self.assertEqual(
             body["roles"],
@@ -243,13 +243,40 @@ class TrustlessWorkClientTests(SimpleTestCase):
     STELLAR_NETWORK="testnet",
     STELLAR_NETWORK_PASSPHRASE=TESTNET,
     STELLAR_HORIZON_URL=HORIZON,
-    STELLAR_USDC_ISSUER=USDC_ISSUER,
-    STELLAR_USDC_CODE="USDC",
+    STELLAR_ASSET_ISSUER=USDC_ISSUER,
+    STELLAR_ASSET_CODE="USDC",
 )
 class StellarBuildersTests(SimpleTestCase):
-    def test_usdc_asset(self):
-        asset = stellar.usdc_asset()
+    def test_asset_from_settings(self):
+        asset = stellar.asset()
         self.assertEqual((asset.code, asset.issuer), ("USDC", USDC_ISSUER))
+        self.assertFalse(stellar.is_native())
+        self.assertEqual(stellar.asset_code(), "USDC")
+        with override_settings(STELLAR_ASSET_CODE="eurc", STELLAR_ASSET_ISSUER=PLATFORM):
+            self.assertEqual((stellar.asset().code, stellar.asset().issuer), ("EURC", PLATFORM))
+
+    def test_native_asset(self):
+        with override_settings(STELLAR_ASSET_CODE="XLM", STELLAR_ASSET_ISSUER=""):
+            self.assertTrue(stellar.is_native())
+            self.assertTrue(stellar.asset().is_native())
+            xdr = stellar.build_payment_xdr(source=CLIENT, destination=FREELANCER, amount=Decimal("2"), sequence=5)
+            op = TransactionEnvelope.from_xdr(xdr, TESTNET).transaction.operations[0]
+            self.assertTrue(op.asset.is_native())
+            info = stellar.parse_payment_xdr(xdr)
+            self.assertEqual((info["asset_code"], info["asset_issuer"]), ("XLM", None))
+            with self.assertRaises(stellar.StellarError):
+                stellar.build_change_trust_xdr(source=CLIENT, sequence=1)
+            with patch("payments.stellar.requests.get") as get:
+                self.assertTrue(stellar.has_trustline(CLIENT))  # no trustline needed, no Horizon call
+            get.assert_not_called()
+            with patch("payments.stellar.requests.get", return_value=_resp(200, _horizon_account(with_usdc=False))):
+                self.assertEqual(stellar.asset_balance(CLIENT), Decimal("9999"))
+            self.assertEqual(stellar.explain_result_codes({"operations": ["op_underfunded"]}), "Solde XLM insuffisant.")
+
+    def test_result_code_messages_carry_the_asset_code(self):
+        self.assertEqual(stellar.explain_result_codes({"operations": ["op_no_trust"]}), "Le destinataire n’a pas de trustline USDC.")
+        with override_settings(STELLAR_ASSET_CODE="EURC", STELLAR_ASSET_ISSUER=PLATFORM):
+            self.assertEqual(stellar.explain_result_codes({"operations": ["op_no_trust"]}), "Le destinataire n’a pas de trustline EURC.")
 
     def test_build_payment_xdr_offline_roundtrip(self):
         with patch("payments.stellar.requests.get") as get:
@@ -352,15 +379,15 @@ class StellarBuildersTests(SimpleTestCase):
     STELLAR_NETWORK="testnet",
     STELLAR_NETWORK_PASSPHRASE=TESTNET,
     STELLAR_HORIZON_URL=HORIZON,
-    STELLAR_USDC_ISSUER=USDC_ISSUER,
-    STELLAR_USDC_CODE="USDC",
+    STELLAR_ASSET_ISSUER=USDC_ISSUER,
+    STELLAR_ASSET_CODE="USDC",
 )
 class StellarSubmitTests(SimpleTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         kp = Keypair.random()
-        with override_settings(STELLAR_NETWORK_PASSPHRASE=TESTNET, STELLAR_USDC_ISSUER=USDC_ISSUER, STELLAR_USDC_CODE="USDC"):
+        with override_settings(STELLAR_NETWORK_PASSPHRASE=TESTNET, STELLAR_ASSET_ISSUER=USDC_ISSUER, STELLAR_ASSET_CODE="USDC"):
             xdr = stellar.build_payment_xdr(source=kp.public_key, destination=FREELANCER, amount=Decimal("1"), sequence=1)
         env = TransactionEnvelope.from_xdr(xdr, TESTNET)
         env.sign(kp)
@@ -446,40 +473,40 @@ class StellarSubmitTests(SimpleTestCase):
 @override_settings(
     STELLAR_NETWORK="testnet",
     STELLAR_HORIZON_URL=HORIZON,
-    STELLAR_USDC_ISSUER=USDC_ISSUER,
-    STELLAR_USDC_CODE="USDC",
+    STELLAR_ASSET_ISSUER=USDC_ISSUER,
+    STELLAR_ASSET_CODE="USDC",
 )
 class StellarHorizonReadTests(SimpleTestCase):
-    def test_has_usdc_trustline(self):
+    def test_has_trustline(self):
         with patch("payments.stellar.requests.get", return_value=_resp(200, _horizon_account(with_usdc=True))) as get:
-            self.assertTrue(stellar.has_usdc_trustline(CLIENT))
+            self.assertTrue(stellar.has_trustline(CLIENT))
         self.assertEqual(get.call_args.args[0], f"{HORIZON}/accounts/{CLIENT}")
         with patch("payments.stellar.requests.get", return_value=_resp(200, _horizon_account(with_usdc=False))):
-            self.assertFalse(stellar.has_usdc_trustline(CLIENT))
+            self.assertFalse(stellar.has_trustline(CLIENT))
         with patch("payments.stellar.requests.get", return_value=_resp(404, {"status": 404})):
-            self.assertFalse(stellar.has_usdc_trustline(CLIENT))
+            self.assertFalse(stellar.has_trustline(CLIENT))
         with patch("payments.stellar.requests.get", side_effect=requests.ConnectionError()):
-            self.assertIsNone(stellar.has_usdc_trustline(CLIENT))
+            self.assertIsNone(stellar.has_trustline(CLIENT))
         with patch("payments.stellar.requests.get", return_value=_resp(503, {})):
-            self.assertIsNone(stellar.has_usdc_trustline(CLIENT))
+            self.assertIsNone(stellar.has_trustline(CLIENT))
 
     def test_other_issuer_does_not_count(self):
         acc = _horizon_account(with_usdc=False)
         acc["balances"].insert(0, {"asset_type": "credit_alphanum4", "asset_code": "USDC", "asset_issuer": PLATFORM, "balance": "5"})
         with patch("payments.stellar.requests.get", return_value=_resp(200, acc)):
-            self.assertFalse(stellar.has_usdc_trustline(CLIENT))
-            self.assertEqual(stellar.usdc_balance(CLIENT), Decimal("0"))
+            self.assertFalse(stellar.has_trustline(CLIENT))
+            self.assertEqual(stellar.asset_balance(CLIENT), Decimal("0"))
 
-    def test_usdc_balance(self):
+    def test_asset_balance(self):
         with patch("payments.stellar.requests.get", return_value=_resp(200, _horizon_account(balance="42.5000000"))):
-            self.assertEqual(stellar.usdc_balance(CLIENT), Decimal("42.5"))
+            self.assertEqual(stellar.asset_balance(CLIENT), Decimal("42.5"))
         with patch("payments.stellar.requests.get", return_value=_resp(200, _horizon_account(with_usdc=False))):
-            self.assertEqual(stellar.usdc_balance(CLIENT), Decimal("0"))
+            self.assertEqual(stellar.asset_balance(CLIENT), Decimal("0"))
         with patch("payments.stellar.requests.get", return_value=_resp(404, {})):
-            self.assertEqual(stellar.usdc_balance(CLIENT), Decimal("0"))
+            self.assertEqual(stellar.asset_balance(CLIENT), Decimal("0"))
         with patch("payments.stellar.requests.get", side_effect=requests.Timeout()):
             with self.assertLogs("payments.stellar", level="WARNING"):
-                self.assertIsNone(stellar.usdc_balance(CLIENT))
+                self.assertIsNone(stellar.asset_balance(CLIENT))
 
     def test_load_sequence_and_base_fee(self):
         with patch("payments.stellar.requests.get", return_value=_resp(200, _horizon_account(sequence="99"))):
@@ -508,6 +535,20 @@ class PaymentModeAndExplorerTests(SimpleTestCase):
             self.assertEqual(stellar.payment_mode(), "direct")
         with override_settings(LOWBID_PAYMENT_MODE="bogus", TRUSTLESS_WORK_API_KEY=""):
             self.assertEqual(stellar.payment_mode(), "direct")
+
+    def test_native_asset_refuses_escrow_mode_with_a_warning(self):
+        with override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k", STELLAR_ASSET_CODE="XLM", STELLAR_ASSET_ISSUER=""):
+            with self.assertLogs("payments.stellar", level="WARNING") as logs:
+                self.assertEqual(stellar.payment_mode(), "direct")
+        self.assertIn("native", logs.output[0])
+        with override_settings(LOWBID_PAYMENT_MODE="direct", STELLAR_ASSET_CODE="XLM", STELLAR_ASSET_ISSUER=""):
+            self.assertEqual(stellar.payment_mode(), "direct")
+
+    def test_legacy_usdc_settings_are_the_default(self):
+        from django.conf import settings
+
+        self.assertEqual(settings.STELLAR_ASSET_CODE, settings.STELLAR_USDC_CODE)
+        self.assertEqual(settings.STELLAR_ASSET_ISSUER, settings.STELLAR_USDC_ISSUER)
 
     def test_explorer_urls(self):
         with override_settings(STELLAR_NETWORK="testnet"):

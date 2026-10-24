@@ -175,7 +175,7 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 30
 
 # Bump whenever css/lowbid-*.css or js/lowbid-*.js changes (30-day static cache).
-LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261026-v3"
+LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261027-v4"
 
 # --- Stellar ------------------------------------------------------------------
 
@@ -187,9 +187,14 @@ STELLAR_NETWORK_PASSPHRASE = {
 }.get(STELLAR_NETWORK, "Test SDF Network ; September 2015")
 STELLAR_HORIZON_URL = os.environ.get("STELLAR_HORIZON_URL", "https://horizon-testnet.stellar.org").rstrip("/")
 STELLAR_SOROBAN_RPC_URL = os.environ.get("STELLAR_SOROBAN_RPC_URL", "https://soroban-testnet.stellar.org").rstrip("/")
-# Circle USDC issuer on testnet; override for mainnet.
-STELLAR_USDC_ISSUER = os.environ.get("STELLAR_USDC_ISSUER", "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5")
-STELLAR_USDC_CODE = os.environ.get("STELLAR_USDC_CODE", "USDC")
+# Circle USDC issuer on testnet; override for mainnet. Legacy names, still honoured.
+STELLAR_USDC_ISSUER = os.environ.get("STELLAR_USDC_ISSUER", "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5").strip()
+STELLAR_USDC_CODE = os.environ.get("STELLAR_USDC_CODE", "USDC").strip() or "USDC"
+# The payment asset (payments.stellar.asset()): defaults to the USDC values above. CODE=XLM with an
+# EMPTY issuer means the native asset — direct payments and balances work, the Trustless Work escrow
+# does not (it needs an issuer), so payment_mode() falls back to "direct" with a warning.
+STELLAR_ASSET_CODE = (os.environ.get("STELLAR_ASSET_CODE", "").strip() or STELLAR_USDC_CODE).upper()
+STELLAR_ASSET_ISSUER = os.environ.get("STELLAR_ASSET_ISSUER", STELLAR_USDC_ISSUER).strip()
 TRUSTLESS_WORK_API_URL = os.environ.get("TRUSTLESS_WORK_API_URL", "https://dev.api.trustlesswork.com").rstrip("/")
 TRUSTLESS_WORK_API_KEY = os.environ.get("TRUSTLESS_WORK_API_KEY", "")
 # Plan B switch — "escrow" (Trustless Work) | "direct" (one USDC payment op) | "" (auto:

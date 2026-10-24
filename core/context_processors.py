@@ -3,16 +3,21 @@
 from django.conf import settings
 from django.urls import NoReverseMatch, reverse
 
+from payments import stellar
+
 
 def site(request):
+    """Per-request constants for base.html (window.LOWBID) + the payment asset label (`asset_code`)."""
     return {
         "LOWBID_ASSET_VERSION": settings.LOWBID_ASSET_VERSION,
         "STELLAR_NETWORK": settings.STELLAR_NETWORK,
         "STELLAR_NETWORK_PASSPHRASE": settings.STELLAR_NETWORK_PASSPHRASE,
         "STELLAR_HORIZON_URL": settings.STELLAR_HORIZON_URL,
         "STELLAR_SOROBAN_RPC_URL": settings.STELLAR_SOROBAN_RPC_URL,
-        "STELLAR_USDC_ISSUER": settings.STELLAR_USDC_ISSUER,
-        "STELLAR_USDC_CODE": settings.STELLAR_USDC_CODE,
+        "asset_code": stellar.asset_code(),
+        "asset_issuer": stellar.asset_issuer(),
+        "asset_native": stellar.is_native(),
+        "payment_mode": stellar.payment_mode(),
     }
 
 

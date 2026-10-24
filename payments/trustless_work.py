@@ -9,18 +9,19 @@ The wallet named in the body signs that XDR in the browser (Freighter, with the
 testnet passphrase + the same address) and the signed XDR comes back to Django,
 which calls :func:`send_transaction`. Nothing here signs or holds keys.
 
-Lifecycle of one Lowbid job (single-release escrow, one milestone)::
+Lifecycle of one Lowbid TASK (one single-release escrow per task, one milestone)::
 
     step      endpoint                                            signs (Freighter)
-    deploy    POST /deployer/single-release                       client   -> send-transaction returns contractId  (persist it)
-    fund      POST /escrow/single-release/fund-escrow             client   (needs USDC + trustline)
-    deliver   POST /escrow/single-release/change-milestone-status freelancer (serviceProvider)
-    approve   POST /escrow/single-release/approve-milestone       client   (approver)
-    release   POST /escrow/single-release/release-funds           client   (releaseSigner) -> receiver gets amount - fees
-    read      GET  /escrow/single-release/get-escrow              nobody   (platformFee / flags / balance)
+    deploy    POST /deployer/single-release                       company   -> send-transaction returns contractId  (persist it)
+    fund      POST /escrow/single-release/fund-escrow             company   (needs the asset + trustline)
+    deliver   POST /escrow/single-release/change-milestone-status freelance (serviceProvider; delivery link = evidence)
+    approve   POST /escrow/single-release/approve-milestone       company   (approver)
+    release   POST /escrow/single-release/release-funds           company   (releaseSigner) -> receiver gets amount - fees
+    read      GET  /escrow/single-release/get-escrow              nobody    (platformFee / flags / balance)
 
-Role mapping: client = signer / approver / releaseSigner; winning freelancer =
-serviceProvider / receiver (needs a USDC trustline BEFORE release);
+Role mapping: company = signer / approver / releaseSigner; the chosen freelance =
+serviceProvider / receiver (needs the asset trustline BEFORE release — Trustless Work fixes the
+receiver AT DEPLOY, which is why an escrow exists per task and only once a freelance is chosen);
 ``settings.LOWBID_PLATFORM_ADDRESS`` = disputeResolver / platformAddress.
 
 Every function returns the same envelope and never raises on HTTP or transport
@@ -36,12 +37,12 @@ Testnet smoke test (Django shell, run once before wiring the UI — notes §6)::
 
     from decimal import Decimal
     from payments import trustless_work as tw
-    C, F, P = "G<CLIENT>", "G<FREELANCER>", "G<PLATFORM>"
+    C, F, P = "G<COMPANY>", "G<FREELANCE>", "G<PLATFORM>"
     r = tw.deploy_single_release(signer=C, engagement_id="smoke-1", title="smoke", description="smoke",
             amount=Decimal("1"), approver=C, service_provider=F, receiver=F, release_signer=C,
             dispute_resolver=P, platform_address=P, platform_fee=Decimal("1"), milestone_description="m")
     print(r["ok"], r["error"]); xdr = r["data"]["unsignedTransaction"]
-    # sign `xdr` with the CLIENT wallet (https://lab.stellar.org -> Sign transaction -> Freighter, Testnet)
+    # sign `xdr` with the COMPANY wallet (https://lab.stellar.org -> Sign transaction -> Freighter, Testnet)
     s = tw.send_transaction(signed_xdr="<signed XDR>")
     print(s["data"].get("contractId"))      # persist this
     print(tw.get_escrow(contract_id=s["data"]["contractId"], signer=C)["data"])  # read platformFee back
@@ -53,6 +54,8 @@ from typing import Any
 
 import requests
 from django.conf import settings
+
+from payments import stellar
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +100,7 @@ def _headers() -> dict[str, str]:
 
 
 def _number(value: Decimal | int | float | str) -> int | float:
-    """JSON number in USDC units (`25`, `12.5`) — never a string, never stroops."""
+    """JSON number in asset units (`25`, `12.5`) — never a string, never stroops."""
     d = Decimal(str(value))
     if d == d.to_integral_value():
         return int(d)
@@ -105,7 +108,8 @@ def _number(value: Decimal | int | float | str) -> int | float:
 
 
 def _trustline() -> dict[str, str]:
-    return {"address": settings.STELLAR_USDC_ISSUER, "symbol": settings.STELLAR_USDC_CODE}
+    """v1 expects the ISSUER G address + symbol (the API resolves the SAC). Native XLM is not expressible here."""
+    return {"address": stellar.asset_issuer(), "symbol": stellar.asset_code()}
 
 
 def _envelope(ok: bool, status: int, data: dict | None = None, error: str | None = None) -> Envelope:
@@ -186,7 +190,7 @@ def deploy_single_release(
     platform_fee: Decimal | int,
     milestone_description: str,
 ) -> Envelope:
-    """Build the deploy tx. Signs: `signer` (client). Send it, then persist `data["contractId"]`."""
+    """Build the deploy tx. Signs: `signer` (company). Send it, then persist `data["contractId"]`."""
     payload = {
         "signer": signer,
         "engagementId": engagement_id,
@@ -210,7 +214,7 @@ def deploy_single_release(
 
 
 def fund_escrow(*, contract_id: str, signer: str, amount: Decimal) -> Envelope:
-    """Build the fund tx. Signs: `signer` (client; must hold `amount` USDC + the trustline)."""
+    """Build the fund tx. Signs: `signer` (company; must hold `amount` of the asset + the trustline)."""
     return _post(PATH_FUND, {"contractId": contract_id, "signer": signer, "amount": _number(amount)})
 
 
@@ -222,7 +226,7 @@ def change_milestone_status(
     evidence: str = "",
     service_provider: str,
 ) -> Envelope:
-    """Mark the milestone done. Signs: `service_provider` (freelancer). `evidence` may be ""."""
+    """Mark the milestone done. Signs: `service_provider` (freelance). `evidence` may be ""."""
     return _post(
         PATH_CHANGE_MILESTONE,
         {
@@ -236,7 +240,7 @@ def change_milestone_status(
 
 
 def approve_milestone(*, contract_id: str, milestone_index: str = "0", approver: str) -> Envelope:
-    """Approve the milestone. Signs: `approver` (client). 400 if status still empty / already approved."""
+    """Approve the milestone. Signs: `approver` (company). 400 if status still empty / already approved."""
     return _post(
         PATH_APPROVE_MILESTONE,
         {"contractId": contract_id, "milestoneIndex": str(milestone_index), "approver": approver},
@@ -254,8 +258,8 @@ def send_transaction(*, signed_xdr: str) -> Envelope:
 
 
 def set_trustline(*, address: str) -> Envelope:
-    """Optional helper: TW builds the USDC changeTrust for `address` (alternative to stellar.build_change_trust_xdr)."""
-    return _post(PATH_SET_TRUSTLINE, {"address": address, "assetAddress": settings.STELLAR_USDC_ISSUER})
+    """Optional helper: TW builds the asset changeTrust for `address` (alternative to stellar.build_change_trust_xdr)."""
+    return _post(PATH_SET_TRUSTLINE, {"address": address, "assetAddress": stellar.asset_issuer()})
 
 
 def get_escrow(*, contract_id: str, signer: str | None = None, validate_on_chain: bool = False) -> Envelope:

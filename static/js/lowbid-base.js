@@ -34,7 +34,8 @@
     if (!isFinite(n)) return "—";
     var num = n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (code === "") return num;
-    return num + " " + (code || (window.LOWBID && window.LOWBID.usdc && window.LOWBID.usdc.code) || "USDC");
+    var asset = window.LOWBID && (window.LOWBID.asset || window.LOWBID.usdc);
+    return num + " " + (code || (asset && asset.code) || "USDC");
   };
 
   /* Lowbid.api(url, {method, body}) -> parsed JSON. Sends CSRF + JSON, marks itself

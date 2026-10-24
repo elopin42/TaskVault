@@ -30,14 +30,19 @@ def plain(value) -> str:
 
 
 @register.filter
-def usdc(value, code: str = "USDC") -> str:
-    """'1,234.50 USDC' — two decimals, thousands separator; '—' when empty."""
+def usdc(value, code: str | None = None) -> str:
+    """'1,234.50 USDC' — two decimals, thousands separator; '—' when empty. The unit defaults to the
+    configured payment asset (payments.stellar.asset_code()); pass "" for the bare number."""
     if value in (None, ""):
         return "—"
     try:
         amount = Decimal(str(value))
     except (InvalidOperation, ValueError):
         return str(value)
+    if code is None:
+        from payments.stellar import asset_code  # lazy: keep the tag library import-light
+
+        code = asset_code()
     return f"{amount:,.2f} {code}"
 
 

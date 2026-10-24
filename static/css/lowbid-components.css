@@ -304,3 +304,21 @@ html[data-theme="light"] .lb-theme-dark { display: none; }
 .lb-step-title { font-size: var(--text-heading); font-weight: 600; color: var(--text); margin: 0 0 0.4rem; display: flex; align-items: center; gap: 0.5rem; }
 .lb-step-title i { color: var(--brand-500); font-size: 0.9rem; }
 .lb-step-desc { color: var(--muted); font-size: var(--text-body); line-height: 1.55; margin: 0; }
+
+/* ====== Auctions: score bar, weight sliders, bid rows ====== */
+.ui-scorebar {
+    display: flex; flex: none; width: 160px; max-width: 45vw; height: 6px; overflow: hidden;
+    border-radius: 9999px; background: var(--soft-bg); border: 1px solid var(--soft-border);
+}
+.ui-scorebar-seg { display: block; height: 100%; min-width: 0; transition: width 0.25s ease; }
+.ui-scorebar-seg.is-price  { background: var(--brand-500); }
+.ui-scorebar-seg.is-delay  { background: var(--info); }
+.ui-scorebar-seg.is-skills { background: var(--success); }
+.ui-range { width: 100%; min-height: 44px; margin: 0; accent-color: var(--brand-600); cursor: pointer; background: transparent; }
+.bid-row { align-items: flex-start; padding-block: 0.85rem; transition: background 0.2s ease, opacity 0.2s ease; }
+.bid-row .ui-rank { padding-top: 0.15rem; }
+.bid-row.is-won { background: var(--brand-soft); border-radius: 0.7rem; padding-inline: 0.6rem; border-bottom-color: transparent; }
+.bid-row.is-lost { opacity: 0.55; }
+.bid-row.is-lost:hover { opacity: 0.85; }
+.need-card { transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
+.need-card:hover { transform: translateY(-1px); }

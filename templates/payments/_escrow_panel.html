@@ -1,0 +1,14 @@
+{% load lowbid_extras %}
+{# STUB — replaced by the payments agent. Context: need, winning_bid.
+   Payee: winning_bid.freelancer.stellar_address · amount: winning_bid.price (USDC). #}
+<section class="glass-card p-5" id="escrow-panel" data-need="{{ need.pk }}" data-status="{{ need.status }}">
+  <h2 class="ui-panel-title flex items-center gap-2"><i class="fa-solid fa-shield-halved" style="color: var(--brand-500)" aria-hidden="true"></i> Paiement en escrow</h2>
+  <p class="ui-panel-sub mt-1">Le paiement USDC via escrow arrive ici.</p>
+  {% if winning_bid %}
+    <dl class="grid grid-cols-2 gap-2 mt-4 text-sm">
+      <dt class="ui-label mb-0">Montant</dt><dd class="ui-num text-end">{{ winning_bid.price|usdc }}</dd>
+      <dt class="ui-label mb-0">Bénéficiaire</dt><dd class="font-mono text-end" title="{{ winning_bid.freelancer.stellar_address }}">{{ winning_bid.freelancer.stellar_address|short_addr }}</dd>
+    </dl>
+  {% endif %}
+  <button type="button" class="ui-btn ui-btn-primary ui-btn-block mt-4" disabled aria-disabled="true"><i class="fa-solid fa-lock" aria-hidden="true"></i> Payer (bientôt)</button>
+</section>

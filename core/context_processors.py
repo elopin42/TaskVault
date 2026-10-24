@@ -23,6 +23,7 @@ NAV_LINKS = (
     {"label": "Besoins", "url_name": "auctions:need_list", "fallback": "/besoins/", "icon": "fa-list-ul", "wallet": False},
     {"label": "Poster un besoin", "url_name": "auctions:need_create", "fallback": "/besoins/nouveau/", "icon": "fa-plus", "wallet": True},
     {"label": "Mes enchères", "url_name": "auctions:my_bids", "fallback": "/mes-encheres/", "icon": "fa-gavel", "wallet": True},
+    {"label": "Mes besoins", "url_name": "auctions:my_needs", "fallback": "/mes-besoins/", "icon": "fa-folder-open", "wallet": True},
 )
 
 

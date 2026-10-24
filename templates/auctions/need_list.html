@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load static lowbid_extras %}
+{% block title %}Besoins · Lowbid{% endblock %}
+{% block meta_description %}Les besoins ouverts aux enchères inversées : budget max, meilleure offre, temps restant.{% endblock %}
+
+{% block content %}
+<div class="ui-page-header">
+  <div class="min-w-0">
+    <h1 class="ui-page-title">Besoins</h1>
+    <p class="ui-page-sub">Chaque offre doit être moins chère que la précédente. À zéro, le client choisit.</p>
+  </div>
+  <div class="ui-page-actions">
+    {% if wallet_address %}
+      <a href="{% url 'auctions:need_create' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Poster un besoin</a>
+    {% else %}
+      <button type="button" class="ui-btn ui-btn-primary" data-wallet-connect data-next="{% url 'auctions:need_create' %}"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Connecter pour poster</button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="flex flex-wrap items-center gap-3 mb-5">
+  <nav class="seg-tabs" aria-label="Filtrer les besoins">
+    {% for key, label in tabs %}
+      <a href="?tab={{ key }}{% if tag %}&tag={{ tag|urlencode }}{% endif %}" class="seg-tab{% if tab == key %} is-active{% endif %}" {% if tab == key %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  {% if tag %}
+    <a href="?tab={{ tab }}" class="ui-tag is-match" title="Retirer le filtre"><i class="fa-solid fa-filter text-[10px]" aria-hidden="true"></i> {{ tag }} <i class="fa-solid fa-xmark text-[10px]" aria-hidden="true"></i></a>
+  {% endif %}
+  <span class="ui-meta ms-auto">{{ needs|length }} besoin{{ needs|length|pluralize }}</span>
+</div>
+
+{% if needs %}
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {% for need in needs %}
+      {% include "auctions/_need_card.html" with need=need %}
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty-state glass-card">
+    <div class="empty-state-icon"><i class="fa-solid fa-gavel" aria-hidden="true"></i></div>
+    <div class="empty-state-title">{% if tab == 'open' %}Aucun besoin ouvert{% else %}Aucun besoin{% endif %}{% if tag %} pour « {{ tag }} »{% endif %}</div>
+    <p class="empty-state-desc">{% if wallet_address %}Postez le premier besoin : les freelances enchérissent à la baisse jusqu’à la fin du compte à rebours.{% else %}Connectez votre wallet Freighter pour poster un besoin.{% endif %}</p>
+    {% if wallet_address %}<a href="{% url 'auctions:need_create' %}" class="ui-btn ui-btn-primary mt-4"><i class="fa-solid fa-plus" aria-hidden="true"></i> Poster un besoin</a>{% endif %}
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}<script src="{% static 'js/lowbid-auctions.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

@@ -1,0 +1,62 @@
+{% load lowbid_extras %}
+{# Ranked bids. Rendered server-side in the detail page AND returned as `html` by
+   encheres.json so the page swaps it in place. The data-* attributes carry the
+   per-part ratios the client-side sliders re-weight (no round-trip). #}
+{% if rows %}
+<div class="ui-list" data-bids data-count="{{ rows|length }}">
+  {% for r in rows %}
+  <div class="ui-list-row bid-row{% if r.is_winner %} is-won{% elif need.winning_bid_id and not r.is_winner %} is-lost{% endif %}"
+       data-bid-id="{{ r.bid.pk }}"
+       data-price="{{ r.bid.price }}"
+       data-created="{{ r.bid.created_at|date:'U' }}"
+       data-price-ratio="{{ r.fmt.price_ratio }}"
+       data-delay-ratio="{{ r.fmt.delay_ratio }}"
+       data-skills-ratio="{{ r.fmt.skills_ratio }}">
+    <span class="ui-rank" data-rank>{{ r.rank }}</span>
+    <div class="flex-1 min-w-0">
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span class="font-mono text-sm text-strong" title="{{ r.bid.freelancer.stellar_address }}">{{ r.bid.freelancer.stellar_address|short_addr }}</span>
+        {% if r.is_mine %}<span class="ui-badge ui-badge-neutral">Vous</span>{% endif %}
+        {% if r.is_winner %}<span class="ui-badge ui-badge-ok"><i class="fa-solid fa-trophy" aria-hidden="true"></i> Retenue</span>
+        {% elif need.winning_bid_id %}<span class="ui-badge ui-badge-neutral">Non retenue</span>{% endif %}
+        {% if show_recommended %}
+          <span class="ui-badge ui-badge-brand" data-recommended {% if r.rank != 1 %}hidden{% endif %}><i class="fa-solid fa-star" aria-hidden="true"></i> Recommandé</span>
+        {% elif r.is_best_price %}
+          <span class="ui-badge ui-badge-info"><i class="fa-solid fa-arrow-trend-down" aria-hidden="true"></i> Meilleur prix</span>
+        {% endif %}
+      </div>
+      <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mt-1">
+        <span class="ui-price text-base">{{ r.fmt.price }}<span class="ui-price-unit">USDC</span></span>
+        <span class="ui-meta"><i class="fa-regular fa-clock" aria-hidden="true"></i> {{ r.bid.delay_days }} jour{{ r.bid.delay_days|pluralize }}</span>
+        {% if r.tags %}<span class="flex flex-wrap gap-1">{% for t in r.tags %}<span class="ui-tag{% if t.match %} is-match{% endif %}">{{ t.name }}</span>{% endfor %}</span>{% endif %}
+      </div>
+      {% if r.bid.message %}<p class="ui-meta mt-1 break-words">{{ r.bid.message }}</p>{% endif %}
+      <div class="flex items-center gap-2 mt-2" title="Prix {{ r.fmt.price_part }} · Délai {{ r.fmt.delay_part }} · Compétences {{ r.fmt.skills_part }}">
+        <div class="ui-scorebar" aria-hidden="true">
+          <span class="ui-scorebar-seg is-price" data-seg="p" style="width: {{ r.fmt.price_part }}%"></span>
+          <span class="ui-scorebar-seg is-delay" data-seg="d" style="width: {{ r.fmt.delay_part }}%"></span>
+          <span class="ui-scorebar-seg is-skills" data-seg="s" style="width: {{ r.fmt.skills_part }}%"></span>
+        </div>
+        <span class="ui-meta ui-num"><strong class="text-strong" data-score>{{ r.fmt.total }}</strong> / 100</span>
+      </div>
+    </div>
+    {% if can_choose %}
+      <button type="button" class="ui-btn ui-btn-primary ui-btn-sm" data-choose="{{ r.bid.pk }}" data-choose-label="{{ r.bid.freelancer.stellar_address|short_addr }} · {{ r.bid.price|usdc }}">
+        <i class="fa-solid fa-check" aria-hidden="true"></i> Choisir
+      </button>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+<p class="ui-meta mt-3 flex flex-wrap gap-x-3 gap-y-1" aria-hidden="true">
+  <span><span class="inline-block w-2 h-2 rounded-full align-middle" style="background: var(--brand-500)"></span> Prix</span>
+  <span><span class="inline-block w-2 h-2 rounded-full align-middle" style="background: var(--info)"></span> Délai</span>
+  <span><span class="inline-block w-2 h-2 rounded-full align-middle" style="background: var(--success)"></span> Compétences</span>
+</p>
+{% else %}
+<div class="empty-state" data-bids data-count="0">
+  <div class="empty-state-icon"><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i></div>
+  <div class="empty-state-title">Aucune offre{% if not bidding_open %} reçue{% endif %}</div>
+  <p class="empty-state-desc">{% if bidding_open %}Soyez le premier : toute offre sous {{ need.budget_max|usdc }} est acceptée.{% else %}Les enchères sont terminées sans offre. Le client peut annuler ce besoin.{% endif %}</p>
+</div>
+{% endif %}

@@ -18,10 +18,13 @@ def safe_next(request: HttpRequest, raw: str | None) -> str:
 
 
 def landing(request: HttpRequest) -> HttpResponse:
+    from auctions.models import Need  # local import: core must stay importable without the domain apps
+
+    latest_needs = Need.objects.with_stats().select_related("client").open_now().order_by("bidding_ends_at")[:3]
     return render(
         request,
         "core/landing.html",
-        {"next_url": safe_next(request, request.GET.get("next"))},
+        {"next_url": safe_next(request, request.GET.get("next")), "latest_needs": latest_needs},
     )
 
 

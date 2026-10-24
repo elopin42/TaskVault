@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Lowbid — l’enchère inversée des freelances, sur Stellar{% endblock %}
 
 {% block content %}
@@ -40,6 +41,18 @@
   </article>
 </section>
 
+{% if latest_needs %}
+<section class="mt-10" aria-label="Besoins ouverts">
+  <div class="ui-page-header mb-4">
+    <div><h2 class="ui-panel-title">Enchères en cours</h2><p class="ui-panel-sub">Les besoins qui se terminent le plus tôt.</p></div>
+    <a href="{% url 'auctions:need_list' %}" class="ui-link">Tous les besoins <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
+  </div>
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {% for need in latest_needs %}{% include "auctions/_need_card.html" with need=need %}{% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <section class="ui-kpi-band mt-10" aria-label="Repères">
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Frais plateforme</span><span class="ui-kpi-value">0 %</span><span class="ui-kpi-hint ui-meta">pendant le hackathon</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Règlement</span><span class="ui-kpi-value">USDC</span><span class="ui-kpi-hint ui-meta">Stellar {{ STELLAR_NETWORK }}</span></div>
@@ -47,3 +60,5 @@
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Identité</span><span class="ui-kpi-value">Wallet</span><span class="ui-kpi-hint ui-meta">signature Freighter, zéro mot de passe</span></div>
 </section>
 {% endblock %}
+
+{% block extra_js %}<script src="{% static 'js/lowbid-auctions.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

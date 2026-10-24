@@ -12,7 +12,7 @@ Lowbid/
 ├── lowbid/                 # project: settings.py (env-driven), urls.py, wsgi.py
 ├── core/                   # landing, /healthz/, context processors, templatetags/lowbid_extras.py
 ├── accounts/               # WalletUser + Freighter login (challenge / verify / logout), wallet_required
-├── auctions/               # PLACEHOLDER — Need / Bid / scoring (next agent)      mounted at /
+├── auctions/               # Need / Bid, services (R1–R14), scoring, seed_demo          mounted at /
 ├── payments/               # PLACEHOLDER — Trustless Work escrow (next agent)     mounted at /pay/
 ├── templates/              # base.html, partials/{navbar,toasts,page_header}.html, core/landing.html, 400/403/404/500.html
 ├── static/
@@ -47,7 +47,7 @@ Set `DJANGO_DB_HOST` to switch from SQLite to PostgreSQL (`DJANGO_DB_NAME/USER/P
 |-----|------|------|
 | `core` | landing (`core:landing`), `GET /healthz/` (`core:healthz`), error handlers, context processors `core.context_processors.site` (asset version + Stellar config) and `nav_links`, filters `short_addr`, `usdc` (`{% load lowbid_extras %}`) | `/` |
 | `accounts` | `WalletUser(stellar_address, display_name, created_at, last_login_at)`, wallet auth, `wallet_required`, `get_wallet()` | `/auth/challenge/` `accounts:challenge`, `/auth/verify/` `accounts:verify`, `/auth/logout/` `accounts:logout` |
-| `auctions` | *(empty)* Need / Bid / scoring / "Recommandé" | `/` — expected names `auctions:need_list` (`/besoins/`), `auctions:need_create` (`/besoins/nouveau/`), `auctions:my_bids` (`/mes-encheres/`) |
+| `auctions` | `Need` / `Bid`, `services.py` (R1–R14), `scoring.py`, pages + JSON endpoints, `seed_demo` command — see **Auctions** below | `/besoins/…`, `/mes-encheres/`, `/mes-besoins/` |
 | `payments` | *(empty)* escrow fund / release via Trustless Work | `/pay/` |
 
 `datagrid`-style engines were NOT ported from SIPS — list pages here are plain templates.
@@ -92,14 +92,75 @@ Templates get `wallet_address` and `wallet_user` on every page.
   walletAddress, urls:{challenge,verify,logout,landing}}`; `window.StellarSdk` (vendored, loaded `defer`);
   `window.freighterApi`; `window.Lowbid.signTransaction(xdr, {networkPassphrase?, address?}) → signedXdr`.
 
+## Auctions (`auctions/`)
+
+**Models** (`auctions/models.py`, migration `0001`):
+
+- `Need(client→WalletUser PROTECT, title, description, budget_max Decimal(18,7), delay_max_days,
+  tags JSON ≤3 slugs, bidding_ends_at, status, winning_bid OneToOne→Bid null, awarded_at, created_at, updated_at)`.
+  `status`: `open → closed → awarded → funded → delivered → released`, plus `cancelled`.
+  **The timer is lazy**: `need.effective_status()` returns `closed` for an `open` need past its deadline,
+  `Need.objects.close_expired()` persists that and runs at the top of every auctions view — no cron.
+  Helpers: `is_bidding_open()`, `best_price` (None without bids), `current_price` (best or budget),
+  `bids_count`, `ranked_bid_qs()` (everything but `outbid`), `active_bid_for(wallet)`, `is_client(wallet)`,
+  `can_cancel`, `badge_class` / `effective_status_label` for templates. `Need.objects.with_stats()` annotates
+  `bid_count` / `lowest_price` for list pages.
+- `Bid(need, freelancer→WalletUser PROTECT, price, delay_days, tags, message ≤280, status, created_at)`.
+  `status`: `active | outbid | won | lost`. DB constraint: one `active` bid per (need, freelancer).
+
+**Services** (`auctions/services.py`) — every rule in one place, views only map codes to HTTP:
+
+```python
+place_bid(need, freelancer, price, delay_days, tags, message="") -> Bid
+    # BidError codes: closed · own_need · not_lower · over_budget · over_delay · bad_tags · invalid (R7)
+    # atomic + select_for_update(need); re-bidding supersedes the freelancer's own active bid (→ outbid)
+close_bidding_now(need, client) -> Need   # NeedError: forbidden · not_open   (demo shortcut, sets ends_at=now)
+award(need, bid, client) -> Need          # NeedError: forbidden · not_closed · bad_bid  → winner won, others lost
+cancel(need, client) -> Need              # NeedError: forbidden · too_late  (allowed while open/closed/awarded, R14)
+clean_tags(raw) / parse_price(raw) / dec_str(decimal)
+```
+
+**Scoring** (`auctions/scoring.py`): `score_bid(bid, need, weights=(40,30,30)) -> {total, price_part, delay_part,
+skills_part, *_ratio}` (ratios clamped to [0,1], no requested tag ⇒ skills ratio 1), `rank_bids(need, weights)`
+(desc total, then cheaper, then earlier), `normalise_weights(wp, wd, ws)` (ints → sum exactly 100, invalid ⇒ default).
+Weights come from `?wp=&wd=&ws=`; the detail page re-ranks client-side from `data-*-ratio` attributes.
+
+**URLs** (namespace `auctions`, mounted at `/`):
+
+| Name | Path | Method | Who |
+|------|------|--------|-----|
+| `need_list` | `/besoins/?tab=open|closed|all&tag=` | GET | public |
+| `need_create` | `/besoins/nouveau/` (`?demo=1` shows a 5-min deadline) | GET/POST | wallet |
+| `need_detail` | `/besoins/<pk>/?wp=&wd=&ws=` | GET | public (form / sliders by role) |
+| `my_bids` | `/mes-encheres/` | GET | wallet |
+| `my_needs` | `/mes-besoins/` | GET | wallet |
+| `need_bids_json` | `/besoins/<pk>/encheres.json` | GET | public — polled every 5 s; `{status, fingerprint, best_price, count, bids[], html}` |
+| `bid_create` | `/besoins/<pk>/encherir/` | POST JSON `{price, delay_days, tags, message}` | wallet → 201 / 400 `{error, message}` |
+| `need_close` | `/besoins/<pk>/cloturer/` | POST | client → 200 / 403 / 409 |
+| `need_award` | `/besoins/<pk>/choisir/<bid_pk>/` | POST | client → `{status:"awarded", payee, amount}` |
+| `need_cancel` | `/besoins/<pk>/annuler/` | POST | client |
+
+Templates: `templates/auctions/{need_list,need_form,need_detail,my_bids,my_needs}.html`, partials
+`_need_card.html`, `_bids_list.html` (also returned as `html` by `encheres.json`). Page JS:
+`static/js/lowbid-auctions.js` (countdowns on every page, bid form, polling, sliders, choose/close/cancel);
+the detail page passes its config through `window.LOWBID_NEED`. Demo data: `python manage.py seed_demo [--flush]`
+(addresses from `LOWBID_DEMO_CLIENT` / `LOWBID_DEMO_FREELANCE1` / `LOWBID_DEMO_FREELANCE2`).
+
+**Contract with `payments`**: the detail page includes `templates/payments/_escrow_panel.html` with `need` and
+`winning_bid` once `status` is `awarded` or later (a stub lives there today). Payee =
+`need.winning_bid.freelancer.stellar_address`, amount = `need.winning_bid.price` (USDC, Decimal(18,7)),
+payer = `need.client.stellar_address`. The transitions `awarded → funded → delivered → released` belong to
+`payments` (write `need.status`, keep `updated_at`); `auctions` never moves a need past `awarded`, and
+`services.cancel` already refuses once `funded` (R14). `Need.Status` is the enum to import.
+
 ## Adding `auctions` / `payments`
 
 - Models in `<app>/models.py`, `python manage.py makemigrations <app>` — commit the migration (CI runs
   `makemigrations --check`). Use `WalletUser` FKs (`on_delete=PROTECT`) for client / freelancer.
 - Views are plain function views; return `render(...)` or `JsonResponse`. Unsafe JSON calls from the
   browser go through `Lowbid.api(url, {method:"POST", body:{…}})` (CSRF + JSON handled).
-- Register URL names in `<app>/urls.py` (namespaces `auctions` / `payments`); the navbar lights up
-  automatically for the three names above (`core/context_processors.py::NAV_LINKS`).
+- Register URL names in `<app>/urls.py` (namespaces `auctions` / `payments`); the navbar entries live in
+  `core/context_processors.py::NAV_LINKS` (Besoins · Poster un besoin · Mes enchères · Mes besoins).
 - Templates extend `base.html`; blocks: `title`, `meta_description`, `extra_head`, `body_class`,
   `content`, `extra_js`. Header: `{% include "partials/page_header.html" with title=… subtitle=… %}`.
 - UI vocabulary (all theme-token driven, dark + light): `.glass-card`, `.glass-soft`, `.ui-panel`

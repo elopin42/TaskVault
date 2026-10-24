@@ -105,10 +105,10 @@ Three Stellar building blocks composed into one flow: **Freighter** for identity
 ## Status / what works
 
 - [ ] Wallet login (Freighter signMessage)
-- [ ] Post a need
-- [ ] Bid with the descending-price rule
-- [ ] Scoring + "Recommandé" badge
-- [ ] Client chooses any bid
+- [x] Post a need
+- [x] Bid with the descending-price rule
+- [x] Scoring + "Recommandé" badge
+- [x] Client chooses any bid
 - [ ] Escrow create (USDC locked)
 - [ ] Escrow release (USDC to freelancer)
 - [ ] Plan B: direct USDC payment

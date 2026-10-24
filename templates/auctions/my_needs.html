@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% load static lowbid_extras %}
+{% block title %}Mes besoins · Lowbid{% endblock %}
+
+{% block content %}
+<div class="ui-page-header">
+  <div class="min-w-0">
+    <h1 class="ui-page-title">Mes besoins</h1>
+    <p class="ui-page-sub">Les besoins que vous avez publiés, et le nombre d’offres reçues.</p>
+  </div>
+  <div class="ui-page-actions">
+    <a href="{% url 'auctions:need_create' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Poster un besoin</a>
+  </div>
+</div>
+
+{% if needs %}
+<div class="ui-panel">
+  <div class="rcard">
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 34%">Besoin</th>
+          <th>Statut</th>
+          <th class="ui-col-end">Offres</th>
+          <th class="ui-col-end">Budget max</th>
+          <th class="ui-col-end">Meilleure offre</th>
+          <th>Fin des enchères</th>
+          <th class="ui-col-end"><span class="sr-only">Action</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for need in needs %}
+        <tr>
+          <td data-label="Besoin">
+            <a href="{% url 'auctions:need_detail' need.pk %}" class="ui-link font-semibold">{{ need.title }}</a>
+            <div class="ui-meta">{% if need.tags %}{{ need.tags|join:", " }} · {% endif %}délai max {{ need.delay_max_days }} j</div>
+          </td>
+          <td data-label="Statut"><span class="ui-badge {{ need.badge_class }}">{{ need.effective_status_label }}</span></td>
+          <td data-label="Offres" class="ui-col-end ui-num">{{ need.bids_count }}</td>
+          <td data-label="Budget max" class="ui-col-end ui-num">{{ need.budget_max|usdc }}</td>
+          <td data-label="Meilleure offre" class="ui-col-end ui-num">{% if need.best_price is not None %}<span class="ui-price">{{ need.best_price|usdc }}</span>{% else %}—{% endif %}</td>
+          <td data-label="Fin des enchères"><span class="ui-countdown" data-ends-at="{{ need.bidding_ends_at|date:'c' }}" data-status="{{ need.effective_status }}"></span><div class="ui-meta">{{ need.bidding_ends_at|date:"d/m H:i" }}</div></td>
+          <td data-label="" class="ui-col-end">
+            <a href="{% url 'auctions:need_detail' need.pk %}" class="ui-btn ui-btn-sm">{% if need.effective_status == 'closed' and need.bids_count %}Choisir{% else %}Voir{% endif %}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state glass-card">
+  <div class="empty-state-icon"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></div>
+  <div class="empty-state-title">Vous n’avez pas encore publié de besoin</div>
+  <p class="empty-state-desc">Décrivez ce qu’il vous faut, fixez un budget max et laissez les freelances enchérir à la baisse.</p>
+  <a href="{% url 'auctions:need_create' %}" class="ui-btn ui-btn-primary mt-4"><i class="fa-solid fa-plus" aria-hidden="true"></i> Poster un besoin</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}<script src="{% static 'js/lowbid-auctions.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

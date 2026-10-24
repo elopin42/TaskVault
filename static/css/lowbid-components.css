@@ -343,3 +343,263 @@ html[data-theme="light"] .lb-theme-dark { display: none; }
 .ui-step.is-done .ui-step-label, .ui-step.is-current .ui-step-label { color: var(--text); }
 .ui-balance { display: inline-block; transition: color 0.3s ease, transform 0.3s ease; }
 .ui-balance.is-bumped { color: var(--success); transform: scale(1.12); }
+
+/* =====================================================================================
+   v2 component layer (hackathon architecture pass). Everything below is theme-token
+   driven like the rest of the file. Markup contracts are documented in docs/FRONTEND.md;
+   the JS counterparts live in static/js/lowbid-ui.js.
+   ===================================================================================== */
+
+/* ====== Focus ring (keyboard only) ====== */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: none; box-shadow: 0 0 0 3px var(--brand-soft), 0 0 0 1px var(--brand-600);
+    border-radius: 0.5rem;
+}
+
+/* ====== Section title (an h2 above a grid of cards) ====== */
+.ui-section { margin-top: 2rem; }
+.ui-section-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.9rem; }
+.ui-section-title { font-size: var(--text-heading); font-weight: 600; color: var(--text); margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+.ui-section-title i { color: var(--brand-500); font-size: 0.85em; }
+.ui-section-sub { font-size: var(--text-meta); color: var(--muted); margin: 0.15rem 0 0; }
+
+/* ====== Wallet chip: identicon + short address (+ copy / profile link) ======
+   <span class="ui-wallet" data-identicon="G…"><span class="ui-identicon"></span><span class="ui-wallet-addr">GABC…WXYZ</span></span>
+   lowbid-ui.js sets --id-a / --id-b (two hues derived from the address) on [data-identicon]. */
+.ui-identicon {
+    --id-a: 38; --id-b: 200;
+    flex: none; width: 1.5rem; height: 1.5rem; border-radius: 0.45rem;
+    background:
+        radial-gradient(circle at 30% 30%, hsl(var(--id-a) 85% 62%), transparent 62%),
+        radial-gradient(circle at 75% 70%, hsl(var(--id-b) 80% 55%), transparent 60%),
+        linear-gradient(135deg, hsl(var(--id-a) 60% 30%), hsl(var(--id-b) 60% 22%));
+    border: 1px solid var(--glass-border);
+}
+.ui-identicon.is-lg { width: 2.75rem; height: 2.75rem; border-radius: 0.8rem; }
+.ui-identicon.is-xl { width: 4rem; height: 4rem; border-radius: 1.1rem; }
+.ui-wallet { display: inline-flex; align-items: center; gap: 0.45rem; min-width: 0; color: var(--text); text-decoration: none; }
+a.ui-wallet:hover .ui-wallet-addr { text-decoration: underline; }
+.ui-wallet-addr { font-family: var(--font-mono); font-size: 0.8125rem; font-weight: 500; white-space: nowrap; }
+.ui-wallet-name { font-weight: 600; font-size: var(--text-body); }
+.ui-wallet.is-stacked { align-items: center; }
+.ui-wallet-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.ui-wallet-text .ui-wallet-addr { font-size: var(--text-meta); color: var(--muted); }
+.ui-copy-btn {
+    display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 0.45rem;
+    background: none; border: none; cursor: pointer; color: var(--muted); font-size: 0.8rem; font-family: inherit;
+}
+.ui-copy-btn:hover { color: var(--text); background: var(--soft-bg); }
+
+/* ====== Modal (native <dialog>, top layer) ======
+   <dialog class="ui-modal"><form method="dialog" class="ui-modal-card">…</form></dialog> */
+.ui-modal { border: none; padding: 0; background: transparent; max-width: 100vw; max-height: 100vh; }
+.ui-modal::backdrop { background: rgba(5, 6, 10, 0.62); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+html[data-theme="light"] .ui-modal::backdrop { background: rgba(11, 18, 32, 0.38); }
+.ui-modal-card {
+    width: min(440px, calc(100vw - 2rem)); margin: 0; padding: 1.25rem 1.3rem;
+    background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-lg);
+    box-shadow: var(--glass-shadow), 0 30px 60px -30px rgba(0,0,0,0.7); color: var(--text);
+    animation: lb-modal-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ui-modal[open] { display: grid; place-items: center; }
+.ui-modal-icon {
+    width: 2.6rem; height: 2.6rem; border-radius: 0.8rem; display: grid; place-items: center; margin-bottom: 0.85rem;
+    background: var(--brand-soft); color: var(--brand-500); font-size: 1.05rem;
+}
+.ui-modal.is-danger .ui-modal-icon { background: var(--error-soft); color: var(--error); }
+.ui-modal-title { font-size: 1.05rem; font-weight: 700; color: var(--text); margin: 0 0 0.35rem; letter-spacing: -0.01em; }
+.ui-modal-body { color: var(--muted); font-size: var(--text-body); line-height: 1.55; margin: 0; white-space: pre-line; }
+.ui-modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; margin-top: 1.1rem; }
+@media (max-width: 480px) { .ui-modal-actions { flex-direction: column-reverse; } .ui-modal-actions .ui-btn { width: 100%; } }
+@keyframes lb-modal-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+/* ====== Dropdown menu (details-based, no JS needed to open; lowbid-ui.js closes on outside click / Esc) ======
+   <details class="ui-menu"><summary class="ui-btn ui-btn-sm">…</summary><div class="ui-menu-panel">…</div></details> */
+.ui-menu { position: relative; display: inline-block; }
+.ui-menu > summary { list-style: none; cursor: pointer; }
+.ui-menu > summary::-webkit-details-marker { display: none; }
+.ui-menu-panel {
+    position: absolute; inset-inline-end: 0; top: calc(100% + 0.35rem); z-index: 60; min-width: 220px; padding: 0.35rem;
+    background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-md); box-shadow: var(--glass-shadow), 0 20px 40px -24px rgba(0,0,0,0.6);
+    animation: lb-modal-in 0.16s ease;
+}
+.ui-menu-panel.is-start { inset-inline-end: auto; inset-inline-start: 0; }
+.ui-menu-item {
+    display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 40px; padding: 0 0.75rem; border-radius: 0.5rem;
+    background: none; border: none; color: var(--text); font: inherit; font-size: var(--text-body); text-align: start; cursor: pointer; text-decoration: none;
+}
+.ui-menu-item:hover { background: var(--soft-bg); }
+.ui-menu-item.is-active { color: var(--brand-500); font-weight: 600; }
+.ui-menu-item i { width: 1rem; text-align: center; color: var(--muted); font-size: 0.85rem; }
+.ui-menu-sep { height: 1px; background: var(--divider); margin: 0.3rem 0.25rem; }
+.ui-menu-label { padding: 0.4rem 0.75rem 0.2rem; font-size: 0.625rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+
+/* ====== Toolbar (list pages: search · tabs · sort · count) ====== */
+.ui-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; margin-bottom: 1.1rem; }
+.ui-toolbar-grow { flex: 1 1 220px; min-width: 0; }
+.ui-toolbar-end { margin-inline-start: auto; display: flex; align-items: center; gap: 0.5rem; }
+.ui-search { position: relative; display: flex; align-items: center; }
+.ui-search > i { position: absolute; inset-inline-start: 0.8rem; color: var(--muted); font-size: 0.8rem; pointer-events: none; }
+.ui-search .ui-input { padding-inline-start: 2.2rem; }
+.ui-search .ui-search-clear {
+    position: absolute; inset-inline-end: 0.35rem; width: 32px; height: 32px; border-radius: 0.45rem; display: grid; place-items: center;
+    background: none; border: none; color: var(--muted); cursor: pointer;
+}
+.ui-search .ui-search-clear:hover { color: var(--text); background: var(--soft-bg); }
+.ui-select-inline { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; }
+.ui-select-inline .ui-select { min-height: 40px; width: auto; padding-inline-end: 2rem; font-weight: 500; }
+@media (max-width: 480px) { .ui-toolbar-end { width: 100%; margin-inline-start: 0; justify-content: space-between; } }
+
+/* Horizontal chip row (tag filters) — scrolls on phones instead of wrapping into 4 lines */
+.ui-chip-row { display: flex; gap: 0.4rem; overflow-x: auto; padding-bottom: 0.25rem; scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+.ui-chip-row::-webkit-scrollbar { display: none; }
+.ui-chip-row > * { flex: none; scroll-snap-align: start; }
+@media (min-width: 768px) { .ui-chip-row { flex-wrap: wrap; overflow: visible; } }
+
+/* ====== Pager ====== */
+.ui-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1.25rem; padding-top: 0.75rem; border-top: 1px solid var(--divider); }
+.ui-pager-count { font-size: var(--text-meta); color: var(--muted); font-variant-numeric: tabular-nums; }
+.ui-pager-nav { display: flex; align-items: center; gap: 0.35rem; }
+.ui-pager-btn, .ui-pager-num {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 40px; min-width: 40px; padding: 0 0.7rem; border-radius: 0.5rem;
+    font-size: var(--text-meta); font-weight: 600; color: var(--muted); text-decoration: none; background: var(--soft-bg); border: 1px solid var(--soft-border); font-variant-numeric: tabular-nums;
+}
+.ui-pager-btn:hover, .ui-pager-num:hover { color: var(--text); border-color: var(--hover-border); }
+.ui-pager-num.is-active { background: var(--brand-600); border-color: var(--brand-600); color: var(--brand-ink); }
+.ui-pager-btn[aria-disabled="true"] { opacity: 0.4; pointer-events: none; }
+@media (max-width: 480px) { .ui-pager-num { display: none; } }
+
+/* ====== Skeleton (loading placeholders; aria-hidden) ====== */
+.ui-skeleton { position: relative; overflow: hidden; background: var(--soft-bg); border-radius: 0.5rem; min-height: 0.9rem; }
+.ui-skeleton::after {
+    content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, var(--glass-border), transparent); animation: lb-shimmer 1.4s infinite;
+}
+.ui-skeleton-line { height: 0.8rem; margin-bottom: 0.5rem; }
+.ui-skeleton-line.w-1\/2 { width: 50%; } .ui-skeleton-line.w-1\/3 { width: 33%; } .ui-skeleton-line.w-3\/4 { width: 75%; }
+@keyframes lb-shimmer { to { transform: translateX(100%); } }
+
+/* ====== Timeline (bid history, escrow events) ======
+   <ol class="ui-timeline"><li class="ui-timeline-item is-brand"><span class="ui-timeline-dot"></span><div class="ui-timeline-body">…</div></li></ol> */
+.ui-timeline { list-style: none; margin: 0; padding: 0; position: relative; }
+.ui-timeline::before { content: ""; position: absolute; top: 0.6rem; bottom: 0.6rem; inset-inline-start: 0.55rem; width: 2px; background: var(--divider); }
+.ui-timeline-item { position: relative; display: flex; gap: 0.85rem; padding: 0.45rem 0 0.45rem 0; min-height: 2.4rem; }
+.ui-timeline-dot {
+    flex: none; width: 1.2rem; height: 1.2rem; border-radius: 999px; margin-top: 0.15rem; position: relative; z-index: 1;
+    background: var(--surface); border: 2px solid var(--border-strong); display: grid; place-items: center; font-size: 0.5rem; color: var(--muted);
+}
+.ui-timeline-item.is-brand .ui-timeline-dot { border-color: var(--brand-500); color: var(--brand-500); }
+.ui-timeline-item.is-ok .ui-timeline-dot { border-color: var(--success); background: var(--success-soft); color: var(--success); }
+.ui-timeline-item.is-muted { opacity: 0.6; }
+.ui-timeline-body { flex: 1; min-width: 0; font-size: var(--text-body); line-height: 1.4; }
+.ui-timeline-title { color: var(--text); font-weight: 500; }
+.ui-timeline-time { font-size: var(--text-meta); color: var(--muted); }
+
+/* ====== "What's next" card (dashboard to-do + detail hint) ======
+   Tone via .act (viewer must act) / .wait (someone else) / .done */
+.ui-next-card {
+    position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 0.4rem; padding: 0.9rem 1rem 0.9rem 1.15rem;
+    background: var(--soft-bg); border: 1px solid var(--soft-border); border-radius: var(--radius-md); color: inherit; text-decoration: none;
+    --next-tone: var(--border-strong);
+}
+.ui-next-card::before { content: ""; position: absolute; inset-inline-start: 0; top: 0; bottom: 0; width: 3px; background: var(--next-tone); }
+.ui-next-card.act { --next-tone: var(--brand-500); }
+.ui-next-card.wait { --next-tone: var(--info); }
+.ui-next-card.done { --next-tone: var(--success); }
+a.ui-next-card:hover { border-color: var(--hover-border); }
+.ui-next-kicker { display: flex; align-items: center; gap: 0.4rem; font-size: 0.625rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.ui-next-dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; flex: none; background: var(--next-tone); }
+.ui-next-headline { font-size: var(--text-body); font-weight: 600; color: var(--text); line-height: 1.35; margin: 0; }
+.ui-next-body { margin: 0; font-size: var(--text-meta); color: var(--muted); }
+.ui-next-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.ui-next-list { display: grid; gap: 0.6rem; }
+
+/* ====== Progress bar ====== */
+.ui-progress { height: 6px; border-radius: 999px; background: var(--soft-bg); border: 1px solid var(--soft-border); overflow: hidden; }
+.ui-progress > span { display: block; height: 100%; background: var(--brand-500); border-radius: 999px; transition: width 0.3s ease; }
+.ui-progress.is-ok > span { background: var(--success); }
+
+/* ====== Sparkline (price history; SVG built by lowbid-ui.js from data-points) ====== */
+.ui-sparkline { display: block; width: 100%; height: 56px; overflow: visible; }
+.ui-sparkline .sl-line { fill: none; stroke: var(--brand-500); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ui-sparkline .sl-area { fill: var(--brand-soft); }
+.ui-sparkline .sl-dot { fill: var(--brand-500); stroke: var(--surface); stroke-width: 2; }
+.ui-sparkline .sl-cap { stroke: var(--border-strong); stroke-dasharray: 3 4; stroke-width: 1; }
+.ui-sparkline-meta { display: flex; justify-content: space-between; gap: 0.5rem; font-size: var(--text-meta); color: var(--muted); margin-top: 0.25rem; }
+
+/* ====== Definition rows (facts) ====== */
+.ui-facts { display: grid; grid-template-columns: auto 1fr; gap: 0.45rem 1rem; align-items: baseline; margin: 0; font-size: var(--text-body); }
+.ui-facts dt { color: var(--muted); font-size: var(--text-meta); font-weight: 500; }
+.ui-facts dd { margin: 0; text-align: end; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+
+/* ====== Live badge (pulsing dot) ====== */
+.ui-live { display: inline-flex; align-items: center; gap: 0.4rem; font-size: var(--text-meta); color: var(--muted); font-weight: 500; }
+.ui-live-dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; background: var(--success); box-shadow: 0 0 0 0 var(--success-soft); animation: lb-pulse 2s infinite; }
+@keyframes lb-pulse { 0% { box-shadow: 0 0 0 0 var(--success-soft); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+/* ====== Sticky actions: static on wide screens, a glass bottom bar under 640px ======
+   Wrap the page/form in .ui-form-scope so the container query resolves. */
+.ui-form-scope { container-type: inline-size; }
+.ui-sticky-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.6rem; padding: 0.75rem 0 0; }
+@container (max-width: 639.98px) {
+    .ui-sticky-actions {
+        position: sticky; bottom: calc(var(--tabbar-h, 0px)); z-index: 30;
+        margin: 0.75rem -0.25rem 0; padding: 0.7rem 0.9rem calc(0.7rem + env(safe-area-inset-bottom));
+        background: var(--nav-bg); border: 1px solid var(--soft-border); border-radius: 0.9rem 0.9rem 0 0;
+        -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    }
+    .ui-sticky-actions > a, .ui-sticky-actions > button { flex: 1 1 auto; }
+}
+
+/* ====== Mobile tab bar (fixed bottom, < 1024px, signed-in only) ====== */
+:root { --tabbar-h: 0px; }
+.lb-tabbar { display: none; }
+@media (max-width: 1023.98px) {
+    body.has-tabbar { --tabbar-h: 60px; padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom)); }
+    body.has-tabbar .lb-tabbar {
+        display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; position: fixed; inset-inline: 0; bottom: 0; z-index: 45;
+        min-height: var(--tabbar-h); padding-bottom: env(safe-area-inset-bottom);
+        background: var(--nav-bg); border-top: 1px solid var(--nav-border);
+        -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3);
+    }
+    body.has-tabbar .lb-toast-container { bottom: auto; }
+}
+.lb-tab {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem; min-height: 56px; padding: 0.35rem 0.2rem;
+    color: var(--muted); text-decoration: none; font-size: 0.625rem; font-weight: 600; letter-spacing: 0.01em;
+}
+.lb-tab i { font-size: 1.05rem; }
+.lb-tab.is-active { color: var(--brand-500); }
+.lb-tab.is-primary i { width: 2.2rem; height: 2.2rem; border-radius: 0.7rem; display: grid; place-items: center; background: var(--brand-600); color: var(--brand-ink); font-size: 0.95rem; }
+
+/* ====== Stat tile with icon + trend (dashboard) ====== */
+.ui-kpi-tile.is-link:hover { border-color: var(--hover-border); box-shadow: var(--hover-shadow); }
+.ui-kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.ui-kpi-icon { width: 1.75rem; height: 1.75rem; border-radius: 0.5rem; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-500); font-size: 0.8rem; }
+.ui-kpi-band.is-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 640px) { .ui-kpi-band.is-3 { grid-template-columns: repeat(1, minmax(0, 1fr)); } }
+
+/* ====== Two-column page body (main + aside) with container-aware stacking ====== */
+.ui-split { display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1024px) { .ui-split { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } .ui-split.is-even { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ui-split > * { min-width: 0; }
+.ui-stack { display: flex; flex-direction: column; gap: 1.25rem; }
+
+/* ====== Segmented control as radio group (duration picker) ====== */
+.seg-radio { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; }
+.seg-radio input { position: absolute; opacity: 0; width: 0; height: 0; }
+.seg-radio label {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 0.85rem; border-radius: 0.6rem; cursor: pointer;
+    background: var(--soft-bg); border: 1px solid var(--soft-border); color: var(--muted); font-size: var(--text-body); font-weight: 500;
+}
+.seg-radio input:checked + label { background: var(--brand-600); border-color: var(--brand-600); color: var(--brand-ink); font-weight: 600; }
+.seg-radio input:focus-visible + label { box-shadow: 0 0 0 3px var(--brand-soft); }
+
+/* ====== Table (plain, inside .rcard) tweaks ====== */
+.rcard td .ui-badge + .ui-badge { margin-inline-start: 0.25rem; }
+.rcard tbody tr.is-attn { background: var(--brand-soft); }
+
+/* ====== Print ====== */
+@media print { .lb-nav, .lb-tabbar, .lb-toast-container, .ui-sticky-actions, footer { display: none !important; } body { background: #fff; color: #000; } }
+
+@media (prefers-reduced-motion: reduce) { .ui-modal-card, .ui-menu-panel, .ui-skeleton::after, .ui-live-dot { animation: none; } }

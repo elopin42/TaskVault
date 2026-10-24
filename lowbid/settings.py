@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "accounts",
     "auctions",
     "payments",
+    "dashboard",
 ]
 
 MIDDLEWARE = [

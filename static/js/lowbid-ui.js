@@ -1,0 +1,226 @@
+/* Lowbid UI runtime (v2 component layer) — loaded on every page right after lowbid-base.js.
+ *
+ *   Lowbid.confirm({title, message, confirmLabel, cancelLabel, danger, icon}) -> Promise<boolean>
+ *       Accessible replacement for window.confirm(), backed by <dialog id="lb-confirm"> (partials/modal.html).
+ *   Lowbid.modal.open(el | "#id") / Lowbid.modal.close(el)
+ *   Lowbid.identicon(address) -> {a, b}   two hues; applied to every [data-identicon] (CSS vars --id-a/--id-b)
+ *   Lowbid.timeAgo(isoOrDate) -> "il y a 3 min"; every [data-time-ago="ISO"] is refreshed each minute
+ *   Lowbid.sparkline(el)      builds the SVG of <svg class="ui-sparkline" data-points="500,450,400" [data-cap="500"]>
+ *   Lowbid.poll(fn, {interval, maxInterval}) -> {stop, now}   visibility-aware polling with backoff on errors
+ *   Lowbid.refreshUI(root)    re-run identicons / sparklines / time-ago inside a freshly swapped fragment
+ *   Lowbid.setBusy(btn, on, label)
+ *
+ * Declarative wiring (event delegation, survives innerHTML swaps):
+ *   [data-share="URL"]           navigator.share() or copy-to-clipboard fallback
+ *   [data-confirm="message"]     on a <form>: asks Lowbid.confirm before submitting (data-confirm-title, data-confirm-danger)
+ *   details.ui-menu              closes on outside click / Escape
+ *   [data-search-clear]          clears the sibling input and submits its form
+ *   [data-auto-submit]           a <select>/<input> that submits its form on change
+ */
+(function () {
+  "use strict";
+
+  var Lowbid = window.Lowbid || (window.Lowbid = {});
+
+  /* ---------- busy buttons ---------- */
+  Lowbid.setBusy = function (btn, on, label) {
+    if (!btn) return;
+    if (on) {
+      if (!btn.dataset.label) btn.dataset.label = btn.innerHTML;
+      btn.disabled = true; btn.classList.add("is-loading"); btn.setAttribute("aria-busy", "true");
+      btn.innerHTML = '<i class="fa-solid fa-spinner" aria-hidden="true"></i> ' + Lowbid.escapeHtml(label || "…");
+    } else {
+      btn.disabled = false; btn.classList.remove("is-loading"); btn.removeAttribute("aria-busy");
+      if (btn.dataset.label) { btn.innerHTML = btn.dataset.label; delete btn.dataset.label; }
+    }
+  };
+
+  /* ---------- modal ---------- */
+  function resolveEl(el) { return typeof el === "string" ? document.querySelector(el) : el; }
+  var modal = {
+    open: function (el) {
+      el = resolveEl(el);
+      if (!el) return;
+      if (typeof el.showModal === "function") { if (!el.open) el.showModal(); }
+      else el.setAttribute("open", "");
+      var focus = el.querySelector("[data-autofocus]") || el.querySelector("button, [href], input, select, textarea");
+      if (focus) setTimeout(function () { focus.focus(); }, 30);
+    },
+    close: function (el, value) {
+      el = resolveEl(el);
+      if (!el) return;
+      if (typeof el.close === "function" && el.open) el.close(value);
+      else el.removeAttribute("open");
+    }
+  };
+  Lowbid.modal = modal;
+
+  var ICONS = { info: "fa-circle-question", danger: "fa-triangle-exclamation", success: "fa-circle-check" };
+  var pending = null;
+
+  Lowbid.confirm = function (opts) {
+    opts = typeof opts === "string" ? { message: opts } : (opts || {});
+    var dlg = document.getElementById("lb-confirm");
+    if (!dlg || typeof dlg.showModal !== "function") {
+      return Promise.resolve(window.confirm(opts.message || "Confirmer ?"));
+    }
+    if (pending) pending(false);
+    return new Promise(function (resolve) {
+      pending = resolve;
+      dlg.classList.toggle("is-danger", !!opts.danger);
+      dlg.querySelector("[data-modal-title]").textContent = opts.title || (opts.danger ? "Confirmer l’action" : "Confirmer");
+      dlg.querySelector("[data-modal-body]").textContent = opts.message || "";
+      dlg.querySelector("[data-modal-icon] i").className = "fa-solid " + (opts.icon || (opts.danger ? ICONS.danger : ICONS.info));
+      var ok = dlg.querySelector("[data-modal-ok]");
+      ok.textContent = opts.confirmLabel || "Confirmer";
+      ok.className = "ui-btn " + (opts.danger ? "ui-btn-danger-solid" : "ui-btn-primary");
+      dlg.querySelector("[data-modal-cancel]").textContent = opts.cancelLabel || "Annuler";
+      dlg.returnValue = "";
+      var onClose = function () {
+        dlg.removeEventListener("close", onClose);
+        var r = pending; pending = null;
+        if (r) r(dlg.returnValue === "ok");
+      };
+      dlg.addEventListener("close", onClose);
+      modal.open(dlg);
+    });
+  };
+
+  /* ---------- identicon ---------- */
+  Lowbid.identicon = function (address) {
+    var s = String(address || ""), h1 = 7, h2 = 13;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      h1 = (h1 * 31 + c) >>> 0;
+      h2 = (h2 * 17 + c * 7) >>> 0;
+    }
+    return { a: h1 % 360, b: (h2 % 360 + 120) % 360 };
+  };
+  function applyIdenticons(root) {
+    (root || document).querySelectorAll("[data-identicon]").forEach(function (el) {
+      if (el.dataset.identiconDone) return;
+      var h = Lowbid.identicon(el.getAttribute("data-identicon"));
+      var target = el.querySelector(".ui-identicon") || el;
+      target.style.setProperty("--id-a", h.a);
+      target.style.setProperty("--id-b", h.b);
+      el.dataset.identiconDone = "1";
+    });
+  }
+
+  /* ---------- relative time ---------- */
+  Lowbid.timeAgo = function (value) {
+    var t = value instanceof Date ? value.getTime() : Date.parse(value);
+    if (isNaN(t)) return "";
+    var diff = Math.round((Date.now() - t) / 1000);
+    var future = diff < 0; diff = Math.abs(diff);
+    var out;
+    if (diff < 45) out = "quelques secondes";
+    else if (diff < 3600) out = Math.max(1, Math.round(diff / 60)) + " min";
+    else if (diff < 86400) out = Math.round(diff / 3600) + " h";
+    else if (diff < 86400 * 30) out = Math.round(diff / 86400) + " j";
+    else out = Math.round(diff / (86400 * 30)) + " mois";
+    return future ? "dans " + out : "il y a " + out;
+  };
+  function tickTimeAgo(root) {
+    (root || document).querySelectorAll("[data-time-ago]").forEach(function (el) {
+      el.textContent = Lowbid.timeAgo(el.getAttribute("data-time-ago"));
+      if (!el.getAttribute("title")) {
+        var d = new Date(el.getAttribute("data-time-ago"));
+        if (!isNaN(d.getTime())) el.setAttribute("title", d.toLocaleString("fr-FR"));
+      }
+    });
+  }
+  setInterval(function () { tickTimeAgo(); }, 60000);
+
+  /* ---------- sparkline ---------- */
+  var SVG = "http://www.w3.org/2000/svg";
+  function node(name, attrs) {
+    var n = document.createElementNS(SVG, name);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+  Lowbid.sparkline = function (el) {
+    if (!el) return;
+    var pts = String(el.getAttribute("data-points") || "").split(",").map(parseFloat).filter(isFinite);
+    var cap = parseFloat(el.getAttribute("data-cap"));
+    var W = 240, H = 56, P = 6;
+    el.setAttribute("viewBox", "0 0 " + W + " " + H);
+    el.setAttribute("preserveAspectRatio", "none");
+    while (el.firstChild) el.removeChild(el.firstChild);
+    if (!pts.length) return;
+    var all = pts.slice(); if (isFinite(cap)) all.push(cap);
+    var min = Math.min.apply(null, all), max = Math.max.apply(null, all);
+    if (max === min) { max = min + 1; }
+    var x = function (i) { return pts.length === 1 ? W / 2 : P + (i * (W - 2 * P)) / (pts.length - 1); };
+    var y = function (v) { return H - P - ((v - min) / (max - min)) * (H - 2 * P); };
+    if (isFinite(cap)) el.appendChild(node("line", { "class": "sl-cap", x1: 0, x2: W, y1: y(cap), y2: y(cap) }));
+    var d = pts.map(function (v, i) { return (i ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); }).join(" ");
+    if (pts.length > 1) {
+      el.appendChild(node("path", { "class": "sl-area", d: d + " L" + x(pts.length - 1).toFixed(1) + " " + (H - P) + " L" + x(0).toFixed(1) + " " + (H - P) + " Z" }));
+      el.appendChild(node("path", { "class": "sl-line", d: d }));
+    }
+    el.appendChild(node("circle", { "class": "sl-dot", cx: x(pts.length - 1).toFixed(1), cy: y(pts[pts.length - 1]).toFixed(1), r: 3.5 }));
+  };
+  function applySparklines(root) {
+    (root || document).querySelectorAll("svg.ui-sparkline[data-points]").forEach(Lowbid.sparkline);
+  }
+
+  /* ---------- polling helper ---------- */
+  Lowbid.poll = function (fn, opts) {
+    opts = opts || {};
+    var base = opts.interval || 5000, max = opts.maxInterval || 60000, current = base, timer = null, stopped = false, running = false;
+    function schedule(ms) { clearTimeout(timer); if (!stopped) timer = setTimeout(run, ms); }
+    function run() {
+      if (stopped || running) return;
+      if (document.hidden) { schedule(base); return; }
+      running = true;
+      Promise.resolve().then(fn).then(function () { current = base; }, function () { current = Math.min(max, current * 2); })
+        .then(function () { running = false; schedule(current); });
+    }
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) { current = base; schedule(150); } });
+    window.addEventListener("online", function () { current = base; schedule(150); });
+    schedule(base);
+    return { stop: function () { stopped = true; clearTimeout(timer); }, now: function () { current = base; schedule(0); } };
+  };
+
+  /* ---------- refresh hook for swapped fragments ---------- */
+  Lowbid.refreshUI = function (root) { applyIdenticons(root); applySparklines(root); tickTimeAgo(root); };
+
+  /* ---------- delegated behaviours ---------- */
+  document.addEventListener("click", function (ev) {
+    var share = ev.target.closest("[data-share]");
+    if (share) {
+      ev.preventDefault();
+      var url = share.getAttribute("data-share") || location.href;
+      if (navigator.share) {
+        navigator.share({ title: document.title, url: url }).catch(function () { /* cancelled */ });
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(function () { Lowbid.toast("Lien copié.", "success"); });
+      }
+      return;
+    }
+    var clear = ev.target.closest("[data-search-clear]");
+    if (clear) {
+      var input = clear.parentElement && clear.parentElement.querySelector("input");
+      if (input) { input.value = ""; if (input.form) input.form.requestSubmit ? input.form.requestSubmit() : input.form.submit(); }
+      return;
+    }
+    document.querySelectorAll("details.ui-menu[open]").forEach(function (d) { if (!d.contains(ev.target)) d.removeAttribute("open"); });
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") document.querySelectorAll("details.ui-menu[open]").forEach(function (d) { d.removeAttribute("open"); });
+  });
+  document.addEventListener("change", function (ev) {
+    var el = ev.target.closest("[data-auto-submit]");
+    if (el && el.form) { el.form.requestSubmit ? el.form.requestSubmit() : el.form.submit(); }
+  });
+  document.addEventListener("submit", function (ev) {
+    var form = ev.target;
+    if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-confirm") || form.dataset.confirmed === "1") return;
+    ev.preventDefault();
+    Lowbid.confirm({ message: form.getAttribute("data-confirm"), title: form.getAttribute("data-confirm-title") || "", danger: form.hasAttribute("data-confirm-danger") })
+      .then(function (ok) { if (ok) { form.dataset.confirmed = "1"; form.requestSubmit ? form.requestSubmit() : form.submit(); } });
+  });
+
+  Lowbid.refreshUI(document);
+})();

@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}Profil · Lowbid{% endblock %}
+{% block content %}
+{% include "partials/page_header.html" with title="Profil" %}
+{% include "components/wallet.html" with address=profile.stellar_address name=profile.display_name size="xl" copy=True nolink=True %}
+{% endblock %}

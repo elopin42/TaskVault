@@ -9,13 +9,13 @@
   <p class="lb-hero-sub">Une enchère inversée transparente : chaque offre doit être moins chère que la précédente. À la fin du compte à rebours, Lowbid classe les offres (prix, délai, compétences), vous choisissez, et les fonds sont libérés à la livraison validée — sans intermédiaire.</p>
   <div class="lb-hero-cta">
     {% if wallet_address %}
-      <a href="{{ nav_links.1.href }}" class="ui-btn ui-btn-primary ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> Poster un besoin</a>
-      <a href="{{ nav_links.0.href }}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Voir les besoins</a>
+      <a href="{% url 'auctions:need_create' %}" class="ui-btn ui-btn-primary ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> Poster un besoin</a>
+      <a href="{% url 'auctions:need_list' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Voir les besoins</a>
     {% else %}
       <button type="button" class="ui-btn ui-btn-primary ui-btn-lg" data-wallet-connect data-next="{{ next_url }}">
         <i class="fa-solid fa-wallet" aria-hidden="true"></i> Connecter mon wallet Freighter
       </button>
-      <a href="{{ nav_links.0.href }}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Parcourir les besoins</a>
+      <a href="{% url 'auctions:need_list' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Parcourir les besoins</a>
     {% endif %}
   </div>
   {% if next_url %}

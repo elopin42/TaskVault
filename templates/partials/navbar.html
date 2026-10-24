@@ -25,16 +25,24 @@
 
       {% if wallet_address %}
         <details class="lb-wallet-menu">
-          <summary class="lb-wallet-btn is-connected" title="{{ wallet_address }}">
+          <summary class="lb-wallet-btn is-connected" title="{{ wallet_address }}" data-identicon="{{ wallet_address }}">
+            <span class="ui-identicon" style="width:1.1rem;height:1.1rem;border-radius:0.35rem" aria-hidden="true"></span>
             <span class="lb-wallet-dot" aria-hidden="true"></span>
             <span class="font-mono">{{ wallet_address|short_addr }}</span>
             <i class="fa-solid fa-chevron-down text-[10px] opacity-60" aria-hidden="true"></i>
           </summary>
           <div class="lb-wallet-dropdown glass-card">
-            <div class="px-3 py-2 ui-meta break-all">{{ wallet_address }}</div>
+            <div class="px-3 py-2 flex items-center gap-2 min-w-0" data-identicon="{{ wallet_address }}">
+              <span class="ui-identicon is-lg" aria-hidden="true"></span>
+              <div class="min-w-0"><div class="text-sm font-semibold">{{ wallet_user.display_name|default:"Mon wallet" }}</div><div class="ui-meta font-mono break-all">{{ wallet_address }}</div></div>
+            </div>
+            <div class="ui-menu-sep"></div>
+            <a href="{% url 'dashboard:home' %}" class="lb-dropdown-item"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Tableau de bord</a>
+            <a href="{% url 'dashboard:profile' wallet_address %}" class="lb-dropdown-item"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Mon profil public</a>
             <button type="button" class="lb-dropdown-item" data-copy="{{ wallet_address }}">
               <i class="fa-regular fa-copy" aria-hidden="true"></i> Copier l’adresse
             </button>
+            <div class="ui-menu-sep"></div>
             <form method="post" action="{% url 'accounts:logout' %}">
               {% csrf_token %}
               <button type="submit" class="lb-dropdown-item text-[color:var(--error)]">

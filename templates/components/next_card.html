@@ -1,0 +1,12 @@
+{% comment %}
+"What's next" card. {% include "components/next_card.html" with tone="act|wait|done" kicker="À faire" headline="…" body="…" href=url cta="Choisir" icon="fa-check" %}
+{% endcomment %}<{% if href %}a href="{{ href }}"{% else %}div{% endif %} class="ui-next-card {{ tone|default:'wait' }}">
+  <span class="ui-next-kicker"><span class="ui-next-dot" aria-hidden="true"></span>{{ kicker }}</span>
+  <div class="ui-next-row">
+    <div class="min-w-0">
+      <p class="ui-next-headline">{{ headline }}</p>
+      {% if body %}<p class="ui-next-body">{{ body }}</p>{% endif %}
+    </div>
+    {% if cta %}<span class="ui-btn ui-btn-sm{% if tone == 'act' %} ui-btn-primary{% endif %}">{% if icon %}<i class="fa-solid {{ icon }}" aria-hidden="true"></i> {% endif %}{{ cta }}</span>{% endif %}
+  </div>
+</{% if href %}a{% else %}div{% endif %}>

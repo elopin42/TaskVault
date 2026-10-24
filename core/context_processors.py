@@ -19,11 +19,13 @@ def site(request):
 # Navbar entries. Each one names the URL the `auctions` app is expected to
 # register; until it exists the literal fallback path is used, so the shell
 # renders before the domain apps land. `wallet` marks links that need a session.
+# `short` is the label of the mobile tab bar (partials/tabbar.html); `primary` renders the raised tab.
 NAV_LINKS = (
-    {"label": "Besoins", "url_name": "auctions:need_list", "fallback": "/besoins/", "icon": "fa-list-ul", "wallet": False},
-    {"label": "Poster un besoin", "url_name": "auctions:need_create", "fallback": "/besoins/nouveau/", "icon": "fa-plus", "wallet": True},
-    {"label": "Mes enchères", "url_name": "auctions:my_bids", "fallback": "/mes-encheres/", "icon": "fa-gavel", "wallet": True},
-    {"label": "Mes besoins", "url_name": "auctions:my_needs", "fallback": "/mes-besoins/", "icon": "fa-folder-open", "wallet": True},
+    {"label": "Besoins", "short": "Besoins", "url_name": "auctions:need_list", "fallback": "/besoins/", "icon": "fa-list-ul", "wallet": False},
+    {"label": "Mes enchères", "short": "Enchères", "url_name": "auctions:my_bids", "fallback": "/mes-encheres/", "icon": "fa-gavel", "wallet": True},
+    {"label": "Poster un besoin", "short": "Poster", "url_name": "auctions:need_create", "fallback": "/besoins/nouveau/", "icon": "fa-plus", "wallet": True, "primary": True},
+    {"label": "Mes besoins", "short": "Mes besoins", "url_name": "auctions:my_needs", "fallback": "/mes-besoins/", "icon": "fa-folder-open", "wallet": True},
+    {"label": "Tableau de bord", "short": "Tableau", "url_name": "dashboard:home", "fallback": "/tableau-de-bord/", "icon": "fa-gauge-high", "wallet": True},
 )
 
 
@@ -39,7 +41,17 @@ def nav_links(request):
     links = []
     for item in NAV_LINKS:
         href = _resolve(item["url_name"], item["fallback"])
-        links.append({"label": item["label"], "href": href, "icon": item["icon"], "wallet": item["wallet"], "active": False})
+        links.append(
+            {
+                "label": item["label"],
+                "short": item.get("short", item["label"]),
+                "href": href,
+                "icon": item["icon"],
+                "wallet": item["wallet"],
+                "primary": item.get("primary", False),
+                "active": False,
+            }
+        )
     # Only the most specific match is active: /besoins/nouveau/ must not also light up "Besoins".
     matching = [link for link in links if link["href"] != "/" and path.startswith(link["href"])]
     if matching:

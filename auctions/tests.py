@@ -558,7 +558,7 @@ class PageTests(BaseAuctionTest):
         self.assertContains(resp, "Mes besoins")
         self.assertEqual(resp.context["needs"][0].bids_count, 1)
         labels = [link["label"] for link in resp.context["nav_links"]]
-        self.assertEqual(labels, ["Besoins", "Poster un besoin", "Mes enchères", "Mes besoins"])
+        self.assertEqual(labels, ["Besoins", "Mes enchères", "Poster un besoin", "Mes besoins", "Tableau de bord"])
         self.assertTrue([link for link in resp.context["nav_links"] if link["label"] == "Mes besoins"][0]["active"])
         login(self.client, self.f1)
         self.assertNotContains(self.client.get(reverse("auctions:my_needs")), self.need.title)

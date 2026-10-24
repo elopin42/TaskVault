@@ -3,6 +3,7 @@
     /            core (landing, healthz) + auctions (needs, bids)
     /auth/       accounts (wallet challenge / verify / logout)
     /pay/        payments (escrow)
+    /tableau-de-bord/  /profil/<addr>/   dashboard (signed-in home, public wallet profile)
     /django-admin/  Django admin (staff only, debugging aid)
 """
 
@@ -15,6 +16,7 @@ urlpatterns = [
     path("pay/", include("payments.urls")),
     path("", include("core.urls")),
     path("", include("auctions.urls")),
+    path("", include("dashboard.urls")),
 ]
 
 handler400 = "core.views.error_400"

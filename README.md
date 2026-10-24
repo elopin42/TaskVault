@@ -18,32 +18,34 @@
 1. Connect Freighter  ----------> signMessage check     <----------- Freighter wallet
 2. Post a need        ----------> need saved (open)
    budget max, delay max,         countdown starts
-   3 tags, deadline
+   3 tags, duration
                        FREELANCERS
 3.                     Connect Freighter -------------> signMessage check
 4.                     Bid: price < last bid ---------> rule checked, bid saved
                        + delay, tags, message
-5.                                timer ends -> need closed
+5.                                timer ends (or client closes) -> need closed
 6.                                score each bid, "Recommandé" badge
 7. Review offers, adjust sliders
 8. Choose a freelancer ---------> need awarded
-9. Click "Payer"      ----------> Trustless Work API ---------------> Soroban escrow created,
-                                  (proxied by Django)                 USDC locked
-                       Freelancer delivers --> need delivered
-10. Validate delivery ----------> release request ------------------> escrow releases USDC
-                                                                      to the freelancer wallet
+9. "Créer l'escrow"    ---------> Trustless Work API --------------> Soroban escrow deployed
+   "Bloquer les fonds" ---------> (proxied by Django) -------------> USDC locked in the escrow
+                       "Déclarer la livraison" (freelancer) -------> milestone marked done
+10. "Valider la livraison" -----> approve -------------------------> milestone approved
+    "Libérer les fonds" --------> release -------------------------> escrow releases USDC
+                                                                     to the freelancer wallet
+Plan B (LOWBID_PAYMENT_MODE=direct): steps 9-10 become one "Payer le freelance" USDC payment.
 ```
 
 1. The client connects their **Freighter** wallet (Stellar testnet). Login is a signed message, no password.
-2. The client posts a need: title, description, **maximum budget (USDC)**, **maximum delay (days)**, up to 3 skill tags, and a bidding deadline (e.g. 2 hours).
+2. The client posts a need: title, description, **maximum budget (USDC)**, **maximum delay (days)**, up to 3 skill tags, and a bidding duration (30 min, 2 h, 24 h or 3 days; `?demo=1` adds a 5-minute option).
 3. Freelancers connect their own Freighter wallet.
 4. Each freelancer bids: price, delay in days, tags, short message. **A bid must be strictly lower than the previous bid**, or it is refused.
-5. When the countdown ends, bidding closes.
+5. When the countdown ends (or the client clicks "Clôturer les enchères maintenant"), bidding closes.
 6. Lowbid computes a score for every bid and puts a **"Recommandé"** badge on the best one.
 7. The client can reweight price / delay / skills with three sliders.
 8. **The client chooses.** The recommendation is an aid, not a rule: any bid can win.
-9. The client clicks **"Payer"**: Trustless Work creates a Soroban escrow and the USDC is locked in it.
-10. The freelancer delivers, the client validates, and the escrow releases the USDC to the freelancer.
+9. The client funds the job in two Freighter signatures: **"Créer l'escrow"** (Trustless Work deploys a Soroban single-release escrow) then **"Bloquer les fonds"** (the USDC moves into the contract).
+10. The freelancer clicks **"Déclarer la livraison"**; the client clicks **"Valider la livraison"** then **"Libérer les fonds"**, and the escrow pays the USDC to the freelancer (minus fees). Every button is one signature by the wallet that holds that role.
 
 ## Why Stellar
 
@@ -75,6 +77,10 @@ make dev
 # open http://localhost:8000
 ```
 
+`.env` is read once at startup: after any change (API key, `LOWBID_PAYMENT_MODE`, demo wallets…) stop the server and run `make run` again.
+
+Tests: `make test` (Django unit + payment-flow tests, network mocked) and `make e2e` (Playwright flow test in a real browser with a simulated Freighter, on a throwaway SQLite; screenshots land in `docs/screenshots/`).
+
 ## Where Stellar lives in the code
 
 | Path | What it does |
@@ -84,10 +90,22 @@ make dev
 | `payments/stellar.py` | Plan B + Horizon helpers: build USDC `payment` / `changeTrust` XDR, parse & check signed XDR, submit, balances, `payment_mode()` |
 | `payments/services.py` | The flow: one `prepare_<step>` / `confirm_<step>` pair per step, role + state gates, both modes (state table in its docstring) |
 | `payments/models.py` | `Escrow`: contract id, every tx hash, status, per-need |
+| `payments/views.py` + `payments/urls.py` | JSON endpoints under `/pay/`: `prepare/<need_pk>/<step>/`, `send/<need_pk>/<step>/`, `trustline/prepare/`, `trustline/send/` |
+| `templates/payments/_escrow_panel.html` | The payment panel on the need page: stepper, one button per step, trustline helper, stellar.expert links |
 | `static/js/lowbid-wallet.js` | Freighter connection, login signature, `Lowbid.signTransaction(xdr)` |
 | `static/js/lowbid-pay.js` | Prepare → Freighter sign → send driver for every payment button, live USDC balance from Horizon |
-| `docs/STELLAR_NOTES.md` | Network, USDC asset, trustlines, Trustless Work field reference, what is on-chain vs off-chain |
+| `docs/STELLAR_NOTES.md` | Network, USDC asset, trustlines, Trustless Work field reference, smoke test, the shipped payment endpoints |
 | `docs/ARCHITECTURE.md` | Payments section: endpoints, state table, how to switch to Plan B |
+
+## Docs
+
+| File | What is in it |
+|------|---------------|
+| [`docs/PRODUCT.md`](docs/PRODUCT.md) | Product spec (French): personas, the 10-step flow, business rules R1–R15, scoring with worked examples, state tables, screens |
+| [`docs/PITCH.md`](docs/PITCH.md) | The pitch (French): 2:30–3:00 video script, 5-slide deck, judge Q&A, demo-day checklist |
+| [`docs/DEMO_RUNBOOK.md`](docs/DEMO_RUNBOOK.md) | Step-by-step live demo script (French): accounts, faucet, trustlines, clicks and lines to say, troubleshooting |
+| [`docs/STELLAR_NOTES.md`](docs/STELLAR_NOTES.md) | Stellar / Trustless Work / Freighter integration notes: endpoints, payloads, USDC asset, gotchas, smoke test |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Code layout, apps, payment endpoints and state table, how to switch to Plan B |
 
 ## Testnet addresses
 
@@ -102,7 +120,7 @@ make dev
 
 Three Stellar building blocks composed into one flow: **Freighter** for identity and signing, **USDC** as the unit of payment, **Trustless Work** escrow on Soroban for trustless settlement.
 
-**Plan B, stated honestly:** if escrow creation fails during the demo, Lowbid falls back to a direct USDC payment (`Operation.payment`) from the client to the freelancer. It still settles on Stellar in seconds, but without the escrow guarantee. The "Status" list below says which path actually works.
+**Plan B, stated honestly:** if escrow creation fails during the demo, Lowbid falls back to a direct USDC payment (`Operation.payment`) from the client to the freelancer (`LOWBID_PAYMENT_MODE=direct`). The panel then reads "Paiement direct USDC" with a **Plan B** badge, and the client has one button, "Payer le freelance" ("Valider et payer" once the freelancer has declared delivery). It still settles on Stellar in seconds, but without the escrow guarantee: in direct mode the client can pay before delivery is declared. The "Status" list below says which path actually works.
 
 ## Status / what works
 
@@ -119,10 +137,10 @@ Three Stellar building blocks composed into one flow: **Freighter** for identity
 
 1. `TRUSTLESS_WORK_API_KEY=` (testnet key from dapp.trustlesswork.com → Settings → API Keys) in `.env`; leave `LOWBID_PAYMENT_MODE=` empty (auto → escrow).
 2. `LOWBID_PLATFORM_ADDRESS=G…` set to a funded testnet account **with a USDC trustline** (it receives `LOWBID_PLATFORM_FEE`).
-3. USDC trustline on all three Freighter accounts (client, freelance 1, freelance 2) — the "Ajouter la trustline USDC" button on the need page does it; the client also needs ≥ bid USDC (Circle faucet).
-4. `python manage.py seed_demo --flush` with `LOWBID_DEMO_CLIENT` / `LOWBID_DEMO_FREELANCE1` / `LOWBID_DEMO_FREELANCE2` set to those addresses, then open `/besoins/4/` (awarded need).
+3. USDC trustline on all three Freighter accounts (client, freelance 1, freelance 2) — Freighter → Manage assets, or the "Ajouter la trustline USDC" button in the payment panel of an awarded need (shown to the client and the winner); the client also needs ≥ bid USDC (Circle faucet: 10 USDC per address per 24 h, so keep demo amounts ≤ 10 USDC).
+4. `python manage.py seed_demo --flush` with `LOWBID_DEMO_CLIENT` / `LOWBID_DEMO_FREELANCE1` / `LOWBID_DEMO_FREELANCE2` set to those addresses, then open `/besoins/<id>/` for the awarded need id printed by `seed_demo` (`awarded=#<id>`; SQLite ids keep counting after `--flush`, so do not hardcode it).
 5. Smoke test §6 of `docs/STELLAR_NOTES.md` once (deploy → sign → send-transaction) and keep the `contractId` as a backup screenshot.
-6. If Trustless Work fails live: `LOWBID_PAYMENT_MODE=direct`, restart — same page, same button, one USDC payment instead of the escrow.
+6. If Trustless Work fails live: `LOWBID_PAYMENT_MODE=direct`, restart — same page, the panel switches to "Paiement direct USDC" (Plan B) and the client's single button ("Payer le freelance" / "Valider et payer") sends one USDC payment instead of the escrow. A need whose escrow is already deployed on Trustless Work stays in escrow mode.
 
 ## Built during the hackathon
 

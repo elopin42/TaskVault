@@ -116,8 +116,8 @@ Ce que crée `seed_demo` :
 
 - 3 wallets = **tes vrais comptes Freighter** (grâce aux `LOWBID_DEMO_*`) + 1 freelance aléatoire.
 - 2 besoins **ouverts** avec offres (décor de la liste « Besoins »).
-- 1 besoin **clôturé** avec 3 offres (800 USDC — pour montrer les curseurs, pas pour payer).
-- 1 besoin **attribué** à Freelance 1 (120 USDC) → sert pour la trustline (voie B), **pas** pour payer : trop cher pour le faucet.
+- 1 besoin **clôturé** avec 3 offres (budget 10 USDC — pour montrer les curseurs).
+- 1 besoin **attribué** à Freelance 1 (budget 6 USDC, offre gagnante 5 USDC) → utilisable pour la trustline (voie B) ET pour une répétition du paiement (lis `awarded=#<id>` dans la sortie de la commande).
 - ⚠️ Le paiement de la vidéo se fait sur un **besoin neuf** créé en live (10 USDC).
 
 > ⚠️ `.env` modifié ? **Redémarrer** : `Ctrl+C` dans le terminal 1, puis `make run` (≈ 10 s). Le serveur ne relit pas `.env` tout seul.

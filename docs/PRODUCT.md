@@ -19,15 +19,17 @@ Version hackathon (Hack Meridian, réseau Stellar **testnet** uniquement).
 ## 2. Le parcours en 10 étapes
 
 1. Le client connecte son wallet **Freighter** (testnet). La connexion = un message signé, pas de mot de passe.
-2. Il poste un besoin : titre, description, **budget max (USDC)**, **délai max (jours)**, jusqu'à 3 tags de compétences, fin des enchères (ex. dans 2 h).
+2. Il poste un besoin : titre, description, **budget max (USDC)**, **délai max (jours)**, jusqu'à 3 tags de compétences, durée des enchères (30 min, 2 h, 24 h ou 3 jours ; 2 h par défaut).
 3. Les freelances connectent leur propre wallet Freighter.
 4. Chaque freelance enchérit : prix, délai en jours, tags, message court. Le prix doit être **strictement inférieur** à la dernière offre.
-5. À la fin du timer, le besoin est fermé : plus aucune enchère.
+5. À la fin du timer — ou plus tôt si le client clique sur « Clôturer les enchères maintenant » — le besoin est fermé : plus aucune enchère.
 6. Lowbid calcule un score par offre et affiche la liste triée ; la meilleure reçoit le badge **« Recommandé »**.
 7. Le client peut repondérer prix / délai / compétences avec 3 curseurs.
 8. **Le client choisit** n'importe quelle offre. La recommandation est une aide, pas une règle.
-9. Le client clique sur **« Payer »** : Trustless Work crée un escrow Soroban qui bloque les USDC.
-10. Le freelance livre, le client valide, l'escrow libère les USDC vers le wallet du freelance.
+9. Le client finance : **« Créer l'escrow »** (Trustless Work déploie un contrat Soroban, une signature Freighter) puis **« Bloquer les fonds »** (les USDC partent dans le contrat, deuxième signature).
+10. Le freelance clique sur **« Déclarer la livraison »**, le client sur **« Valider la livraison »** puis **« Libérer les fonds »** : l'escrow verse les USDC sur le wallet du freelance (moins les frais).
+
+**Plan B (mode direct, sans escrow).** Si Trustless Work est indisponible (`LOWBID_PAYMENT_MODE=direct`), les étapes 9 et 10 se réduisent à un seul paiement USDC signé par le client : **« Payer le freelance »**, ou **« Valider et payer »** si le freelance a déjà déclaré la livraison (déclaration facultative, sans transaction).
 
 ## 3. Règles métier (énoncés testables)
 
@@ -43,11 +45,12 @@ Version hackathon (Hack Meridian, réseau Stellar **testnet** uniquement).
 
 **Choix et paiement**
 - R9. Le client peut choisir n'importe quelle offre active, pas seulement celle qui porte le badge « Recommandé ».
-- R10. Seul l'auteur du besoin peut choisir le gagnant, payer et valider la livraison.
-- R11. Après le choix, l'offre retenue passe à `won` et toutes les autres à `lost` (« non retenues »).
-- R12. Le bouton « Payer » n'existe que pour un besoin `awarded` ; le montant de l'escrow est exactement le prix de l'offre retenue.
-- R13. La libération des fonds n'est possible qu'après une livraison déclarée par le freelance et validée par le client.
-- R14. Un besoin peut être annulé par le client tant qu'il n'est pas `funded`. Ensuite, l'argent est dans l'escrow et n'en sort que par release (ou litige, hors scope).
+- R10. Seul l'auteur du besoin peut clôturer, annuler, choisir le gagnant, payer, valider la livraison et libérer les fonds. Seul le freelance retenu peut déclarer la livraison. Chaque étape est vérifiée côté serveur contre le wallet de la session.
+- R11. Après le choix, l'offre retenue passe à `won` et toutes les autres offres actives à `lost` (« non retenues ») ; les offres déjà `outbid` le restent.
+- R12. Le panneau de paiement n'apparaît qu'à partir d'un besoin `awarded`. En mode escrow, le client signe deux transactions dans l'ordre : « Créer l'escrow » puis « Bloquer les fonds ». En mode direct, un seul bouton : « Payer le freelance » (« Valider et payer » si la livraison est déjà déclarée). Le montant est exactement le prix de l'offre retenue ; en mode escrow, les frais (plateforme + protocole) sont prélevés à la libération, sur ce montant.
+- R13. En mode escrow, les fonds ne sont libérés qu'après une livraison déclarée par le freelance puis validée par le client (« Valider la livraison », puis « Libérer les fonds » : deux signatures). En mode direct (Plan B), le client peut payer dès l'attribution, avant toute déclaration de livraison : choix délibéré du MVP, documenté dans `docs/ARCHITECTURE.md`.
+- R14. Un besoin peut être annulé par le client tant qu'il est `open`, `closed` ou `awarded` (un escrow créé mais pas encore financé n'engage aucun fonds). En mode escrow, dès que les fonds sont bloqués (`funded`), l'argent n'en sort que par la libération (ou un litige, hors scope). En mode direct, l'annulation n'est plus possible une fois la livraison déclarée (`delivered`).
+- R15. Le client peut clôturer les enchères avant la fin du timer (« Clôturer les enchères maintenant ») ; le besoin passe aussitôt à `closed`.
 
 ## 4. Le score
 
@@ -65,6 +68,8 @@ score = wP * (1 - prix / budget_max)
 ### Exemple chiffré
 
 Besoin : budget max **500 USDC**, délai max **10 jours**, tags demandés **[django, stellar, ui]** (3 tags).
+
+> Ces montants servent à illustrer le calcul. La démo live reste **≤ 10 USDC** (le faucet Circle donne 10 USDC par adresse et par 24 h) : budget 10, offres 9 → 9,20 refusée → 7,50 (voir `docs/DEMO_RUNBOOK.md`). Le score ne dépend que des rapports prix / budget et délai / délai max, donc l'échelle ne change rien.
 
 | | Offre A | Offre B |
 |---|---|---|
@@ -104,13 +109,19 @@ B passe devant. Même données, autre priorité, autre recommandation : c'est po
 
 ## 5. États
 
+Deux machines à états : le **besoin** (`Need.status`, app `auctions`) et la ligne **Escrow** (`Escrow.status`, app `payments`, une par besoin attribué, créée à la première action de paiement). Le mode (`escrow` ou `direct`) est figé sur cette ligne à ce moment-là ; tant qu'elle est `created` (rien on-chain), il peut encore basculer.
+
 ### Besoin
 
 ```
-open ──(timer fini)──> closed ──(client choisit)──> awarded ──(escrow créé)──> funded
-                                                                                  │
-                         released <──(client valide, escrow libère)── delivered <─┘
-                                                                  (freelance livre)
+open ──(timer fini ou clôture manuelle)──> closed ──(client choisit)──> awarded
+
+Mode escrow :
+awarded ──(fonds bloqués)──> funded ──(freelance livre)──> delivered ──(fonds libérés)──> released
+
+Mode direct (Plan B) :
+awarded ──(freelance déclare, facultatif)──> delivered ──(client paie)──> released
+awarded ─────────────────(client paie directement)───────────────────────> released
 
 open / closed / awarded ──(client annule)──> cancelled
 ```
@@ -118,14 +129,45 @@ open / closed / awarded ──(client annule)──> cancelled
 | État | Signification |
 |---|---|
 | `open` | Enchères ouvertes, timer en cours |
-| `closed` | Timer fini, scores calculés, le client n'a pas encore choisi |
-| `awarded` | Une offre est retenue, paiement pas encore fait |
-| `funded` | Escrow Trustless Work créé, USDC bloqués |
+| `closed` | Timer fini (ou clôture manuelle), scores calculés, le client n'a pas encore choisi |
+| `awarded` | Une offre est retenue, fonds pas encore bloqués (en mode escrow, l'escrow peut déjà être créé) |
+| `funded` | Mode escrow uniquement : USDC bloqués dans l'escrow Trustless Work |
 | `delivered` | Le freelance a déclaré la livraison |
-| `released` | Le client a validé, les USDC sont sur le wallet du freelance |
-| `cancelled` | Annulé par le client avant financement |
+| `released` | Les USDC sont sur le wallet du freelance (libérés par l'escrow, ou payés en direct) — libellé « Payé » |
+| `cancelled` | Annulé par le client (depuis `open`, `closed` ou `awarded`) |
 
 Un besoin `closed` sans aucune enchère reste visible avec le message « Aucune offre » et peut être annulé.
+
+### Escrow (paiement)
+
+| État | Libellé UI | Mode | Signification |
+|---|---|---|---|
+| `created` | En préparation | les deux | Ligne créée, rien on-chain |
+| `deployed` | Escrow créé | escrow | Contrat Soroban déployé, pas encore financé |
+| `funded` | Fonds bloqués | escrow | USDC dans le contrat |
+| `delivered` | Livré | les deux | Le freelance a déclaré la livraison (jalon on-chain en mode escrow, simple note en base en mode direct) |
+| `approved` | Livraison validée | escrow | Le client a approuvé le jalon, fonds toujours bloqués |
+| `released` | Fonds libérés | escrow | L'escrow a versé les USDC au freelance |
+| `paid` | Payé | direct | Paiement USDC direct confirmé par Horizon |
+
+Le modèle définit aussi `failed`, mais le flux ne l'utilise pas : un refus de Trustless Work ou d'Horizon ne change pas l'état, le message est gardé et l'utilisateur réessaie.
+
+**Mode escrow — une étape = une signature Freighter**
+
+| Étape | Qui signe | Bouton | Escrow avant → après | Besoin avant → après |
+|---|---|---|---|---|
+| `deploy` | client | « Créer l'escrow » | `created` → `deployed` | `awarded` (inchangé) |
+| `fund` | client | « Bloquer les fonds » | `deployed` → `funded` | `awarded` → `funded` |
+| `deliver` | freelance retenu | « Déclarer la livraison » | `funded` → `delivered` | `funded` → `delivered` |
+| `approve` | client | « Valider la livraison » | `delivered` → `approved` | `delivered` (inchangé) |
+| `release` | client | « Libérer les fonds » | `approved` → `released` | `delivered` → `released` |
+
+**Mode direct (Plan B) — pas de `funded` ni d'`approved`**
+
+| Étape | Qui signe | Bouton | Escrow avant → après | Besoin avant → après |
+|---|---|---|---|---|
+| `deliver` (facultatif) | freelance retenu, **sans transaction** | « Déclarer la livraison » | `created` → `delivered` | `awarded` → `delivered` |
+| `direct_pay` | client | « Payer le freelance », ou « Valider et payer » après livraison | `created` / `delivered` → `paid` | `awarded` / `delivered` → `released` |
 
 ### Enchère
 
@@ -141,33 +183,37 @@ Note : `outbid` décrit le remplacement par le *même* freelance (R6). Les offre
 ## 6. Écrans
 
 **Landing**
-- La phrase de pitch, un bouton « Connecter Freighter », un schéma en 3 étapes (poster, enchérir, payer).
-- Un encart « Testnet uniquement » avec un lien pour installer Freighter.
+- La phrase de pitch, un bouton « Connecter mon wallet Freighter » (une fois connecté : « Poster un besoin » et « Voir les besoins »), un schéma en 3 étapes (poster, enchérir à la baisse, escrow USDC sur Soroban).
+- Un badge « Hack Meridian · Stellar testnet » ; le lien « Installer Freighter » est dans le pied de page de toutes les pages.
+- Dans la barre de navigation, le bouton s'appelle « Connecter le wallet » (« Connecter » sur mobile) ; connecté, il affiche l'adresse abrégée avec un menu (copier, déconnexion).
 
 **Liste des besoins**
-- Cartes : titre, budget max, délai max, tags, nombre d'offres, meilleure offre actuelle, temps restant.
-- Filtre par tag ; les besoins `open` d'abord.
+- Cartes : titre, tags (cliquables), budget max, meilleure offre actuelle, nombre d'enchères + délai max, temps restant, client.
+- Onglets « Ouverts » (par défaut), « Terminés », « Tous » ; filtre par tag (`?tag=`).
 
 **Détail d'un besoin**
-- En-tête : titre, description, budget max, délai max, tags, état.
+- En-tête : titre, description, budget max, délai max, tags, état ; tuiles Budget max / Meilleure offre / Enchères / Temps restant.
 - Timer visible en permanence (passe en `closed` à zéro, sans recharger la page).
 - Liste des enchères : prix, délai, tags, message, adresse abrégée du freelance, score une fois fermé, badge « Recommandé ».
-- Formulaire d'enchère (freelance connecté, besoin `open`) avec le prix plafond affiché : « Doit être inférieur à X USDC ».
-- Vue client après le timer : 3 curseurs + bouton « Choisir » sur chaque offre.
+- Formulaire d'enchère (freelance connecté, besoin `open`) avec le prix plafond affiché : « Doit être inférieur à X USDC » ; bouton « Envoyer mon offre » (« Remplacer mon offre » s'il en a déjà une).
+- Vue client pendant les enchères : « Clôturer les enchères maintenant » et « Annuler le besoin ».
+- Vue client après le timer : 3 curseurs (« Vos priorités ») + bouton « Choisir » sur chaque offre.
 
 **Poster un besoin**
-- Titre, description, budget max, délai max, 3 tags max, durée des enchères (30 min, 1 h, 2 h, 24 h).
-- Validation en direct ; publication liée à l'adresse du wallet connecté.
+- Titre, description, budget max, délai max, 3 tags max, durée des enchères : **30 min, 2 h (par défaut), 24 h, 3 jours**. Avec `?demo=1` dans l'URL (lien « Mode démo (5 min) » sous le champ), l'option « 5 min (démo) » apparaît en tête et devient la valeur par défaut.
+- Compteur de tags en direct (« 2 / 3 compétences ») ; validation côté serveur, erreurs affichées sous chaque champ ; publication liée à l'adresse du wallet connecté.
 
 **Mes enchères**
-- Pour le freelance : chaque besoin où il a enchéri, son offre, son état (`active`, `outbid`, `won`, `lost`), et l'état du paiement s'il a gagné.
-- Bouton « Déclarer la livraison » sur un besoin `funded` gagné.
+- Pour le freelance : chaque besoin où il a enchéri, son offre, son état (`active`, `outbid`, `won`, `lost`) et, s'il a gagné, l'état du paiement (badge) avec un lien « Voir le paiement ».
+- Pas de bouton d'action ici : « Déclarer la livraison » se fait dans le panneau de paiement de la page du besoin (le lien y mène directement, ancre `#paiement`).
 
-**Panneau Paiement / escrow** (dans le détail d'un besoin `awarded` et après)
-- Montant, adresse du freelance, bouton « Payer » (signature dans Freighter).
-- Suivi : escrow créé → livré → libéré, avec à chaque étape le **lien stellar.expert** de la transaction ou du contrat.
-- Bouton « Valider et libérer les fonds » pour le client sur un besoin `delivered`.
-- Si le mode Plan B est actif : un bandeau clair « Paiement direct, sans escrow ».
+**Panneau Paiement** (dans le détail d'un besoin `awarded` et après)
+- Titre « Paiement en escrow » (mode escrow) ; montant, adresse du freelance, solde USDC du freelance lu en direct sur Horizon.
+- Une frise d'avancement : Escrow créé → Fonds bloqués → Livré → Fonds libérés (mode direct : Livré → Payé).
+- Un seul bouton à la fois, celui de l'étape en cours, visible seulement par la personne qui doit signer (les autres voient « En attente de … ») : « Créer l'escrow », « Bloquer les fonds », « Déclarer la livraison » (avec une note de livraison facultative), « Valider la livraison », « Libérer les fonds ». Chaque bouton = une signature Freighter.
+- Un bouton « Ajouter la trustline USDC » pour le client et le freelance.
+- À chaque étape, le **lien stellar.expert** de la transaction ou du contrat.
+- Si le mode Plan B est actif : titre « Paiement direct USDC » avec un badge « Plan B », sous-titre « Paiement USDC de wallet à wallet sur Stellar, sans escrow. », et les boutons « Déclarer la livraison » (freelance, sans transaction) et « Payer le freelance » / « Valider et payer » (client).
 
 ## 7. Hors scope hackathon
 
@@ -175,7 +221,7 @@ Note : `outbid` décrit le remplacement par le *même* freelance (R6). Les offre
 - Litiges et arbitrage (rôle dispute resolver de Trustless Work).
 - Réputation des freelances (Stellar Passport, historique).
 - Enchères cachées (commit-reveal).
-- Stockage des enchères on-chain dans un contrat Soroban : aujourd'hui elles sont en base SQLite.
+- Stockage des enchères on-chain dans un contrat Soroban : aujourd'hui elles sont en base Django (SQLite par défaut, PostgreSQL si `DJANGO_DB_HOST` est défini).
 - Sortie en euros via un anchor (SEP-24).
 - Explication IA de la recommandation.
 - Paiements par jalons, plusieurs livrables, messagerie, notifications e-mail.

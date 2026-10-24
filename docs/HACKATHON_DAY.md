@@ -1,113 +1,119 @@
-# Lowbid — Jour J (checklist hackathon)
+# Lowbid — Hackathon day checklist
 
-Une page à ouvrir le matin et à garder sous les yeux. Le détail de la démo (comptes, minutage, Plan B minute par minute) est dans [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md) ; la carte du code dans [`ARCHITECTURE.md`](ARCHITECTURE.md) ; le design system dans [`FRONTEND.md`](FRONTEND.md) ; les règles pour un assistant (Claude Code) dans [`../CLAUDE.md`](../CLAUDE.md).
+One page to open in the morning and keep in sight. The demo details (accounts, timing, fallback minute by minute) are in [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md); the code map in [`ARCHITECTURE.md`](ARCHITECTURE.md); the design system in [`FRONTEND.md`](FRONTEND.md); the rules for an assistant (Claude Code) in [`../CLAUDE.md`](../CLAUDE.md).
 
 ---
 
-## 1. Setup en 10 lignes (≈ 5 min)
+## 1. Setup in 10 lines (≈ 5 min)
 
 ```bash
 git pull
-cp -n .env.example .env            # puis remplir : voir §2
+cp -n .env.example .env            # then fill it: see §2
 make dev                           # venv, deps, migrate, runserver 0.0.0.0:8000
-# nouveau terminal
-make seed                          # 3 wallets, 4 besoins (ouvert / bientôt clos / clos / attribué)
-make check                         # ruff + 146 tests + tailwind à jour → doit être vert AVANT de toucher au code
-npm run watch:css                  # (optionnel) si vous ajoutez des classes Tailwind dans les templates
+# new terminal
+make seed                          # 3 wallets, the pitch-state project (T1 paid, T2 with A 90 / B 20), a draft project
+make check                         # ruff + 222 tests + tailwind in sync → must be green BEFORE touching the code
+npm run watch:css                  # (optional) if you add Tailwind classes to templates
 ```
 
-Pré-requis : Python 3.13, Node 22 (seulement pour `make css` / `make e2e`), extension **Freighter** réglée sur **TESTNET** avec un compte financé.
+Prerequisites: Python 3.13, Node 22 (only for `make css` / `make e2e`), the **Freighter** extension on **TESTNET** with a funded account.
 
-## 2. Comptes Stellar & `.env` (voir `DEMO_RUNBOOK.md` §1.1 → §1.7)
+## 2. Stellar accounts & `.env` (see `DEMO_RUNBOOK.md` §1.1 → §1.7)
 
-| Quoi | Où | Note |
-|------|----|------|
-| 3 profils Chrome (client, freelance 1, freelance 2) + Freighter testnet | Runbook §1.1 | 1 wallet par profil |
-| XLM (friendbot) sur les 4 comptes (3 acteurs + plateforme) | §1.2 | `https://friendbot.stellar.org/?addr=G…` |
-| Trustline USDC sur les 4 comptes | §1.3 | Freighter → *Manage assets*, ou le bouton « Ajouter la trustline USDC » du panneau de paiement |
-| USDC de test (faucet Circle, 10 USDC / adresse / 24 h) | §1.4 | d'où les montants ≤ 10 USDC de `seed_demo` |
-| Clé API Trustless Work (testnet) | §1.5 | `TRUSTLESS_WORK_API_KEY=` ; vide ⇒ Plan B automatique |
-| `.env` | §1.6 | `LOWBID_PLATFORM_ADDRESS=G…` (compte avec trustline), `LOWBID_DEMO_CLIENT/FREELANCE1/FREELANCE2=G…` pour que `make seed` utilise **vos** wallets |
-| Smoke test Trustless Work | §1.8 / `STELLAR_NOTES.md` §6 | une fois, garder le `contractId` en capture |
+| What | Where | Note |
+|------|-------|------|
+| 3 Chrome profiles (company, freelance A, freelance B) + Freighter testnet | Runbook §1.1 | one wallet per profile |
+| XLM (friendbot) on the 4 accounts (3 actors + platform) | §1.2 | `https://friendbot.stellar.org/?addr=G…` |
+| USDC trustline on the 4 accounts | §1.3 | Freighter → *Manage assets*, or « Ajouter la trustline USDC » in the payment panel |
+| Test USDC (Circle faucet, 10 USDC / address / 24 h) | §1.4 | hence the small live task prices (3 / 5 / 2 USDC) |
+| Trustless Work API key (testnet) | §1.5 | `TRUSTLESS_WORK_API_KEY=`; empty ⇒ direct mode automatically |
+| Payment asset | `.env` | `STELLAR_ASSET_CODE` / `STELLAR_ASSET_ISSUER` (default testnet USDC); `XLM` + empty issuer = native XLM, direct mode only |
+| `.env` | §1.6 | `LOWBID_PLATFORM_ADDRESS=G…` (account with the trustline); `LOWBID_DEMO_CLIENT/FREELANCE1/FREELANCE2=G…` make `make seed` use **your** wallets — leave them empty before the live recording (runbook §1.7) |
+| Trustless Work smoke test | §1.8 / `STELLAR_NOTES.md` §6 | once, keep the `contractId` as a screenshot |
 
-`.env` est lu **une seule fois** au démarrage : après toute modification, `Ctrl-C` puis `make run`.
+`.env` is read **once** at startup: after any change, `Ctrl-C` then `make run`.
 
-## 3. Vérification en 5 minutes (avant de coder, avant de filmer)
+## 3. 5-minute check (before coding, before filming)
 
 1. `curl -s localhost:8000/healthz/` → `{"ok": true, "db": true, "network": "testnet"}`.
-2. `/` → « Connecter mon wallet Freighter » → popup de signature → l'adresse abrégée apparaît dans la barre, le menu wallet propose **Tableau de bord** / **Mon profil public**.
-3. `/tableau-de-bord/` → KPIs + « À faire » (le besoin clos de la seed attend un choix).
-4. `/besoins/nouveau/?demo=1` → publier un besoin (durée 5 min) → page détail avec compte à rebours.
-5. Profil freelance → « Faire une offre » sous le plafond → la liste du client se met à jour **sans recharger** (point « live »).
-6. Client → « Clôturer les enchères maintenant » → modale de confirmation → curseurs → « Choisir » sur une offre (pas forcément la recommandée).
-7. Panneau Paiement : en mode escrow « Créer l'escrow » / « Bloquer les fonds » ; en Plan B « Payer le freelance ». Liens stellar.expert visibles après chaque étape.
-8. Mobile (DevTools 390×844) : pas de scroll horizontal, barre d'onglets en bas, bouton collant sur le formulaire.
+2. `/` → « Connecter mon wallet Freighter » → signature popup → the short address appears in the navbar; the wallet menu offers « Tableau de bord » / « Mon profil public ».
+3. `/tableau-de-bord/` → KPIs + « À faire ».
+4. « Nouveau projet » → create a project → add two tasks inline (price, tags) → the task table and the total KPI update.
+5. Second profile → `/taches/` (kanban) → open one of those tasks → « Envoyer ma candidature » → the company's task page shows the candidate **without reloading** (live dot).
+6. Company → « Choisir » → confirm dialog → task « Pris ».
+7. Payment: escrow mode → « Financer le projet » (2 signatures), then the freelance « Déclarer la livraison » (1), then « Valider + noter » → « Valider et libérer » (2). Direct mode → the delivery is a declaration, « Valider et payer » (1). stellar.expert links after each step.
+8. Phone (DevTools 390×844): no horizontal scroll, bottom tab bar, sticky button on the forms, kanban columns snap-scroll.
 
-## 4. Répartition suggérée (par dossier, zéro conflit git)
+## 4. Suggested split (by folder, no git conflicts)
 
-| Personne | Dossiers | Sujets |
-|----------|----------|--------|
-| **Produit / pitch** | `docs/`, `README.md`, `docs/screenshots/` | vidéo, deck, README (adresses testnet, « Status / what works »), `make shots` |
-| **Paiements / Stellar** | `payments/`, `templates/payments/`, `static/js/lowbid-pay.js`, `static/js/lowbid-wallet.js` | Trustless Work live, trustlines, Plan B, messages d'erreur |
-| **Enchères / UI** | `auctions/`, `templates/auctions/`, `static/js/lowbid-auctions.js`, `static/css/` | règles, liste, détail, curseurs, mobile |
-| **Dashboard / comptes** | `dashboard/`, `accounts/`, `core/`, `templates/partials/`, `templates/components/` | tableau de bord, profils, nav, landing |
+| Person | Folders | Topics |
+|--------|---------|--------|
+| **Product / pitch** | `docs/`, `README.md`, `docs/screenshots/` | video, deck, README (testnet addresses, "Status / what works"), `make shots` |
+| **Payments / Stellar** | `payments/`, `templates/payments/`, `templates/projects/_funding_panel.html`, `static/js/lowbid-pay.js`, `static/js/lowbid-wallet.js` | Trustless Work live, trustlines, direct mode, error messages |
+| **Task board / UI** | `projects/`, `templates/projects/`, `static/js/lowbid-projects.js`, `static/css/` | rules, score, list, project and task pages, kanban, mobile |
+| **Dashboard / accounts** | `dashboard/`, `accounts/`, `core/`, `templates/partials/`, `templates/components/` | dashboard, profiles, nav, landing |
 
-Branche `main` directe (petit groupe) ou une branche par personne + PR : CI = ruff · tests · tailwind-in-sync.
+Direct `main` (small team) or one branch per person + PR: CI = ruff · tests · tailwind-in-sync.
 
-## 5. « Où je change… ? »
+## 5. "Where do I change…?"
 
-| Je veux changer… | Fichier(s) |
-|------------------|-----------|
-| un texte de l'interface | le template sous `templates/<app>/` (grep la phrase), messages d'erreur métier dans `auctions/services.py` / `payments/services.py` |
-| les couleurs / le thème | `static/css/lowbid-tokens.css` (dark `:root`, light `html[data-theme="light"]`) — jamais dans un composant |
-| un composant (bouton, badge, carte…) | `static/css/lowbid-components.css` (+ bump `LOWBID_ASSET_VERSION`) |
-| la navbar / la barre d'onglets mobile | `NAV_LINKS` dans `core/context_processors.py` ; markup `templates/partials/navbar.html` et `tabbar.html` |
-| le menu du wallet | `templates/partials/navbar.html` (bloc `lb-wallet-dropdown`) |
-| une nouvelle page | `CLAUDE.md` § « How to add a page » : vue → url → template (`components/`) → JS → test |
-| la liste des besoins (filtres, tri, pagination) | `auctions/views.py::need_list`, `templates/auctions/need_list.html`, `_need_card.html` |
-| la page d'un besoin | `auctions/views.py::need_detail` + `_bids_context`, `templates/auctions/need_detail.html`, `_bids_list.html`, `static/js/lowbid-auctions.js` |
-| les poids du score (40/30/30) | `DEFAULT_WEIGHTS` dans `auctions/scoring.py` (+ texte landing / détail / `PRODUCT.md` §4) |
-| les durées d'enchère proposées | `DURATION_CHOICES` / `DEMO_DURATION` dans `auctions/forms.py` |
-| une règle d'enchère (R1–R14) | `auctions/services.py` (+ test dans `auctions/tests.py`) |
-| une étape de paiement | `payments/services.py` (`prepare_<step>` / `confirm_<step>`, `stepper()`, `next_action()`), `payments/trustless_work.py`, `templates/payments/_escrow_panel.html` ; table d'états dans la docstring de `services.py` |
-| le tableau de bord / le profil | `dashboard/views.py`, `dashboard/templates/dashboard/` |
-| la seed de démo | `auctions/management/commands/seed_demo.py` |
-| le panneau Plan B | `LOWBID_PAYMENT_MODE` dans `.env` (voir §6) |
-| une variable d'environnement | `lowbid/settings.py` + `.env.example` |
+| I want to change… | File(s) |
+|-------------------|---------|
+| a UI text | the template under `templates/<app>/` (grep the sentence); business error messages in `projects/services.py` / `payments/services.py` |
+| colours / theme | `static/css/lowbid-tokens.css` (dark `:root`, light `html[data-theme="light"]`) — never inside a component |
+| a component (button, badge, card…) | `static/css/lowbid-components.css` (+ bump `LOWBID_ASSET_VERSION`) |
+| the navbar / mobile tab bar | `NAV_LINKS` in `core/context_processors.py`; markup in `templates/partials/navbar.html` and `tabbar.html` |
+| the wallet menu | `templates/partials/navbar.html` (`lb-wallet-dropdown` block) |
+| a new page | `CLAUDE.md` § "How to add a page": view → url → template (`components/`) → JS → test |
+| the project list (search, tags, sort, pagination) | `projects/views.py::project_list` (`LIST_TABS`, `LIST_SORTS`), `templates/projects/project_list.html`, `_project_card.html` |
+| the project page | `projects/views.py::project_detail`, `templates/projects/project_detail.html`, `_task_row.html`, `_task_form.html`, `_funding_panel.html` |
+| the task page / candidates | `projects/views.py::task_detail` + `_candidate_rows`, `templates/projects/task_detail.html`, `_candidates.html`, `static/js/lowbid-projects.js` |
+| the kanban | `projects/views.py::board` (`BOARD_COLUMNS`), `templates/projects/board.html`, `_board_card.html` |
+| the score (40 / ×8 / 20) or the badges | `projects/scoring.py` (`HISTORY_POINTS`, `RATING_FACTOR`, `TAGS_POINTS`, `VALIDATED_MIN_NOTE`) + the legend in `_candidates.html` + `PRODUCT.md` §4 |
+| a task-board rule (R2–R16) | `projects/services.py` (+ a test in `projects/tests.py`) |
+| a payment step | `payments/services.py` (`FLOW`, `prepare_<step>` / `confirm_<step>`, `stepper()`, `next_action()`, `project_funding()`), `payments/trustless_work.py`, `templates/payments/_escrow_panel.html`; the state table is the docstring of `services.py` |
+| the payment asset | `STELLAR_ASSET_CODE` / `STELLAR_ASSET_ISSUER` in `.env` (read through `payments/stellar.py`) |
+| the dashboard / profile | `dashboard/services.py` (to-dos, KPIs, activity), `dashboard/views.py`, `dashboard/templates/dashboard/` |
+| the demo seed | `projects/management/commands/seed_demo.py` |
+| the fallback panel | `LOWBID_PAYMENT_MODE` in `.env` (see §6) |
+| an environment variable | `lowbid/settings.py` + `.env.example` |
 
-## 6. Plan B pendant la démo
+## 6. Fallback during the demo
 
-- Trustless Work tombe → `.env` : `LOWBID_PAYMENT_MODE=direct`, `Ctrl-C`, `make run`. Même page : le panneau passe en « Paiement direct USDC » (badge **Plan B**), un seul bouton client « Payer le freelance » / « Valider et payer ». Un besoin dont l'escrow est **déjà déployé** reste en mode escrow.
-- Besoin de secours déjà attribué : `make seed` en produit un (`awarded=#<id>` dans la sortie) — ne pas hardcoder l'id (SQLite continue à compter après `--flush`).
-- Détail des scénarios (signature qui échoue, Horizon en panne, tout cassé) : `DEMO_RUNBOOK.md` §4.
+- Trustless Work goes down → `.env`: `LOWBID_PAYMENT_MODE=direct`, `Ctrl-C`, `make run`. Same pages: the panels switch to « Paiement direct USDC » (« sans escrow » badge), the delivery is a declaration, the company signs one « Payer le freelance » after rating. A task whose escrow is **already deployed** stays in escrow mode.
+- A ready-made end state: `make seed` with your real wallets produces Studio Nova's project with T1 paid and T2 showing A 90.0 « Validé » + « Recommandé » vs B 20.0 (the T1 payment is seeded, nothing on chain). Ids keep counting after `--flush`: read them from the command's output.
+- Scenario details (failed signature, Horizon down, everything broken): `DEMO_RUNBOOK.md` §4.
 
-## 7. Hygiène de commit
+## 7. Commit hygiene
 
 ```bash
-npm run build:css        # si un template / JS a gagné une classe Tailwind (CI tailwind-in-sync)
-# bump LOWBID_ASSET_VERSION dans lowbid/settings.py si lowbid-*.css / lowbid-*.js a changé
-make check               # ruff + tests + tailwind à jour
+npm run build:css        # if a template / JS gained a Tailwind class (CI tailwind-in-sync)
+# bump LOWBID_ASSET_VERSION in lowbid/settings.py if lowbid-*.css / lowbid-*.js changed
+make check               # ruff + tests + tailwind in sync
 git add -A && git commit -m "scope: what changed"
 ```
 
-- Un commit = un sujet ; message en anglais, préfixe par app (`auctions:`, `payments:`, `docs:`).
-- Jamais de `.env`, de `data/*.sqlite3` ni de `staticfiles/` dans git (déjà ignorés).
-- Captures pour le pitch : `make shots` (met à jour `docs/screenshots/`).
+- One commit = one topic; message in English, prefixed by app (`projects:`, `payments:`, `docs:`, `e2e:`).
+- Never commit `.env`, `data/*.sqlite3` or `staticfiles/` (already ignored).
+- Pitch screenshots: `make shots` (updates `docs/screenshots/`).
 
-## 8. Si ça casse — triage
+## 8. If it breaks — triage
 
-| Symptôme | Regarder | Remède |
-|----------|----------|--------|
-| 500 au démarrage, `DJANGO_SECRET_KEY is required` | `.env` | `DJANGO_DEBUG=1` en dev, ou définir la clé |
-| « Freighter est sur … ; passez sur TESTNET » | Freighter → réseau | basculer l'extension sur Testnet, recharger |
-| Connexion impossible, 400 `bad_signature` | version de Freighter | `accounts/signing.py` essaie SEP-53 → brut → sha256 ; voir le log `scheme=` |
-| La page semble ne pas prendre mon CSS / JS | cache 30 jours | bumper `LOWBID_ASSET_VERSION` (ou `DJANGO_DEBUG=1` ⇒ pas de cache) |
-| CI `tailwind-in-sync` rouge | `tailwind.css` pas rebuild | `npm run build:css` puis commit |
-| Offre refusée « strictement inférieur à X » | règle R1 | normal : le prix doit baisser ; la liste se rafraîchit |
-| « Attendez la fin des enchères avant de choisir » | besoin encore `open` | « Clôturer les enchères maintenant » ou attendre le minuteur |
-| Bouton de paiement : « Adresse plateforme non configurée » | `.env` | `LOWBID_PLATFORM_ADDRESS=G…` avec trustline USDC, restart |
-| Trustless Work 4xx/5xx, `provider` | log `trustless_work:` | relancer ; sinon Plan B (§6) |
-| Horizon 504 après signature | panneau : « transaction en attente » | le prochain `prepare` réconcilie via `/transactions/{hash}`, pas de 2ᵉ signature |
-| Solde USDC « … » qui ne bouge pas | trustline manquante | bouton « Ajouter la trustline USDC », faucet Circle |
-| e2e rouge | `data/e2e-server.log` | lire la première étape FAIL ; les erreurs Horizon sont attendues hors réseau |
-| Tests rouges après une migration | `makemigrations --check` | `python manage.py makemigrations <app>` et committer |
+| Symptom | Look at | Fix |
+|---------|---------|-----|
+| 500 at startup, `DJANGO_SECRET_KEY is required` | `.env` | `DJANGO_DEBUG=1` in dev, or set the key |
+| « Freighter est sur … ; passez sur TESTNET » | Freighter → network | switch the extension to Testnet, reload |
+| Login fails, 400 `bad_signature` | Freighter version | `accounts/signing.py` tries SEP-53 → raw → sha256; see the `scheme=` log line |
+| The page ignores my CSS / JS | 30-day cache | bump `LOWBID_ASSET_VERSION` (or `DJANGO_DEBUG=1` ⇒ no cache) |
+| CI `tailwind-in-sync` red | `tailwind.css` not rebuilt | `npm run build:css` then commit |
+| « Le projet est financé : ses tâches ne peuvent plus changer. » | project status | normal: tasks are frozen once the project is « Financé »; create another project |
+| « Vous ne pouvez pas postuler à votre propre tâche. » | wrong Freighter account | the company cannot apply to its own tasks; switch profile |
+| « Financer le projet » greyed out | its tooltip | choose a freelance first (the receiver is fixed at deploy), or everything assigned is already funded |
+| « Tâche en escrow : déclarez la livraison depuis le panneau de paiement… » | escrow mode | the freelance delivers from the payment panel, once the company funded |
+| « Validez et notez la livraison avant le paiement. » | rating missing | « Valider + noter » first; the payment chains after it |
+| Panel alert « Adresse plateforme non configurée… » | `.env` | `LOWBID_PLATFORM_ADDRESS=G…` with a USDC trustline, restart |
+| Trustless Work 4xx/5xx, `provider` | `trustless_work:` log lines, the panel's `last_error` | retry; otherwise the fallback (§6) |
+| Horizon 504 after a signature | panel: « Transaction envoyée, confirmation en attente… » | the next click reconciles through `/transactions/{hash}`, no second signature |
+| USDC balance « … » that never moves | missing trustline | « Ajouter la trustline USDC », Circle faucet |
+| e2e red | `data/e2e-server.log` | read the first FAIL step; Horizon 404s are expected and ignored |
+| Tests red after a model change | `makemigrations --check` | `python manage.py makemigrations <app>` and commit |

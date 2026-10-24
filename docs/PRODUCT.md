@@ -1,228 +1,206 @@
-# Lowbid 📉 — Spécification produit
+# Lowbid — Product spec
 
-> Le client poste un besoin et un budget max. Les freelances enchérissent à la baisse. Le gagnant est payé en USDC via un escrow on-chain.
+> A company splits a project into fixed-price tasks. Freelances apply. The company picks one freelance per task. Each task is paid in USDC from its own escrow on Stellar when the company validates the delivery.
 
-Version hackathon (Hack Meridian, réseau Stellar **testnet** uniquement).
+Hackathon version (Hack Meridian, Stellar **testnet** only). UI copy is French; it is quoted as-is below.
+
+> History: Lowbid v1 was a reverse auction; the task board replaced it on 2026-10-25.
+
+The rules below are derived from `projects/services.py`, `projects/scoring.py` and `payments/services.py`; each one is covered by `projects/tests.py`, `payments/tests_flow.py` or the e2e run (`tests/e2e/run.js`).
 
 ## 1. Personas
 
-**Claire, gérante d'une PME (le client)**
-- 12 salariés, a besoin d'une landing page ou d'un petit outil interne deux ou trois fois par an.
-- Ne sait pas si 400 ou 1 200 € est un prix juste : elle n'a jamais plus d'un devis à comparer.
-- Veut payer seulement quand le travail est livré, sans passer par une plateforme qui prend 20 %.
+**Claire, runs Studio Nova (the company)**
+- A 12-person studio that ships two or three small web projects a year for its clients and cannot staff all of them.
+- Knows what each piece of work is worth and wants to fix the price herself, not negotiate it.
+- Wants to pay only for work that was delivered, and to see quickly which freelances already worked well for her.
 
-**Yanis, freelance dev / designer**
-- Indépendant, 3 ans d'expérience, Django et UI.
-- A déjà attendu 60 jours un virement, et une fois n'a jamais été payé.
-- Veut savoir que l'argent existe *avant* de commencer, et le recevoir en quelques secondes à la livraison.
+**Yanis, freelance dev (freelance A)**
+- Independent, three years of Django and UI work.
+- Once waited 60 days for a wire transfer, and once was never paid.
+- Wants proof that the money exists *before* starting, and to be paid within seconds of delivering.
 
-## 2. Le parcours en 10 étapes
+**Nora, freelance Stellar / JS (freelance B)**
+- Strong skills, no history with Studio Nova yet.
+- Wants a fair chance: her skills count in the ranking even without history, and the company stays free to pick her.
 
-1. Le client connecte son wallet **Freighter** (testnet). La connexion = un message signé, pas de mot de passe.
-2. Il poste un besoin : titre, description, **budget max (USDC)**, **délai max (jours)**, jusqu'à 3 tags de compétences, durée des enchères (30 min, 2 h, 24 h ou 3 jours ; 2 h par défaut).
-3. Les freelances connectent leur propre wallet Freighter.
-4. Chaque freelance enchérit : prix, délai en jours, tags, message court. Le prix doit être **strictement inférieur** à la dernière offre.
-5. À la fin du timer — ou plus tôt si le client clique sur « Clôturer les enchères maintenant » — le besoin est fermé : plus aucune enchère.
-6. Lowbid calcule un score par offre et affiche la liste triée ; la meilleure reçoit le badge **« Recommandé »**.
-7. Le client peut repondérer prix / délai / compétences avec 3 curseurs.
-8. **Le client choisit** n'importe quelle offre. La recommandation est une aide, pas une règle.
-9. Le client finance : **« Créer l'escrow »** (Trustless Work déploie un contrat Soroban, une signature Freighter) puis **« Bloquer les fonds »** (les USDC partent dans le contrat, deuxième signature).
-10. Le freelance clique sur **« Déclarer la livraison »**, le client sur **« Valider la livraison »** puis **« Libérer les fonds »** : l'escrow verse les USDC sur le wallet du freelance (moins les frais).
+## 2. The flow
 
-**Plan B (mode direct, sans escrow).** Si Trustless Work est indisponible (`LOWBID_PAYMENT_MODE=direct`), les étapes 9 et 10 se réduisent à un seul paiement USDC signé par le client : **« Payer le freelance »**, ou **« Valider et payer »** si le freelance a déjà déclaré la livraison (déclaration facultative, sans transaction).
+1. The company connects its **Freighter** wallet (testnet). Login is a signed message, no password.
+2. It creates a **project** (« Nouveau projet »: title, description) and adds **tasks** inline on the project page: title, description, **fixed price** in USDC, up to 3 skill tags. The project is « Brouillon ».
+3. Freelances connect their own wallet and browse the project list (`/projets/`) or the **kanban** (`/taches/`: Ouvert · Pris · Livré · Payé).
+4. A freelance **applies** to an open task (« Postuler »): a message of up to 280 characters and up to 3 tags. No price.
+5. The task page ranks the candidates by **score** (§4) and shows the badges « Validé » and « Recommandé ». The list refreshes every 5 seconds.
+6. **The company chooses** one candidate (« Choisir », confirmed in a dialog). The task becomes « Pris », the chosen application « Choisi », every other one « Non retenu ».
+7. The company **funds**: « Financer le projet » creates one Trustless Work escrow per task with a chosen freelance (« Créer l’escrow », first Freighter signature) and locks the task's price in it (« Bloquer les fonds », second signature). The project becomes « Financé » once every assigned task holds its money.
+8. The freelance **delivers**: a link to the PR, the demo or the repository, then « Déclarer la livraison ». In escrow mode this marks the escrow's milestone as done on chain, with the link as evidence (one signature by the freelance). The task becomes « Livré ».
+9. The company **validates and rates** (« Valider + noter », 1 to 5 stars, optional comment). The rating is saved first; then the page asks for two signatures: « Valider la livraison » (approve) and « Libérer les fonds » (release). The escrow pays the freelance, minus fees, and the task becomes « Payé ».
+10. When every task of the project is paid, the project is « Terminé ». The freelance's rating and paid task now count in the score of that company's next tasks.
 
-## 3. Règles métier (énoncés testables)
+**Direct mode** (fallback, `LOWBID_PAYMENT_MODE=direct`, or automatically when the asset is native XLM): step 7 does not exist, step 8 is a declaration without a transaction, and step 9 ends with one « Payer le freelance » payment signed by the company.
 
-**Enchères**
-- R1. Une enchère dont le prix n'est pas strictement inférieur à la dernière offre du besoin est refusée.
-- R2. Une enchère dont le prix dépasse le budget max est refusée (prix ≤ budget max).
-- R3. Une enchère dont le délai dépasse le délai max est refusée (délai ≤ délai max).
-- R4. Une enchère reçue après la deadline est refusée, même si la page était encore ouverte.
-- R5. Le client ne peut pas enchérir sur son propre besoin (même adresse Stellar = refus).
-- R6. Un freelance a au plus une enchère active par besoin. Une nouvelle enchère du même freelance remplace l'ancienne si elle est plus basse (et respecte R1) ; sinon elle est refusée et l'ancienne reste active.
-- R7. Le prix et le délai sont des nombres strictement positifs ; le prix a au plus 7 décimales (précision USDC sur Stellar).
-- R8. Il faut un wallet connecté pour poster un besoin ou enchérir.
+## 3. Business rules (testable statements)
 
-**Choix et paiement**
-- R9. Le client peut choisir n'importe quelle offre active, pas seulement celle qui porte le badge « Recommandé ».
-- R10. Seul l'auteur du besoin peut clôturer, annuler, choisir le gagnant, payer, valider la livraison et libérer les fonds. Seul le freelance retenu peut déclarer la livraison. Chaque étape est vérifiée côté serveur contre le wallet de la session.
-- R11. Après le choix, l'offre retenue passe à `won` et toutes les autres offres actives à `lost` (« non retenues ») ; les offres déjà `outbid` le restent.
-- R12. Le panneau de paiement n'apparaît qu'à partir d'un besoin `awarded`. En mode escrow, le client signe deux transactions dans l'ordre : « Créer l'escrow » puis « Bloquer les fonds ». En mode direct, un seul bouton : « Payer le freelance » (« Valider et payer » si la livraison est déjà déclarée). Le montant est exactement le prix de l'offre retenue ; en mode escrow, les frais (plateforme + protocole) sont prélevés à la libération, sur ce montant.
-- R13. En mode escrow, les fonds ne sont libérés qu'après une livraison déclarée par le freelance puis validée par le client (« Valider la livraison », puis « Libérer les fonds » : deux signatures). En mode direct (Plan B), le client peut payer dès l'attribution, avant toute déclaration de livraison : choix délibéré du MVP, documenté dans `docs/ARCHITECTURE.md`.
-- R14. Un besoin peut être annulé par le client tant qu'il est `open`, `closed` ou `awarded` (un escrow créé mais pas encore financé n'engage aucun fonds). En mode escrow, dès que les fonds sont bloqués (`funded`), l'argent n'en sort que par la libération (ou un litige, hors scope). En mode direct, l'annulation n'est plus possible une fois la livraison déclarée (`delivered`).
-- R15. Le client peut clôturer les enchères avant la fin du timer (« Clôturer les enchères maintenant ») ; le besoin passe aussitôt à `closed`.
+### Identity
+- **R1** The wallet is the identity: login is a SEP-53 signature of a single-use challenge (`/auth/challenge/` → `/auth/verify/`, TTL `WALLET_CHALLENGE_TTL_SECONDS` = 300 s). Any wallet can act as a company on its own projects and as a freelance on other projects.
 
-## 4. Le score
+### Projects and tasks
+- **R2** Any signed-in wallet can create a project; it becomes that project's company. Title 3 to 120 characters, description required. A new project is `draft` (« Brouillon »).
+- **R3** Only the project's company can add a task (`forbidden`, 403), and only while the project is `draft` (`wrong_state`, 409). Title 3 to 120 characters; price strictly positive, at most 7 decimals, below 10¹¹ (`invalid`, 400); tags separated by commas, spaces or semicolons, normalised to lowercase slugs, de-duplicated, at most 3, at most 24 characters each (`bad_tags`, 400); description optional.
+- **R4** A task can be deleted only by the company, only while the project is `draft` and the task `open`. Its applications are deleted with it.
 
-```
-score = wP * (1 - prix / budget_max)
-      + wD * (1 - délai / délai_max)
-      + wT * (tags communs / tags demandés)
-```
+### Applications, score and badges
+- **R5** Any signed-in wallet except the project's company can apply to an `open` task (`own_task`, 403; `wrong_state`, 409), once per task (`duplicate`, 409, also a database constraint). Message at most 280 characters; tags as in R3. An application carries no price.
+- **R6** The ranked candidate list and the scores are public (task page and `GET /taches/<pk>/candidats.json`). Only the company sees « Choisir ».
+- **R7** The score (§4) is computed when the application is created and stored. After every rating and every paid task of a company, the pending applications on that company's open tasks are rescored.
+- **R8** « Recommandé »: exactly one application per open task carries it, the best score among the **pending** applications; ties go to the earliest application. It disappears once the task is no longer open.
+- **R9** « Validé » is relative to the company looking at the candidate: the freelance has at least one task **paid** by this company **and** an average rating from this company of at least 3. The same freelance can be « Validé » for one company and new to another.
 
-- Poids par défaut : **wP = 40, wD = 30, wT = 30**.
-- Chaque terme entre parenthèses est borné à `[0, 1]` avant pondération (un terme négatif compte 0).
-- Si le client n'a demandé aucun tag, le terme compétences vaut 1 pour tout le monde (neutre).
-- Le score est sur 100. En cas d'égalité, l'offre la moins chère passe devant, puis la plus ancienne.
+### Choice
+- **R10** Only the company chooses (`forbidden`), only on an `open` task (`wrong_state`: « Un freelance a déjà été choisi pour cette tâche. »). It may choose **any** application of the task, recommended or not. The chosen application becomes `chosen`, every other one `rejected`, the task `taken` with `assigned_to` = the freelance. A choice cannot be undone.
 
-### Exemple chiffré
+### Funding
+- **R11** A task can be funded only once a freelance is chosen (`not_chosen`): Trustless Work fixes the escrow's receiver when it is deployed. In escrow mode the company signs `deploy` then `fund` for each task; the escrow's amount is the task's price and its receiver is the chosen freelance. « Financer le projet » chains both steps for every assigned task that is not funded yet (two signatures per task); with nothing to fund it is disabled and says why.
+- **R12** A project moves from `draft` to `funded` (« Financé ») when every assigned (non-open) task's escrow holds its money (escrow mode), or at the first payment (direct mode, where nothing is locked in advance). From then on tasks can no longer be added or deleted.
 
-Besoin : budget max **500 USDC**, délai max **10 jours**, tags demandés **[django, stellar, ui]** (3 tags).
+### Delivery
+- **R13** Only the chosen freelance delivers (`not_assigned`, 403), only a `taken` task (`wrong_state`). The link is required, starts with `http://` or `https://` and has at most 500 characters (`invalid`). In escrow mode the delivery is an on-chain milestone change signed by the freelance, possible only once the escrow is funded (a database-only delivery is refused); the first 280 characters of the link go on chain as evidence. In direct mode the delivery is a declaration with no transaction.
 
-> Ces montants servent à illustrer le calcul. La démo live reste **≤ 10 USDC** (le faucet Circle donne 10 USDC par adresse et par 24 h) : budget 10, offres 9 → 9,20 refusée → 7,50 (voir `docs/DEMO_RUNBOOK.md`). Le score ne dépend que des rapports prix / budget et délai / délai max, donc l'échelle ne change rien.
+### Validation and rating
+- **R14** Only the company validates, only a `delivered` task. The rating is an integer from 1 to 5 (`invalid` otherwise); the comment is optional and cut at 280 characters. One rating per task (`duplicate`). Validating stores the rating and pays nothing by itself.
+- **R15** No payment step (approve, release, direct payment) is possible before the rating exists: « Validez et notez la livraison avant le paiement. »
+- **R16** Right after the rating the page chains the company's signatures: approve → release in escrow mode, the direct payment in direct mode. Stopping half-way is safe: the payment panel shows the remaining step as a button, and the dashboard lists it.
 
-| | Offre A | Offre B |
-|---|---|---|
-| Prix | 450 USDC | 380 USDC |
-| Délai | 8 j | 12 j |
-| Tags en commun | 2 / 3 | 1 / 3 |
+### Payment
+- **R17** Every payment step has exactly one signer: the company for deploy, fund, approve, release and direct payment; the chosen freelance for deliver. The role is checked when the transaction is prepared **and** when it is sent, and every address put in a transaction comes from the session wallet, never from the request body (`forbidden`).
+- **R18** Every step also checks the escrow status and the task status (state table §5); a step out of order is refused (`wrong_state`), a step that does not exist in the current mode too (`wrong_mode`).
+- **R19** For a direct payment, the signed transaction must be exactly one `payment` from the company to the chosen freelance, for the task's price, in the configured asset; anything else is refused (`tampered`).
+- **R20** A task becomes `paid` only through the confirmed release (escrow) or the confirmed direct payment, and only once (`projects.services.mark_paid` is idempotent). When every task of the project is paid, the project becomes `closed` (« Terminé »).
+- **R21** Sending the same signed transaction twice answers « Étape déjà confirmée. » and writes nothing twice.
+- **R22** A Trustless Work or Horizon failure never changes a status: the vendor message is kept (`Escrow.last_error`) and shown in the panel, and the user retries. When Horizon times out on a direct payment, the hash is stored as pending and the next attempt reconciles it without asking for a new signature.
+- **R23** The payment mode is frozen on a task's escrow row at its first payment step. It may still change while nothing is on chain (status `created`), so switching to direct mode after a failed deploy works. A native-XLM asset always means direct mode (Trustless Work v1 needs an issuer).
+- **R24** Any signed-in wallet can add the asset's trustline from the payment panel (« Ajouter la trustline USDC »); there is nothing to sign when it already exists, or when the asset is native XLM.
 
-**Exemple 1 — Offre A (poids 40/30/30)**
-- Prix : 1 − 450/500 = 0,10 → 40 × 0,10 = **4,0**
-- Délai : 1 − 8/10 = 0,20 → 30 × 0,20 = **6,0**
-- Compétences : 2/3 = 0,667 → 30 × 0,667 = **20,0**
-- **Score A = 30,0**
+### Error codes
 
-**Exemple 2 — Offre B (poids 40/30/30)**
-- Prix : 1 − 380/500 = 0,24 → 40 × 0,24 = **9,6**
-- Délai : 1 − 12/10 = −0,20 → borné à 0 → **0,0**
-- Compétences : 1/3 = 0,333 → 30 × 0,333 = **10,0**
-- **Score B = 19,6**
+| Code | HTTP (projects) | Meaning |
+|------|-----------------|---------|
+| `forbidden`, `own_task`, `not_assigned` | 403 | wrong role for this action |
+| `wrong_state`, `duplicate` | 409 | not possible at this stage / already done |
+| `invalid`, `bad_tags` | 400 | bad input |
+| `wallet_required` | 401 | no session (any `@wallet_required` endpoint called with `fetch`) |
 
-B est 70 USDC moins chère et gagne sur le prix (9,6 contre 4,0), mais **A est recommandée** (30,0 contre 19,6) : elle tient le délai et couvre deux compétences sur trois.
+Payment refusals (`/pay/…`) answer HTTP **200** `{ok: false, error, message}` with the codes `not_chosen · forbidden · wrong_state · wrong_mode · unknown_step · tampered · provider · stellar · invalid · not_assigned`.
 
-> Note d'honnêteté : avec la règle R3 (délai ≤ délai max), l'offre B serait refusée au formulaire. Elle sert ici à montrer le bornage à 0 ; le calcul reste défensif si R3 est un jour assouplie.
+## 4. The score
 
-**Effet des curseurs.** Si le client met les poids à 70 / 10 / 20 (il veut surtout payer moins) :
-- A = 70 × 0,10 + 10 × 0,20 + 20 × 0,667 = 7,0 + 2,0 + 13,3 = **22,3**
-- B = 70 × 0,24 + 10 × 0 + 20 × 0,333 = 16,8 + 0 + 6,7 = **23,5**
-
-B passe devant. Même données, autre priorité, autre recommandation : c'est pour ça que le client garde la main.
-
-### Curseurs
-
-- Trois curseurs : Prix, Délai, Compétences. Valeurs par défaut 40 / 30 / 30.
-- La somme fait **toujours 100** : bouger un curseur répartit la différence sur les deux autres, au prorata.
-- Chaque poids est un entier entre 0 et 100.
-- Le recalcul est immédiat côté navigateur ; le badge « Recommandé » suit les curseurs.
-- Les curseurs ne changent que l'affichage du client : ils ne modifient pas les offres et ne choisissent rien à sa place.
-
-## 5. États
-
-Deux machines à états : le **besoin** (`Need.status`, app `auctions`) et la ligne **Escrow** (`Escrow.status`, app `payments`, une par besoin attribué, créée à la première action de paiement). Le mode (`escrow` ou `direct`) est figé sur cette ligne à ce moment-là ; tant qu'elle est `created` (rien on-chain), il peut encore basculer.
-
-### Besoin
+Deterministic, no AI (`projects/scoring.py`). For an application by freelance F on a task of company C:
 
 ```
-open ──(timer fini ou clôture manuelle)──> closed ──(client choisit)──> awarded
-
-Mode escrow :
-awarded ──(fonds bloqués)──> funded ──(freelance livre)──> delivered ──(fonds libérés)──> released
-
-Mode direct (Plan B) :
-awarded ──(freelance déclare, facultatif)──> delivered ──(client paie)──> released
-awarded ─────────────────(client paie directement)───────────────────────> released
-
-open / closed / awarded ──(client annule)──> cancelled
+score = 40 × [F has at least one task PAID by C]
+      +  8 × average rating given by C to F           (0 without rating)
+      + 20 × (common tags / task tags)                 (0 when the task has no tags)
 ```
 
-| État | Signification |
-|---|---|
-| `open` | Enchères ouvertes, timer en cours |
-| `closed` | Timer fini (ou clôture manuelle), scores calculés, le client n'a pas encore choisi |
-| `awarded` | Une offre est retenue, fonds pas encore bloqués (en mode escrow, l'escrow peut déjà être créé) |
-| `funded` | Mode escrow uniquement : USDC bloqués dans l'escrow Trustless Work |
-| `delivered` | Le freelance a déclaré la livraison |
-| `released` | Les USDC sont sur le wallet du freelance (libérés par l'escrow, ou payés en direct) — libellé « Payé » |
-| `cancelled` | Annulé par le client (depuis `open`, `closed` ou `awarded`) |
+Maximum 100, stored rounded to one decimal. The bar under each candidate shows the three parts (history in brand colour, ratings in blue, skills in green). The history and rating parts are **per company**: being paid and well rated elsewhere does not count.
 
-Un besoin `closed` sans aucune enchère reste visible avec le message « Aucune offre » et peut être annulé.
+### Worked example (the seed and e2e scenario)
 
-### Escrow (paiement)
+Studio Nova's project « Plateforme de réservation pour un studio de yoga » has three tasks: T1 « Landing page » (300 USDC, `django, ui`), T2 « Intégration Freighter » (500 USDC, `stellar, js`), T3 « Dashboard » (400 USDC, `django, charts`).
 
-| État | Libellé UI | Mode | Signification |
-|---|---|---|---|
-| `created` | En préparation | les deux | Ligne créée, rien on-chain |
-| `deployed` | Escrow créé | escrow | Contrat Soroban déployé, pas encore financé |
-| `funded` | Fonds bloqués | escrow | USDC dans le contrat |
-| `delivered` | Livré | les deux | Le freelance a déclaré la livraison (jalon on-chain en mode escrow, simple note en base en mode direct) |
-| `approved` | Livraison validée | escrow | Le client a approuvé le jalon, fonds toujours bloqués |
-| `released` | Fonds libérés | escrow | L'escrow a versé les USDC au freelance |
-| `paid` | Payé | direct | Paiement USDC direct confirmé par Horizon |
+**Round 1 — T1, no history for anyone.**
 
-Le modèle définit aussi `failed`, mais le flux ne l'utilise pas : un refus de Trustless Work ou d'Horizon ne change pas l'état, le message est gardé et l'utilisateur réessaie.
+| Candidate | Tags | History | Ratings | Skills | Score |
+|-----------|------|---------|---------|--------|-------|
+| Yanis (A) | `django, ui` | 0 | 0 | 20 × 2/2 = 20 | **20.0** « Recommandé » |
+| Nora (B) | `django` | 0 | 0 | 20 × 1/2 = 10 | **10.0** |
 
-**Mode escrow — une étape = une signature Freighter**
+Studio Nova chooses Yanis. He delivers, the company rates him **5/5**, and T1 is paid.
 
-| Étape | Qui signe | Bouton | Escrow avant → après | Besoin avant → après |
-|---|---|---|---|---|
-| `deploy` | client | « Créer l'escrow » | `created` → `deployed` | `awarded` (inchangé) |
-| `fund` | client | « Bloquer les fonds » | `deployed` → `funded` | `awarded` → `funded` |
-| `deliver` | freelance retenu | « Déclarer la livraison » | `funded` → `delivered` | `funded` → `delivered` |
-| `approve` | client | « Valider la livraison » | `delivered` → `approved` | `delivered` (inchangé) |
-| `release` | client | « Libérer les fonds » | `approved` → `released` | `delivered` → `released` |
+**Round 2 — T2.**
 
-**Mode direct (Plan B) — pas de `funded` ni d'`approved`**
+| Candidate | Tags | History | Ratings | Skills | Score |
+|-----------|------|---------|---------|--------|-------|
+| Yanis (A) | `stellar` | 40 (T1 paid) | 8 × 5 = 40 | 20 × 1/2 = 10 | **90.0** « Validé » + « Recommandé » |
+| Nora (B) | `stellar, js` | 0 | 0 | 20 × 2/2 = 20 | **20.0** |
 
-| Étape | Qui signe | Bouton | Escrow avant → après | Besoin avant → après |
-|---|---|---|---|---|
-| `deliver` (facultatif) | freelance retenu, **sans transaction** | « Déclarer la livraison » | `created` → `delivered` | `awarded` → `delivered` |
-| `direct_pay` | client | « Payer le freelance », ou « Valider et payer » après livraison | `created` / `delivered` → `paid` | `awarded` / `delivered` → `released` |
+**A = 90 vs B = 20.** Nora has the better skill match, but Yanis has delivered well for this company. The company can still choose Nora: « Choisir » is on both rows.
 
-### Enchère
+## 5. States
 
-| État | Signification |
-|---|---|
-| `active` | Meilleure offre actuelle de ce freelance sur ce besoin |
-| `outbid` | Remplacée par une offre plus basse du même freelance |
-| `won` | Choisie par le client |
-| `lost` | Non retenue après le choix du client |
+### Project
 
-Note : `outbid` décrit le remplacement par le *même* freelance (R6). Les offres plus chères des autres freelances restent `active` jusqu'au choix : le client peut les retenir.
+| Status | Label | Enters when | Leaves when |
+|--------|-------|-------------|-------------|
+| `draft` | « Brouillon » | created | every assigned task holds its money in escrow, or the first direct payment → `funded`; the last task paid → `closed` |
+| `funded` | « Financé » | see above | every task paid → `closed` |
+| `closed` | « Terminé » | every task `paid` | — |
 
-## 6. Écrans
+Tasks can be added or deleted only in `draft`. A project with a single task paid directly goes from `draft` straight to `closed`.
 
-**Landing**
-- La phrase de pitch, un bouton « Connecter mon wallet Freighter » (une fois connecté : « Poster un besoin » et « Voir les besoins »), un schéma en 3 étapes (poster, enchérir à la baisse, escrow USDC sur Soroban).
-- Un badge « Hack Meridian · Stellar testnet » ; le lien « Installer Freighter » est dans le pied de page de toutes les pages.
-- Dans la barre de navigation, le bouton s'appelle « Connecter le wallet » (« Connecter » sur mobile) ; connecté, il affiche l'adresse abrégée avec un menu (copier, déconnexion).
+### Task
 
-**Liste des besoins**
-- Cartes : titre, tags (cliquables), budget max, meilleure offre actuelle, nombre d'enchères + délai max, temps restant, client.
-- Onglets « Ouverts » (par défaut), « Terminés », « Tous » ; filtre par tag (`?tag=`).
+| Status | Label | Enters when | Next |
+|--------|-------|-------------|------|
+| `open` | « Ouvert » | added | the company chooses → `taken` (or deleted, project `draft` only) |
+| `taken` | « Pris » | a freelance is chosen | the freelance delivers → `delivered` |
+| `delivered` | « Livré » | delivery confirmed (on chain in escrow mode) | the company rates, then the payment is confirmed → `paid` |
+| `paid` | « Payé » | release / direct payment confirmed | — |
 
-**Détail d'un besoin**
-- En-tête : titre, description, budget max, délai max, tags, état ; tuiles Budget max / Meilleure offre / Enchères / Temps restant.
-- Timer visible en permanence (passe en `closed` à zéro, sans recharger la page).
-- Liste des enchères : prix, délai, tags, message, adresse abrégée du freelance, score une fois fermé, badge « Recommandé ».
-- Formulaire d'enchère (freelance connecté, besoin `open`) avec le prix plafond affiché : « Doit être inférieur à X USDC » ; bouton « Envoyer mon offre » (« Remplacer mon offre » s'il en a déjà une).
-- Vue client pendant les enchères : « Clôturer les enchères maintenant » et « Annuler le besoin ».
-- Vue client après le timer : 3 curseurs (« Vos priorités ») + bouton « Choisir » sur chaque offre.
+There is no cancellation and no re-assignment.
 
-**Poster un besoin**
-- Titre, description, budget max, délai max, 3 tags max, durée des enchères : **30 min, 2 h (par défaut), 24 h, 3 jours**. Avec `?demo=1` dans l'URL (lien « Mode démo (5 min) » sous le champ), l'option « 5 min (démo) » apparaît en tête et devient la valeur par défaut.
-- Compteur de tags en direct (« 2 / 3 compétences ») ; validation côté serveur, erreurs affichées sous chaque champ ; publication liée à l'adresse du wallet connecté.
+### Application
 
-**Mes enchères**
-- Pour le freelance : chaque besoin où il a enchéri, son offre, son état (`active`, `outbid`, `won`, `lost`) et, s'il a gagné, l'état du paiement (badge) avec un lien « Voir le paiement ».
-- Pas de bouton d'action ici : « Déclarer la livraison » se fait dans le panneau de paiement de la page du besoin (le lien y mène directement, ancre `#paiement`).
+| Status | Label | Meaning |
+|--------|-------|---------|
+| `pending` | « En attente » | waiting for the company's choice; the only status that is scored and can be « Recommandé » |
+| `chosen` | « Choisi » | this freelance got the task |
+| `rejected` | « Non retenu » | another freelance got the task |
 
-**Panneau Paiement** (dans le détail d'un besoin `awarded` et après)
-- Titre « Paiement en escrow » (mode escrow) ; montant, adresse du freelance, solde USDC du freelance lu en direct sur Horizon.
-- Une frise d'avancement : Escrow créé → Fonds bloqués → Livré → Fonds libérés (mode direct : Livré → Payé).
-- Un seul bouton à la fois, celui de l'étape en cours, visible seulement par la personne qui doit signer (les autres voient « En attente de … ») : « Créer l'escrow », « Bloquer les fonds », « Déclarer la livraison » (avec une note de livraison facultative), « Valider la livraison », « Libérer les fonds ». Chaque bouton = une signature Freighter.
-- Un bouton « Ajouter la trustline USDC » pour le client et le freelance.
-- À chaque étape, le **lien stellar.expert** de la transaction ou du contrat.
-- Si le mode Plan B est actif : titre « Paiement direct USDC » avec un badge « Plan B », sous-titre « Paiement USDC de wallet à wallet sur Stellar, sans escrow. », et les boutons « Déclarer la livraison » (freelance, sans transaction) et « Payer le freelance » / « Valider et payer » (client).
+### Escrow (one per task, `payments.Escrow`)
 
-## 7. Hors scope hackathon
+Escrow mode (Trustless Work single-release, one milestone):
 
-- Mainnet et vrais fonds.
-- Litiges et arbitrage (rôle dispute resolver de Trustless Work).
-- Réputation des freelances (Stellar Passport, historique).
-- Enchères cachées (commit-reveal).
-- Stockage des enchères on-chain dans un contrat Soroban : aujourd'hui elles sont en base Django (SQLite par défaut, PostgreSQL si `DJANGO_DB_HOST` est défini).
-- Sortie en euros via un anchor (SEP-24).
-- Explication IA de la recommandation.
-- Paiements par jalons, plusieurs livrables, messagerie, notifications e-mail.
-- Comptes multi-utilisateurs par entreprise.
+| Step | Signs | Escrow status | Task status | Button |
+|------|-------|---------------|-------------|--------|
+| choose | company | — (no row yet) | `open → taken` | « Choisir » |
+| deploy | company | `created → deployed` | `taken` | « Créer l’escrow » (or « Financer le projet ») |
+| fund | company | `deployed → funded` | `taken` | « Bloquer les fonds » (chained) |
+| deliver | freelance | `funded → delivered` | `taken → delivered` | « Déclarer la livraison » |
+| validate | company | — (Rating saved) | `delivered` | « Valider + noter » |
+| approve | company | `delivered → approved` | `delivered` | « Valider la livraison » (chained) |
+| release | company | `approved → released` | `delivered → paid` | « Libérer les fonds » (chained) |
+
+Direct mode (no `deployed`, `funded` or `approved`):
+
+| Step | Signs | Escrow status | Task status | Button |
+|------|-------|---------------|-------------|--------|
+| deliver | freelance (no transaction) | `created → delivered` | `taken → delivered` | « Déclarer la livraison » |
+| validate | company | — (Rating saved) | `delivered` | « Valider + noter » |
+| direct_pay | company | `created`/`delivered → paid` | `delivered → paid` | « Payer le freelance » (chained) |
+
+`failed` exists in the status choices but no step sets it: a failure leaves the status unchanged (R22).
+
+Signatures for one task: escrow mode = 4 by the company (deploy, fund, approve, release) + 1 by the freelance (deliver); direct mode = 1 by the company.
+
+## 6. Screens
+
+| URL | Who | What | Screenshot |
+|-----|-----|------|------------|
+| `/` | everyone | Landing: pitch, live stats (open tasks, projects, USDC paid), latest projects; « Nouveau projet » once signed in | `01-landing.png`, `mobile-landing.png` |
+| `/projets/` | everyone | Project list: tabs En cours / Terminés / Tous, search (project or task title, tags), tag chips, sort (newest, highest total, most open tasks), pagination | `02-liste-projets.png`, `mobile-liste.png` |
+| `/projets/nouveau/` | signed in | New project form (title, description) | — |
+| `/projets/<pk>/` | everyone | Project page: KPIs (total of the task prices, tasks, applications, paid tasks), the task table with each task's status and payment status, the inline add-task form (company, draft), candidates per open task with « Choisir » (company), the funding banner and « Financer le projet » (company) | `03-projet-entreprise.png`, `15-financement-projet.png`, `mobile-projet.png` |
+| `/taches/<pk>/` | everyone | Task page: KPIs (fixed price, candidates, project, current step), tags, the apply form (freelance), the ranked candidates with badges and score bars (polled every 5 s), the payment panel (stepper, next step, delivery form, rating form, trustline, live balance, stellar.expert links) | `04-tache-candidats.png`, `05-tache-livree-freelance.png`, `06-valider-noter.png`, `08-tache-valide-recommande.png`, `12-tache-light.png`, `13-paiement-echec.png`, `14-paiement-tache.png`, `mobile-tache-candidats.png` |
+| `/taches/` | signed in | Freelance kanban: Ouvert (open tasks of other companies, the ones I applied to first), Pris, Livré, Payé (my tasks) | `07-tableau-kanban.png`, `mobile-kanban.png` |
+| `/mes-projets/` | signed in | The company's projects: KPIs (drafts, tasks to choose for, deliveries to validate, finished), tabs En cours / Terminés / Tous, a row per project with its next action | `09-mes-projets.png` |
+| `/tableau-de-bord/` | signed in | Dashboard: to-do list (choose, fund, validate, pay, deliver, waiting on the other side), KPIs as company and as freelance, recent activity | `10-tableau-de-bord.png`, `mobile-tableau-de-bord.png` |
+| `/profil/<address>/` | everyone | Public profile: identicon, display name (editable by its owner), projects posted, tasks paid, average rating, ratings received | `11-profil.png` |
+
+## 7. Out of scope for the hackathon
+
+- Disputes (Trustless Work supports them; the dispute resolver role is set to the platform wallet, but no screen raises or resolves a dispute).
+- Cancelling a project or a task, un-choosing a freelance, editing a task after creation.
+- Several freelances on one task, partial payments, milestones inside a task.
+- Messaging, notifications, email.
+- Mainnet.

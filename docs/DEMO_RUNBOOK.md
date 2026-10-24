@@ -1,468 +1,265 @@
-# Lowbid 📉 — Runbook démo live
+# Lowbid — Live demo runbook
 
-> Vidéo lundi matin, **soumission avant 11:00**. Script parlé : [`PITCH.md`](PITCH.md) §A.
-> Libellés copiés de l'UI réelle (commit `21149cc`). Un bouton en **gras** = un clic.
+The end-to-end task-board demo on Stellar testnet, in escrow mode, with the direct mode as the fallback. Labels are quoted from the templates (French UI). The pitch lines are in [`PITCH.md`](PITCH.md); the code map in [`ARCHITECTURE.md`](ARCHITECTURE.md); the Trustless Work reference in [`STELLAR_NOTES.md`](STELLAR_NOTES.md).
 
----
+> **Amounts:** the Circle faucet gives **10 USDC per address per 24 h**. Keep the live task prices small: the demo project below uses **3 / 5 / 2 USDC**, and only T1 (3 USDC) is funded and paid live. The seeded data uses 300 / 500 / 400 USDC but never touches the chain.
 
-## 0. TL;DR — la démo en 10 lignes
+## 0. TL;DR — the demo in 10 lines
 
-1. 3 profils Chrome = 3 wallets Freighter **Test Net** : Client (Claire), Freelance 1 (Yanis), Freelance 2 (Nora).
-2. Chaque compte : XLM (friendbot) + trustline USDC + USDC du faucet Circle, regroupés sur le Client.
-3. **Montants ≤ 10 USDC** (faucet = 10 USDC / 24 h) : budget **10**, Yanis **9**, Nora tente **9,20** (refusé), puis **7,50**.
-4. Claire : **Connecter mon wallet Freighter** → **Poster un besoin** → **Publier le besoin**.
-5. Yanis puis Nora : **Envoyer mon offre** (le refus à 9,20 s'affiche en rouge sous « Mon prix »).
-6. Claire : **Clôturer les enchères maintenant** → curseur **Prix** vers 90 (le badge « Recommandé » passe sur Nora) → **Choisir** Yanis.
-7. Claire : **Créer l'escrow** ✍️ → **Bloquer les fonds** ✍️ → onglet stellar.expert.
-8. Yanis : **Déclarer la livraison** ✍️.
-9. Claire : **Valider la livraison** ✍️ → **Libérer les fonds** ✍️ → la ligne « Solde USDC du freelance » monte.
-10. Trustless Work en panne ? `LOWBID_PAYMENT_MODE=direct`, redémarrer (10 s), un seul bouton **Valider et payer** ✍️.
+1. Company (Studio Nova) creates the project « Plateforme de réservation pour un studio de yoga » and adds 3 tasks: T1 « Landing page » 3 USDC `django, ui`, T2 « Intégration Freighter » 5 USDC `stellar, js`, T3 « Dashboard » 2 USDC `django, charts`.
+2. Freelance A (Yanis) applies to T1 with `django, ui`; freelance B (Nora) with `django`. The company's task page refreshes live: A 20.0 « Recommandé », B 10.0.
+3. Company clicks « Choisir » on A (confirm dialog). T1 « Pris », B « Non retenu ».
+4. Company clicks « Financer le projet »: **2 signatures** (« Créer l’escrow », « Bloquer les fonds »). 3 USDC leave the company wallet for the escrow contract.
+5. A opens T1, pastes the PR link, « Déclarer la livraison »: **1 signature** (milestone marked done, link as evidence).
+6. Company: « Valider + noter », 5 stars, « Valider et libérer 3.00 USDC »: the rating is saved, then **2 signatures** (approve, release).
+7. A's balance in the panel climbs by the price minus fees; stellar.expert shows the release.
+8. A and B apply to T2 (A `stellar`, B `stellar, js`): A ranks first at **90.0** with « Validé » + « Recommandé », B at **20.0**.
 
-✍️ = une popup Freighter à signer.
+Signatures: company 4, freelance A 1. Direct mode (fallback): company 1, freelance 0.
 
 ---
 
-## 1. Ce soir (J-1) — préparation Stellar
+## 1. The day before — Stellar preparation
 
-> ⏱️ Compter 1 h 30 à 2 h. Faire dans l'ordre. Garder un fichier `notes-demo.txt` ouvert pour coller les adresses.
+> Allow 1 h 30. Do it in order. Keep a `notes-demo.txt` open to paste the addresses.
 
-### 1.1 Trois profils Chrome
+### 1.1 Three browser profiles, four accounts
 
-- [ ] Chrome → icône profil (en haut à droite) → **Ajouter** → nom `Client`, couleur bleue.
-- [ ] Pareil : `Freelance 1` (vert), `Freelance 2` (orange).
-- [ ] Dans **chaque** profil : installer Freighter (https://www.freighter.app).
-- [ ] Dans chaque Freighter : **Create new wallet** → mot de passe → noter les 12 mots dans `notes-demo.txt` (testnet, pas grave).
-- [ ] Dans chaque Freighter : ⚙️ **Settings** → **Network** → **Test Net**.
-- [ ] *(Recommandé)* Compte **Plateforme** : dans le Freighter du profil Client → menu du compte → **Add a new address / Create**.
-  - Il sert d'arbitre + reçoit le `platformFee`.
-  - Sans lui, Lowbid met le client à sa place : risque de refus du contrat.
-  - Repasser ensuite sur le compte **Client** comme compte actif.
-- [ ] Copier les 4 adresses `G…` dans `notes-demo.txt`.
+- [ ] Chrome → profile icon → **Add**: `Entreprise` (blue), `Freelance A` (green), `Freelance B` (orange).
+- [ ] In **each** profile: install Freighter (https://www.freighter.app), **Create new wallet**, note the 12 words (testnet), ⚙️ **Settings → Network → Test Net**.
+- [ ] **Platform account** (recommended): in the Entreprise profile's Freighter → account menu → **Add a new address**. It is the escrow's dispute resolver and receives `LOWBID_PLATFORM_FEE`. Without it, Lowbid puts the company in both platform roles (warning in the panel) and Trustless Work may refuse the deploy. Switch back to the company account afterwards.
+- [ ] Copy the 4 `G…` addresses into `notes-demo.txt`.
 
-### 1.2 XLM (friendbot) — 4 fois
+### 1.2 XLM (friendbot) — 4 times
 
-- [ ] Ouvrir `https://friendbot.stellar.org/?addr=G…CLIENT` → réponse JSON avec un `hash` = OK.
-- [ ] Pareil pour `G…FREELANCE1`, `G…FREELANCE2`, `G…PLATEFORME`.
-- [ ] (Alternative : bouton **Fund with Friendbot** dans Freighter, sur un compte neuf.)
-- [ ] Vérifier dans chaque Freighter : ~10 000 XLM.
+- [ ] `https://friendbot.stellar.org/?addr=G…` for the company, A, B and the platform (JSON with a `hash` = OK), or **Fund with Friendbot** in Freighter.
+- [ ] Each Freighter shows about 10 000 XLM.
 
-### 1.3 Trustline USDC — sur les 4 comptes
+### 1.3 USDC trustline — on the 4 accounts
 
-> Sans trustline : le faucet ne livre pas, et le freelance ne peut pas être payé.
+> Without a trustline the faucet delivers nothing, the company cannot fund, and the release to the freelance fails on chain (Trustless Work v1 does not pre-check the receiver).
 
-**Voie A — Freighter (marche pour les 4) :**
+- **Way A — Freighter (works for all 4):** **Manage assets → Add an asset** → search `USDC` → check the issuer `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` (or **Add manually** with code `USDC` and that issuer) → sign → `USDC 0` appears.
+- **Way B — the Lowbid button (company and chosen freelance):** on a task's payment panel, « Ajouter la trustline USDC » → sign. Already there → toast « Trustline USDC déjà présente. ». The button is shown to the two parties of a task while it is not paid.
 
-- [ ] Freighter → **Manage assets** → **Add an asset**.
-- [ ] Chercher `USDC` → vérifier l'émetteur `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`.
-- [ ] Pas trouvé ? **Add manually** → Code `USDC` → Issuer = l'adresse complète ci-dessus.
-- [ ] **Add** → signer → la ligne `USDC 0` apparaît.
+### 1.4 Test USDC (Circle faucet)
 
-**Voie B — le bouton Lowbid (après §1.7, Client et Freelance 1 seulement) :**
+- [ ] https://faucet.circle.com → **USDC** → **Stellar Testnet** → paste the company address → **Send**. Repeat for A, B and the platform.
+- [ ] From A, B and the platform: Freighter **Send** → USDC → 10 → the company. Expected: company ≈ 40 USDC, **A = 0 USDC** (a clean before / after on camera).
 
-- [ ] Ouvrir le besoin seedé **« Refonte du logo et de la charte »** (attribué).
-- [ ] Dans le panneau **Paiement en escrow** → **Ajouter la trustline USDC** → signer.
-- [ ] Déjà présente ? Toast « Trustline USDC déjà présente. » = OK.
+### 1.5 Trustless Work API key (testnet)
 
-### 1.4 USDC de test (faucet Circle)
+- [ ] https://dapp.trustlesswork.com → connect the company's Freighter → sign.
+- [ ] Click the address (bottom left) → **Settings → API Keys** → complete the profile (**use case** is required) → network **Testnet** → **Generate API Key**.
+- [ ] **Copy it immediately**: it is shown once.
 
-> 🚨 **ALERTE MONTANTS** 🚨
-> Le faucet donne **10 USDC par adresse et par 24 h**.
-> Donc **tous les montants de la démo restent ≤ 10 USDC** : budget **10**, offres **9 → 9,20 refusé → 7,50**, paiement **9 USDC** (Yanis).
-> Pour avoir de la marge : faucet sur les **4** adresses, puis tout renvoyer au Client.
-
-- [ ] https://faucet.circle.com → **USDC** → réseau **Stellar Testnet** → coller `G…CLIENT` → **Send**.
-- [ ] Recommencer pour `G…FREELANCE1`, `G…FREELANCE2`, `G…PLATEFORME`.
-- [ ] Dans Freighter de Freelance 1, Freelance 2, Plateforme : **Send** → asset **USDC** → 10 → `G…CLIENT`.
-- [ ] Résultat attendu : Client ≈ **40 USDC**, Freelance 1 = **0 USDC** (beau « avant / après » dans la vidéo).
-
-### 1.5 Clé API Trustless Work (testnet)
-
-- [ ] Ouvrir https://dapp.trustlesswork.com → connecter le Freighter **Client** → signer.
-- [ ] Cliquer sur l'adresse (en bas à gauche) → **Settings** → **API Keys**.
-- [ ] Compléter le profil (le champ **use case** est obligatoire, sinon pas de clé).
-- [ ] Réseau **Testnet** → **Generate API Key**.
-- [ ] ⚠️ **Copier tout de suite** : elle n'est affichée **qu'une fois**. La coller dans `notes-demo.txt`.
-
-### 1.6 Remplir `.env`
-
-- [ ] `cd ~/Lowbid && cp -n .env.example .env`
-- [ ] Ouvrir `.env`, régler / ajouter **exactement** ces lignes :
+### 1.6 Fill `.env`
 
 ```dotenv
 DJANGO_DEBUG=1
 STELLAR_NETWORK=testnet
+STELLAR_ASSET_CODE=USDC
+STELLAR_ASSET_ISSUER=GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
 TRUSTLESS_WORK_API_URL=https://dev.api.trustlesswork.com
-TRUSTLESS_WORK_API_KEY=<la clé copiée en 1.5>
+TRUSTLESS_WORK_API_KEY=<the key from 1.5>
 LOWBID_PAYMENT_MODE=
-LOWBID_PLATFORM_ADDRESS=G…PLATEFORME
+LOWBID_PLATFORM_ADDRESS=G…PLATFORM
 LOWBID_PLATFORM_FEE=1
-LOWBID_DEMO_CLIENT=G…CLIENT
-LOWBID_DEMO_FREELANCE1=G…FREELANCE1
-LOWBID_DEMO_FREELANCE2=G…FREELANCE2
 ```
 
-- `LOWBID_PAYMENT_MODE=` vide = auto → **escrow** dès que la clé est là.
-- Les 3 lignes `LOWBID_DEMO_*` ne sont **pas** dans `.env.example` : les ajouter à la main.
-- `LOWBID_PLATFORM_FEE=1` : ne pas monter (unité non vérifiée, 1 est sans risque).
+- `LOWBID_PAYMENT_MODE=` empty = auto → **escrow** as soon as the key is set.
+- `LOWBID_PLATFORM_FEE=1`: do not raise it (unit unverified, 1 is harmless either way).
+- Do **not** set `STELLAR_ASSET_CODE=XLM` for the escrow demo: native XLM forces direct mode (`STELLAR_NOTES.md` §9).
+- `.env` changed? **Restart**: `Ctrl+C`, then `make run`. The server does not re-read it.
 
-### 1.7 Lancer + données de démo
+### 1.7 Run + demo data
 
-- [ ] Terminal 1 : `make dev` → attendre `Starting development server at http://0.0.0.0:8000/`.
-- [ ] Navigateur : http://localhost:8000 → la landing s'affiche, badge `testnet` dans la barre.
-- [ ] Terminal 2 : `cd ~/Lowbid && .venv/bin/python manage.py seed_demo --flush`
-- [ ] Noter la dernière ligne : `needs: open=#… #…  closed=#…  awarded=#…` (les numéros **ne repartent pas de 1** après un `--flush`).
+- [ ] Terminal 1: `make dev` → `Starting development server at http://0.0.0.0:8000/`. The landing shows the `testnet` badge.
+- [ ] Terminal 2: `make seed` (= `python manage.py seed_demo --flush`). It prints the payment mode, the asset, the 3 wallets and the project ids (ids keep counting after `--flush`).
 
-Ce que crée `seed_demo` :
+What `seed_demo` creates:
 
-- 3 wallets = **tes vrais comptes Freighter** (grâce aux `LOWBID_DEMO_*`) + 1 freelance aléatoire.
-- 2 besoins **ouverts** avec offres (décor de la liste « Besoins »).
-- 1 besoin **clôturé** avec 3 offres (budget 10 USDC — pour montrer les curseurs).
-- 1 besoin **attribué** à Freelance 1 (budget 6 USDC, offre gagnante 5 USDC) → utilisable pour la trustline (voie B) ET pour une répétition du paiement (lis `awarded=#<id>` dans la sortie de la commande).
-- ⚠️ Le paiement de la vidéo se fait sur un **besoin neuf** créé en live (10 USDC).
+- Studio Nova's project « Plateforme de réservation pour un studio de yoga » **at the pitch state**, « Financé » (as a live direct payment leaves it): T1 « Landing page » paid to A (rating 5, a direct-mode escrow row with a demo hash so the explorer links render — nothing is on chain), T2 « Intégration Freighter » open with A (90.0, « Validé » + « Recommandé ») and B (20.0), T3 « Dashboard » open.
+- A draft project « Refonte de la charte et du site vitrine d’une boulangerie » with three open tasks and no candidate.
 
-> ⚠️ `.env` modifié ? **Redémarrer** : `Ctrl+C` dans le terminal 1, puis `make run` (≈ 10 s). Le serveur ne relit pas `.env` tout seul.
+> **Seed with random wallets before the recording.** The score's history is per company: if `LOWBID_DEMO_CLIENT` / `LOWBID_DEMO_FREELANCE1` / `LOWBID_DEMO_FREELANCE2` point at your real Freighter accounts, the seed gives A a paid, 5-star task with **your** company, and in the live project A would already score 100 on T1. For the live run, leave those three variables empty (random actors fill the lists). Seed **with** your real wallets only to prepare the Plan C screen (§4.3), and run `make seed` again (it flushes projects and ratings) before recording.
 
-### 1.8 Smoke test Trustless Work (STELLAR_NOTES §6, montant 1)
+### 1.8 Trustless Work smoke test (STELLAR_NOTES §6, amount 1)
 
-> ⏱️ **Lancer un minuteur de 30 min maintenant.**
-
-- [ ] Terminal 2 : `.venv/bin/python manage.py shell`
-- [ ] Coller (remplacer les 3 adresses) :
+> Start a 30-minute timer now.
 
 ```python
+# .venv/bin/python manage.py shell
 from decimal import Decimal
 from payments import trustless_work as tw
-C, F, P = "G…CLIENT", "G…FREELANCE1", "G…PLATEFORME"
+C, F, P = "G…COMPANY", "G…FREELANCE_A", "G…PLATFORM"
 r = tw.deploy_single_release(signer=C, engagement_id="smoke-1", title="smoke", description="smoke",
         amount=Decimal("1"), approver=C, service_provider=F, receiver=F, release_signer=C,
         dispute_resolver=P, platform_address=P, platform_fee=Decimal("1"), milestone_description="m")
 print(r["ok"], r["error"]); print(r["data"].get("unsignedTransaction"))
 ```
 
-- [ ] `True None` + un long XDR `AAAA…` = OK. Copier le XDR.
-- [ ] https://lab.stellar.org → réseau **Testnet** → **Transactions** → **Sign** → coller → signer avec **Freighter** (compte **Client**) → copier le XDR signé.
-- [ ] Dans le shell :
+- [ ] `True None` + a long `AAAA…` XDR. Sign it at https://lab.stellar.org (Testnet → **Transactions → Sign** → Freighter, **company** account) and copy the signed XDR.
 
 ```python
-s = tw.send_transaction(signed_xdr="<XDR signé>")
+s = tw.send_transaction(signed_xdr="<signed XDR>")
 print(s["ok"], s["error"], s["data"].get("contractId"))
 print(tw.get_escrow(contract_id=s["data"]["contractId"], signer=C)["data"])
 ```
 
-- [ ] Un `contractId` `C…` = 🎉. Le coller dans `notes-demo.txt` + **capture d'écran** (preuve de secours).
-- [ ] Lire `platformFee` dans la dernière sortie et le noter.
+- [ ] A `C…` contract id = success. Paste it in `notes-demo.txt`, take a **screenshot** (backup proof), note the `platformFee` read back.
 
-### 1.9 Répétition complète dans l'app (= vidéo de secours)
+### 1.9 Full rehearsal in the app (= backup video)
 
-- [ ] **Lancer l'enregistreur d'écran** : cette répétition devient le clip de secours (§4, plan C).
-- [ ] Dérouler §3 en entier avec de **petits montants** : budget **2**, Yanis **1,50**, Nora **1**.
-- [ ] Vérifier : 4 signatures Client + 1 Freelance, tous les liens stellar.expert s'ouvrent.
-- [ ] Après : Freighter Freelance 1 → **Send** → tout son USDC → `G…CLIENT` (Freelance 1 revient à 0).
+- [ ] **Start the screen recorder**: this rehearsal becomes the backup clip (§4.3).
+- [ ] Run §3 end to end with prices of 1 USDC.
+- [ ] Check: 4 company signatures + 1 freelance signature, every stellar.expert link opens, A's balance moved.
+- [ ] Afterwards: A sends its USDC back to the company (A back to 0), then `make seed` (random wallets) to reset the history.
 
-### 1.10 🛑 Point de décision (fin du minuteur 30 min)
+### 1.10 Decision point (end of the 30-minute timer)
 
-- [ ] Smoke test **et** répétition OK → mode **escrow**. Dormir.
-- [ ] Toujours en échec après 30 min → passer en **Plan B** :
-  1. `.env` : `LOWBID_PAYMENT_MODE=direct`
-  2. `Ctrl+C` → `make run`
-  3. Le panneau doit afficher **Paiement direct USDC** + badge **Plan B**.
-  4. Refaire la répétition 1.9 (1 seule signature Client).
-  5. Dans la vidéo, dire **« paiement direct »**, jamais « escrow ».
-  6. Utiliser les lignes « Variante paiement direct » de `PITCH.md` §A.
+- Smoke test **and** rehearsal OK → escrow mode. Done.
+- Still failing → **direct mode**: `.env` `LOWBID_PAYMENT_MODE=direct`, restart, check the panels read « Paiement direct USDC » + « sans escrow », redo 1.9 (1 company signature), and say « paiement direct », never « escrow », on camera (`PITCH.md` has the variant lines).
 
-### 1.11 Si ça casse
+### 1.11 If it breaks
 
-| Symptôme (ce que tu vois) | Cause | Correctif |
+| Symptom | Cause | Fix |
 |---|---|---|
-| « Le destinataire n'a pas de trustline USDC. » | trustline manquante | §1.3 sur le compte qui reçoit |
-| Faucet Circle : rien n'arrive | trustline créée **après** la demande | trustline, puis redemander (ou autre adresse) |
-| « Solde USDC insuffisant. » | Client sous le montant | Send depuis un autre compte (§1.4) ou baisser les montants |
-| « Le compte destinataire n'existe pas encore… » | compte jamais financé | friendbot (§1.2) |
-| Toast « Freighter est sur « PUBLIC » ; passez sur TESTNET. » | mauvais réseau | Freighter ⚙️ → Network → **Test Net** |
-| « Transaction signée par une autre adresse que le compte source. » | mauvais compte actif dans Freighter | choisir le bon compte, puis **Déconnexion** / **Connecter** |
-| « Le service d'escrow n'est pas configuré (clé API…) » | `TRUSTLESS_WORK_API_KEY` vide | remplir `.env`, redémarrer |
-| Erreur 401 / « Unauthorized » / « HTTP 401 » | clé fausse, ou clé **mainnet** | régénérer une clé **Testnet** (§1.5) |
-| « HTTP 429 » | 50 requêtes / 60 s dépassées | attendre 1 min |
-| `platformFee` lu = 1 mais le freelance reçoit bizarrement moins | unité bps / % non vérifiée | ne pas toucher (1 = 0,01 % ou 1 %) ; dire « moins les frais » |
-| Erreur au déploiement qui cite `disputeResolver` | `LOWBID_PLATFORM_ADDRESS` vide (client = arbitre) | remplir l'adresse Plateforme, redémarrer |
-| « Horizon n'a pas confirmé à temps… » / « Transaction envoyée, confirmation en attente… » | Horizon 504, tx peut-être passée | **ne pas re-signer** ; ouvrir le lien explorateur, recharger dans 30 s |
-| Tout a disparu le matin (comptes vides) | reset du testnet | refaire §1.2 → §1.4 (≈ 20 min) |
+| « Le destinataire n’a pas de trustline USDC. » | missing trustline | §1.3 on the receiving account |
+| Circle faucet: nothing arrives | trustline created **after** the request | add the trustline, request again (or another address) |
+| « Solde USDC insuffisant. » | company below the task price | send USDC from another account (§1.4) or lower the price |
+| « Le compte destinataire n’existe pas encore sur le réseau… » / « Compte Stellar introuvable… » | account never funded | friendbot (§1.2) |
+| Toast about Freighter being on PUBLIC | wrong network | Freighter ⚙️ → Network → **Test Net** |
+| « Transaction signée par une autre adresse que le compte source. » | wrong active account in Freighter | pick the right account, then log out and « Connecter » again |
+| « Le service d’escrow n’est pas configuré (clé API Trustless Work manquante). » | `TRUSTLESS_WORK_API_KEY` empty | fill `.env`, restart |
+| « HTTP 401 » | wrong key, or a **mainnet** key | generate a **Testnet** key (§1.5) |
+| « HTTP 429 » | 50 requests / 60 s exceeded | wait a minute; steps already sent are kept |
+| Deploy error mentioning `disputeResolver` | `LOWBID_PLATFORM_ADDRESS` empty (company = resolver) | set the platform address, restart |
+| « Financer le projet » disabled | no task has a chosen freelance yet, or every assigned task is already funded | choose a freelance first; the button's tooltip says which case |
+| « Tâche en escrow : déclarez la livraison depuis le panneau de paiement… » | the freelance used a DB-only delivery in escrow mode | deliver from the payment panel, after the company funded |
+| « Horizon n’a pas confirmé à temps… » / « Transaction envoyée, confirmation en attente… » | Horizon 504, the tx may have passed | **do not sign again**; open the explorer link, reload in 30 s (direct payments reconcile on the next click) |
+| Everything is empty in the morning | testnet reset | redo §1.2 → §1.4 (≈ 20 min) |
 
 ---
 
-## 2. Setup navigateur pour la vidéo
+## 2. Browser setup for the recording
 
-### 2.1 Comptes : 3 profils (recommandé)
-
-- 1 profil Chrome = 1 Freighter = 1 session Lowbid. Zéro déconnexion pendant la vidéo.
-- Le nom du profil (Client / Freelance 1 / Freelance 2) s'affiche en haut à droite : le spectateur sait qui agit.
-- Changer de fenêtre : `Alt+Tab` (Windows/Linux) ou `Cmd+\`` (Mac).
-
-**Plan B : 1 seul profil** (la danse logout / connect, ≈ 20 s à chaque changement, à couper au montage) :
-
-1. Freighter → sélecteur de compte → choisir le nouveau compte.
-2. Lowbid affiche « Freighter utilise maintenant G… — déconnectez-vous pour changer de compte. »
-3. Cliquer la pastille d'adresse (en haut à droite) → **Déconnexion**.
-4. **Connecter le wallet** → popup Freighter → **Sign** (message de connexion).
-5. Retour sur la landing → **Besoins** → rouvrir le besoin.
-
-### 2.2 Onglets à ouvrir avant d'enregistrer
-
-**Fenêtre Client** (déconnecté au départ, pour filmer la connexion) :
-
-1. Le deck (slide 1).
-2. http://localhost:8000/ (landing).
-3. https://stellar.expert/explorer/testnet/account/G…FREELANCE1 (solde avant).
-
-**Fenêtre Freelance 1 — Yanis** (déjà connecté) :
-
-1. http://localhost:8000/besoins/ (le besoin neuf apparaîtra en haut).
-
-**Fenêtre Freelance 2 — Nora** (déjà connectée) :
-
-1. http://localhost:8000/besoins/
-
-### 2.3 Réglages d'affichage (dans chaque profil)
-
-- [ ] Fenêtre **plein écran** 1920 × 1080 (2 colonnes sur la page besoin).
-- [ ] Zoom **110 %** : `Ctrl/Cmd` + `+` depuis 100 %.
-- [ ] Thème sombre : bouton lune/soleil **Changer de thème** dans la barre Lowbid.
-- [ ] Barre de favoris masquée : `Ctrl/Cmd+Shift+B`.
-- [ ] Épingler l'icône Freighter dans la barre d'extensions.
-- [ ] Freighter **déverrouillé** dans les 3 profils (sinon il redemande le mot de passe en pleine prise).
-
-### 2.4 Enregistreur
-
-- [ ] Capturer **l'écran entier**, pas la fenêtre : les popups Freighter sont des fenêtres à part.
-- [ ] OBS : *Display Capture*, 1920 × 1080, 30 fps, sortie MP4. (Mac : `Cmd+Shift+5` → *Enregistrer tout l'écran*.)
-- [ ] Micro testé : 10 s d'essai, réécouter.
-- [ ] Ne pas déranger / notifications coupées, veille désactivée, Slack et mails fermés.
-- [ ] Partage de connexion du téléphone prêt (testé une fois) si le wifi tombe.
+- One Chrome profile per actor (Entreprise, Freelance A, Freelance B), side by side or on separate desktops. Freighter **unlocked** in each before recording; it asks for the password at most every 5 minutes.
+- Tabs to open beforehand: `http://localhost:8000/` in each profile; in the company profile, `https://stellar.expert/explorer/testnet/account/G…COMPANY`; in A's profile, `https://stellar.expert/explorer/testnet/account/G…FREELANCE_A`; the USDC asset page `https://stellar.expert/explorer/testnet/asset/USDC-GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`.
+- Zoom 110–125 %, dark theme (the theme toggle is in the navbar), notifications off, bookmarks bar hidden.
+- Connect each profile once before recording (« Connecter mon wallet » → sign): the session lasts 8 hours.
 
 ---
 
-## 3. Le déroulé minute par minute
+## 3. The scenario, step by step
 
-> Enregistrer **un clip par bloc** (0:00, 0:30, 1:30, 2:00, 2:30) : plus facile à refaire.
-> Couper au montage les attentes de popup.
+### 3.1 The company creates the project and its tasks
 
-### T-10 min — vérifications
+*Window: Entreprise.* « Nouveau projet » (navbar, or the raised « Créer » tab on a phone) → title « Plateforme de réservation pour un studio de yoga », a two-line description → « Créer et ajouter des tâches ». On the project page, the inline form adds the three tasks one by one (title, price, tags, « Ajouter la tâche »):
 
-- [ ] Terminal 1 : serveur lancé, pas d'erreur rouge.
-- [ ] Freighter Client ≥ **10 USDC**. Freelance 1 : noter son solde (idéalement 0).
-- [ ] Les 3 Freighter déverrouillés, réseau **Test Net**.
-- [ ] Besoin de secours prêt (§4.0).
+| Task | Price (live) | Tags |
+|------|--------------|------|
+| T1 « Landing page » | 3 USDC | `django, ui` |
+| T2 « Intégration Freighter » | 5 USDC | `stellar, js` |
+| T3 « Dashboard » | 2 USDC | `django, charts` |
 
-### 0:00 → 0:30 — Le problème
+Show: status « Brouillon », the total KPI, each task « Ouvert ». *Say:* "The company sets the price. Nobody haggles it down."
 
-| | |
-|---|---|
-| Fenêtre | Client, onglet **deck** (slide 1) |
-| Action | aucune |
-| Dire | « Quand on est freelance, on se fait payer en retard. Parfois jamais… » (PITCH §A) |
+### 3.2 A and B apply to T1
 
-### 0:30 → 1:30 — Poster, enchérir, choisir
+*Window: Freelance A.* « Tableau » (the kanban) → T1 in the « Ouvert » column → message « Django + Tailwind au quotidien, je livre en 5 jours avec le déploiement. », tags `django, ui` → « Envoyer ma candidature ». A sees its own score: 20.0.
 
-**Claire se connecte (fenêtre Client)**
+*Window: Freelance B.* T1 → message « Intégration propre depuis Figma, 2 itérations comprises. », tags `django` → score 10.0.
 
-1. Onglet landing → **Connecter mon wallet Freighter**.
-2. Popup Freighter (connexion du site, 1re fois seulement) → **Connect**.
-3. Popup Freighter « Sign message » → **Sign**.
-4. Écran : toast « Connecté en tant que G… ».
-5. Dire : « Je connecte mon wallet Freighter : une signature, pas de mot de passe. »
+*Window: Entreprise.* Keep T1's page open while they apply: the candidate list refreshes by itself every 5 seconds (live dot). A 20.0 with « Recommandé », B 10.0; each row shows the score bar (history / ratings / skills) and « Choisir ». Screenshot reference: `docs/screenshots/04-tache-candidats.png`.
 
-**Claire poste le besoin**
+### 3.3 The company chooses A
 
-1. Barre du haut → **Poster un besoin**.
-2. **Titre** : `Landing page pour ma PME`
-3. **Description** : `Une page de présentation, un formulaire de contact, un bouton de paiement USDC.`
-4. **Budget max** : `10` (USDC).
-5. **Délai max** : `10` (jours).
-6. **Compétences** : `django, stellar, ui`
-7. **Durée des enchères** : laisser **2 h**.
-8. **Publier le besoin**.
-9. Écran : « Besoin publié. Les freelances peuvent enchérir. », compte à rebours, « Aucune offre ».
-10. Dire : « Budget maximum 10 dollars — on est sur testnet —, 10 jours, trois compétences. Les enchères ferment dans deux heures ; pour la démo, je clôturerai à la main. »
+*Window: Entreprise.* « Choisir » on A → the confirm dialog → confirm. T1 becomes « Pris », A « Choisi », B « Non retenu ». *Say:* "The score is a hint. I could have picked Nora."
 
-**Yanis enchérit (fenêtre Freelance 1)**
+### 3.4 The company funds: « Financer le projet » — 2 signatures
 
-1. Recharger **Besoins** → cliquer **Landing page pour ma PME**.
-2. **Mon prix** : `9` · **Délai** : `5`.
-3. **Mes compétences** : cliquer les 3 pastilles `django` `stellar` `ui`.
-4. **Message** : `Django + Tailwind, intégration Freighter incluse.`
-5. **Envoyer mon offre** → toast « Votre offre est enregistrée. »
-6. Dire : « Yanis propose 9 dollars en 5 jours. »
+*Window: Entreprise.* Back to the project page. The funding banner « Financement en escrow » explains « Un escrow Trustless Work par tâche… ». Click **« Financer le projet »** in the header:
 
-**Nora se fait refuser, puis passe dessous (fenêtre Freelance 2)**
+1. Freighter pops up for « Créer l’escrow »: Trustless Work deploys the single-release escrow of T1 (receiver = A, amount = 3 USDC). Sign.
+2. Freighter pops up again for « Bloquer les fonds »: 3 USDC move into the contract. Sign.
 
-1. Ouvrir le même besoin, puis `F5` : la tuile **Meilleure offre** affiche `9.00 USDC`.
-2. **Mon prix** : `9.20`.
-3. Écran : en rouge sous le champ, « Doit être strictement inférieur à 9.00 USDC. »
-4. Dire : « Nora tente 9,20 : refusé, il faut passer sous la meilleure offre. »
-5. Corriger **Mon prix** : `7.50` · **Délai** : `9` · **Mes compétences** : `stellar`.
-6. **Envoyer mon offre**.
-7. Dire : « Elle descend à 7,50, en 9 jours. »
+The banner now lists T1 « Fonds bloqués » with its contract and both transaction hashes; the project is « Financé ». Screenshot reference (direct-mode variant of the banner): `docs/screenshots/15-financement-projet.png`.
 
-**Claire clôture et choisit (fenêtre Client)**
+**Show on stellar.expert:** click the « Contrat escrow » link → the contract page holds 3 USDC; the company account lost 3 USDC.
 
-1. La page s'est mise à jour seule (2 offres). Sinon `F5`.
-2. **Clôturer les enchères maintenant** → boîte de confirmation → **OK**.
-3. Écran : toast « Enchères clôturées. À vous de choisir. », titre « Offres classées », badge ⭐ **Recommandé** sur Yanis (≈ 49 / 100 contre ≈ 23).
-4. Dire : « Lowbid note chaque offre sur le prix, le délai et les compétences. Yanis est recommandé. »
-5. Panneau **Vos priorités** : glisser le curseur **Prix** vers **90** (les deux autres tombent à 5).
-   - Le basculement se fait vers 80 ; à 90 l'écart est net (≈ 25 contre 17).
-6. Écran : Nora remonte en 1re, le badge **Recommandé** passe sur elle.
-7. Dire : « Si le prix compte plus pour moi, c'est Nora qui passe devant. Mais c'est moi qui décide. »
-8. *(Optionnel)* bouton ↺ (Revenir à 40 / 30 / 30).
-9. Sur la ligne de Yanis → **Choisir** → confirmation « Retenir l'offre G… · 9.00 USDC ? » → **OK**.
-10. Écran : panneau **Offre retenue** (9.00 USDC) + panneau **Paiement en escrow** dessous.
-11. Dire : « Je choisis Yanis : plus rapide, toutes les compétences. »
+> The same two steps are also available one at a time on T1's payment panel (« Créer l’escrow », then « Bloquer les fonds »), and the company's dashboard lists « Financer « Landing page » ».
 
-### 1:30 → 2:00 — L'escrow (fenêtre Client)
+### 3.5 A delivers — 1 signature
 
-> Le panneau est dans la **colonne de droite**, sous « Offre retenue ».
-> Titre **Paiement en escrow**, étapes : Escrow créé · Fonds bloqués · Livré · Fonds libérés.
+*Window: Freelance A.* T1 → the payment panel « Paiement en escrow » shows the stepper (Escrow créé ✓, Fonds bloqués ✓) and the delivery form. Paste `https://github.com/studio-nova/booking/pull/1` → « Déclarer la livraison » → Freighter (A's account) → sign. T1 becomes « Livré », the link is displayed, and the milestone change is on chain with the link as evidence. Screenshot reference: `docs/screenshots/05-tache-livree-freelance.png`.
 
-1. **Créer l'escrow** → toast « Signature demandée » → popup Freighter → **Sign**.
-2. Écran : « Envoi sur le réseau Stellar… » puis « Escrow créé sur Stellar. » → la page se recharge.
-3. Dire : « Je crée l'escrow : Trustless Work déploie un contrat sur Stellar. »
-4. **Bloquer les fonds** → popup Freighter → **Sign**.
-5. Écran : « Fonds bloqués dans l'escrow. », badge **Fonds bloqués**.
-6. Dire : « Je bloque les fonds : mes 9 USDC partent dans le contrat. Ni chez le freelance, ni chez nous. »
-7. Bas du panneau : lien **Contrat escrow** `C…` → s'ouvre sur stellar.expert.
-8. Dire : « Voilà le contrat, public, sur stellar.expert. Yanis sait que l'argent existe avant de commencer. »
+*Before this step:* if A has no USDC trustline yet, click « Ajouter la trustline USDC » in the same panel — the release would fail without it.
 
-### 2:00 → 2:30 — Livraison et libération
+### 3.6 The company validates and rates — 2 signatures
 
-**Yanis livre (fenêtre Freelance 1)**
+*Window: Entreprise.* The project page shows « Valider + noter » on T1 (also in the dashboard to-do). On T1: five stars are pre-selected, comment « Impeccable, pixel-perfect et en avance. » → « Valider et libérer 3.00 USDC » → confirm.
 
-1. `F5` sur le besoin (relance aussi le suivi du solde, actif **2 min** après chaque chargement).
-2. Panneau : **Note de livraison** → `https://figma.com/… maquette + code livrés`.
-3. **Déclarer la livraison** → popup Freighter → **Sign**.
-4. Écran : « Livraison déclarée. Le client peut valider. »
-5. Dire : « Yanis livre, et signe de son côté. »
+1. The rating is saved (no signature).
+2. Freighter: « Valider la livraison » (approve the milestone). Sign.
+3. Freighter again: « Libérer les fonds » (release). Sign.
 
-**Claire valide et libère (fenêtre Client)**
+T1 becomes « Payé », the panel says « Fonds libérés vers le freelance. Tâche payée … », the stepper is complete, every hash links to stellar.expert. Screenshot references: `06-valider-noter.png` (the form), `14-paiement-tache.png` (the paid panel, direct-mode variant).
 
-1. `F5` → **Valider la livraison** → popup Freighter → **Sign**.
-2. Écran : « Livraison validée. Vous pouvez libérer les fonds. »
-3. Dire : « Je vérifie, je valide. »
-4. **Libérer les fonds** → popup Freighter → **Sign**.
-5. Écran : « Fonds libérés vers le freelance. » puis encadré vert « Fonds libérés vers le freelance. Merci ! »
+> If a signature is declined or fails half-way, nothing is lost: the rating is kept and the panel shows the remaining step as a button (« Libérer les fonds »). Screenshot of an error state: `13-paiement-echec.png`.
 
-**💰 Le plan qui compte**
+### 3.7 A receives the USDC
 
-- Où : panneau **Paiement en escrow** → 3e ligne **Solde USDC du freelance** (sous « Montant » et « Freelance »).
-- Elle passe de `0.00 USDC` à ≈ `8.9x USDC` (montant moins les frais).
-- Effet « en direct » : basculer sur la fenêtre **Freelance 1** (rechargée il y a < 2 min) → la ligne change toute seule dans les 5 s.
-- Bas du panneau : lien **Libération des fonds** → stellar.expert montre le virement vers Yanis.
-- Bonus : ouvrir Freighter de Freelance 1 → la ligne USDC.
-- Dire : « Regardez son solde : il vient de monter, en cinq secondes. Pas de virement, pas trente jours d'attente. »
+Show, in this order:
+- The payment panel's « Solde USDC du freelance » (polled from Horizon every 5 s): it bumps from 0 to the price minus fees.
+- A's Freighter: USDC appears.
+- stellar.expert: the « Libération des fonds » transaction → the payout to A and the platform fee to the platform account.
 
-### 2:30 → 3:00 — Pourquoi Stellar
+*Say:* "Five seconds, no wire, and the money was locked before Yanis started."
 
-| | |
-|---|---|
-| Fenêtre | Client, onglet **deck** (slide 4) |
-| Dire | « Pourquoi Stellar ? … Lowbid : les freelances se battent sur le prix, et ils sont sûrs d'être payés. » |
+### 3.8 The next task: A is on top
 
-### Qui signe quoi
+*Window: Freelance A.* T2 → message « J’ai déjà branché Freighter et Horizon sur un back-office Django. », tags `stellar` → score **90.0**.
+*Window: Freelance B.* T2 → message « Spécialiste Stellar/JS : SEP-53, trustlines, Soroban. », tags `stellar, js` → score **20.0**.
+*Window: Entreprise.* T2's candidates: A first with « Validé » + « Recommandé » (40 history + 5 × 8 ratings + 20 × ½ skills), B second (20 × 2/2 skills). « Choisir » is on both rows. Screenshot reference: `08-tache-valide-recommande.png`.
 
-**Mode escrow** (par défaut) — 5 signatures de transaction :
+### Who signs what
 
-| # | Fenêtre | Bouton | Ce que fait la signature |
-|---|---|---|---|
-| 1 | Client | **Créer l'escrow** | déploie le contrat Trustless Work |
-| 2 | Client | **Bloquer les fonds** | envoie 9 USDC dans le contrat |
-| 3 | Freelance 1 | **Déclarer la livraison** | marque le jalon « livré » |
-| 4 | Client | **Valider la livraison** | approuve le jalon |
-| 5 | Client | **Libérer les fonds** | le contrat paie Yanis |
+| Step | Window | Freighter account | Escrow mode | Direct mode |
+|------|--------|-------------------|-------------|-------------|
+| Login | each | its own | 1 message signature | same |
+| Fund T1 | Entreprise | company | 2 (deploy, fund) | — |
+| Deliver T1 | Freelance A | A | 1 (milestone change) | 0 (declaration) |
+| Validate + pay T1 | Entreprise | company | 2 (approve, release) | 1 (payment) |
+| Trustline (if missing) | A or company | its own | 1 | 1 |
 
-→ Client : **4**. Freelance : **1**. (+ 1 « Sign message » par connexion.)
+### Freighter popup slow or missing
 
-**Mode direct** (`LOWBID_PAYMENT_MODE=direct`) — 1 signature de transaction :
-
-| # | Fenêtre | Bouton | Signature ? |
-|---|---|---|---|
-| 1 | Freelance 1 | **Déclarer la livraison** | non (simple déclaration, « Envoi… ») |
-| 2 | Client | **Valider et payer** | **oui** : un paiement USDC Client → Yanis |
-
-- Le panneau s'appelle **Paiement direct USDC** + badge **Plan B**. Étapes : Livré · Payé.
-- Lien du bas : **Paiement USDC**.
-- Avant la livraison, le bouton client s'appelle **Payer le freelance** : attendre la livraison pour filmer **Valider et payer**.
-
-### Popup Freighter lente ou absente
-
-1. Attendre **10 s** (le toast « Signature demandée » est affiché).
-2. Pas de popup ? Cliquer l'icône **Freighter** dans la barre : la demande en attente s'y trouve.
-3. Freighter demande le mot de passe ? Le taper, la demande continue.
-4. Toujours rien ? `F5` puis recliquer le bouton. Rien n'a été envoyé, rien n'est perdu.
-5. Popup refusée par erreur ? Toast « Signature refusée dans Freighter — rien n'a été envoyé. » → recliquer.
+Click the Freighter icon in the toolbar: the request is usually waiting there. If it never comes, reload the page — the panel shows exactly which step remains, and nothing was submitted.
 
 ---
 
-## 4. Plan B / Plan C pendant l'enregistrement
+## 4. Fallbacks during the recording
 
-### 4.0 Besoin de secours (à préparer le matin, 5 min, hors caméra)
+### 4.1 One signature fails
 
-- [ ] Créer un 2e besoin identique (budget 10, offres Yanis 9 / Nora 7,50).
-- [ ] **Clôturer les enchères maintenant** → **Choisir** Yanis. **Ne pas cliquer plus loin.**
-- [ ] Noter son URL `/besoins/<n>/` : il attend en état « attribué », sans escrow, prêt pour les deux modes.
+Read the French message in the panel (`[data-last-error]`), fix the cause with §1.11, click the remaining step's button again. Statuses never move on a failure.
 
-### 4.1 Une signature échoue
+### 4.2 Trustless Work goes down mid-demo
 
-- Message en rouge sous le bouton + toast. **Le même bouton redevient cliquable** : c'est le bouton « réessayer ».
-- Recliquer **une** fois.
-- Message « confirmation en attente » ? **Ne pas re-signer** : lien explorateur, puis `F5` dans 30 s.
+- Nothing deployed yet for the task: `.env` `LOWBID_PAYMENT_MODE=direct`, restart (≈ 10 s), reload. The task's row is still `created`, so it switches to direct mode: the panels read « Paiement direct USDC » + « sans escrow », the delivery is a declaration, and « Valider et payer 3.00 USDC » ends with **one** company signature (« Payer le freelance »).
+- Escrow already deployed: that task stays in escrow mode (its money is on chain). Finish it when Trustless Work is back, and run the next task in direct mode.
 
-### 4.2 Trustless Work tombe en pleine démo
+### 4.3 Everything is down (network, testnet, Horizon)
 
-1. `.env` : `LOWBID_PAYMENT_MODE=direct`
-2. Terminal 1 : `Ctrl+C` → `make run` → **≈ 10 secondes**.
-3. Escrow **pas encore créé** (étape « Escrow créé » non cochée) ? Le même besoin passe en direct : `F5`.
-4. Escrow **déjà créé** ? Ce besoin reste en escrow. Ouvrir le **besoin de secours** (§4.0).
-5. **Ré-enregistrer à partir de 1:30 seulement**, avec les lignes « Variante paiement direct » (PITCH §A).
-
-### 4.3 Tout est en panne (réseau, testnet, Horizon)
-
-- [ ] Monter la **répétition enregistrée hier soir** (§1.9) à la place des blocs 0:30 → 2:30.
-- [ ] Ajouter la capture du `contractId` du smoke test.
-- [ ] Le dire honnêtement dans la vidéo : « enregistré hier soir sur testnet ».
-- [ ] Wifi seul en cause ? Partage de connexion du téléphone, puis on reprend.
+- Play the rehearsal clip from §1.9.
+- Or show the seeded pitch state (seed with your real wallets, `make seed`): Studio Nova's project with T1 « Payé », T2's candidates A 90.0 « Validé » + « Recommandé » vs B 20.0. Say plainly that the T1 payment shown is seeded demo data.
 
 ---
 
-## 5. Après la vidéo (9 h → 11 h)
+## 5. After the recording
 
-> ⏰ Alarmes : **10:30** (commencer la soumission) et **11:00** (deadline).
-
-### 5.1 Vidéo (9:00)
-
-- [ ] Montage minimal : couper les attentes de popup. Viser 2 min 30 à 3 min.
-- [ ] Upload YouTube **non répertorié** (ou Loom). Tester le lien en navigation privée.
-- [ ] Coller le lien dans `README.md` → ligne **Demo video**.
-
-### 5.2 Deck (9:30)
-
-- [ ] Prendre les captures dans `docs/screenshots/` (produites par l'agent QA) : liste dans `PITCH.md` §B, slide 3.
-- [ ] 5 slides (`PITCH.md` §B). Export PDF. Lien → `README.md` ligne **Pitch deck**.
-
-### 5.3 README (10:00)
-
-- [ ] **Status / what works** : cocher **uniquement** ce qui a marché pour de vrai à l'enregistrement.
-  - Mode escrow OK → cocher « Escrow create » + « Escrow release ».
-  - Mode direct utilisé → cocher seulement « Plan B: direct USDC payment ».
-  - « Wallet login » → coché si la connexion Freighter a marché.
-- [ ] **Testnet addresses** : les 3 `G…` + le `C…` du contrat de la vidéo.
-- [ ] Colonne stellar.expert :
-  - compte : `https://stellar.expert/explorer/testnet/account/G…`
-  - contrat : `https://stellar.expert/explorer/testnet/contract/C…`
-  - (copier les liens du bas du panneau : **Contrat escrow**, **Libération des fonds**)
-- [ ] **Team** : noms, rôles, liens.
-- [ ] `git add README.md docs/ && git commit -m "docs: demo links + testnet addresses" && git push`
-
-### 5.4 Soumission (10:30 → au plus tard 10:55)
-
-- [ ] https://app.hackmeridian.com → formulaire de soumission.
-- [ ] Repo GitHub, lien vidéo, lien deck, track **Composed**.
-- [ ] **Envoyer avant 11:00**. Capture d'écran de la confirmation.
+1. Export the video (2:30–3:00), upload it, paste the link in `README.md`.
+2. Fill the README's **Testnet addresses** table (company, A, B, platform, T1's escrow contract) with stellar.expert links, and tick the **Status** lines that really worked live.
+3. Deck: the five slides of `PITCH.md` §B, screenshots from `docs/screenshots/`.
+4. Submit before the deadline; double-check the repository is public and `make check` is green on the submitted commit.

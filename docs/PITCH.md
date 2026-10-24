@@ -1,124 +1,121 @@
-# Lowbid 📉 — Pitch
+# Lowbid — Pitch
 
-> Aligné sur l'UI réelle (libellés copiés des templates). Le pas-à-pas des clics est dans [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md) §3.
-> Montants **testnet, ≤ 10 USDC** (le faucet Circle donne 10 USDC / 24 h) : budget **10**, Yanis **9**, Nora **9,20 refusé → 7,50**, paiement **9 USDC**.
+> Aligned with the real UI (French labels copied from the templates). The click-by-click script is [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md) §3.
+> Testnet amounts (the Circle faucet gives 10 USDC per day): T1 « Landing page » **3 USDC**, T2 « Intégration Freighter » 5 USDC, T3 « Dashboard » 2 USDC. Only T1 is funded and paid on camera.
 
-## A. Script vidéo (2 min 30 à 3 min)
+One-line pitch: **"A company splits its project into fixed-price tasks; each task's money is locked on Stellar before the work starts and released to the freelance's wallet the moment the company approves."**
 
-**0:00 — Le problème** *(face caméra ou slide 1)*
-« Quand on est freelance, on se fait payer en retard. Parfois jamais. Et quand on est une petite entreprise, on paie souvent trop cher, parce qu'on n'a qu'un seul devis sous les yeux. Au milieu, les plateformes prennent 10 à 20 % et gardent l'argent des semaines. Lowbid règle les deux problèmes à la fois. »
+## A. Video script (2:30 to 3:00)
 
-**0:30 — Démo : poster, enchères, choix** *(écran)*
-« Je suis Claire, je gère une PME. Je clique sur "Connecter mon wallet Freighter" et je signe : pas de compte, pas de mot de passe. Je poste mon besoin : une landing page, budget maximum 10 dollars — on est sur testnet —, 10 jours maximum, compétences django, stellar et ui. Les enchères ferment dans deux heures ; pour la démo, je clôturerai à la main.
-Yanis propose 9 dollars en 5 jours. Nora tente 9,20 : refusé, il faut passer sous la meilleure offre. Elle descend à 7,50, en 9 jours.
-Je clôture. Lowbid note chaque offre sur le prix, le délai et les compétences : Yanis reçoit le badge "Recommandé". Si le prix compte plus pour moi, je pousse ce curseur : c'est Nora qui passe devant. Mais c'est moi qui décide. Je choisis Yanis : plus rapide, toutes les compétences. »
+The voice-over is recorded in French for the demo; the English text below is the reference.
 
-**1:30 — Escrow créé** *(écran, puis onglet stellar.expert)*
-« Je clique sur "Créer l'escrow" et je signe dans Freighter : Trustless Work déploie un contrat sur Stellar. Puis "Bloquer les fonds" : mes 9 USDC partent dans le contrat. Ils ne vont pas chez le freelance, et ils ne restent pas chez nous non plus. Voilà le contrat, public, sur stellar.expert. Yanis sait que l'argent existe avant de commencer à travailler. »
+**0:00 — The problem** *(face camera or slide 1)*
+"Freelances get paid late, sometimes never. Small companies that split a project between several freelances juggle quotes, invoices and trust, one person at a time. In between, platforms take 10 to 20 % and hold the money for weeks. Lowbid fixes both sides."
 
-**2:00 — Release, le solde monte** *(écran : panneau paiement, ligne « Solde USDC du freelance »)*
-« Yanis livre : il déclare la livraison et signe de son côté. Je vérifie, je clique "Valider la livraison", puis "Libérer les fonds". Regardez son solde : il vient de monter, en cinq secondes. Pas de virement, pas trente jours d'attente. »
+**0:25 — Project, tasks, candidates** *(screen)*
+"I'm Claire, I run Studio Nova. I connect my Freighter wallet and sign: no account, no password. I create my project, a booking site for a yoga studio, and split it into three tasks with a fixed price each: the landing page at 3 dollars — we're on testnet —, the Freighter integration, the dashboard.
+Yanis and Nora apply to the landing page: a short message and their skills. Nobody haggles: the price is mine. My candidate list updates live. Lowbid ranks them with a simple, explainable score, and Yanis gets « Recommandé ». I choose him."
 
-> **Variante paiement direct** (si `LOWBID_PAYMENT_MODE=direct`, voir runbook §1.10 / §4.2) — remplace 1:30 et 2:00 :
-> **1:30** « Ici, le paiement part de wallet à wallet, sans escrow : c'est notre mode de secours. Yanis déclare sa livraison. »
-> **2:00** « Je vérifie, je clique "Valider et payer", je signe une seule fois dans Freighter. Regardez son solde : il vient de monter, en cinq secondes. Voilà la transaction sur stellar.expert. Pas de virement, pas trente jours d'attente. »
-> Ne jamais dire « escrow » ni « contrat » dans cette variante.
+**1:10 — Funding** *(screen, then stellar.expert)*
+"I click « Financer le projet ». Two signatures in Freighter: Trustless Work deploys an escrow for this task on Stellar, with Yanis as the receiver, and my 3 USDC go into it. They are not with Yanis yet, and not with us either. Here is the contract, public, on stellar.expert. Yanis knows the money exists before he writes a line of code."
 
-**2:30 — Pourquoi Stellar** *(slide 4)*
-« Pourquoi Stellar ? Parce que le dollar numérique, l'USDC, y circule en cinq secondes pour une fraction de centime. Parce que le contrat qui garde l'argent tourne sur Soroban, sans banque au milieu. Et parce que le wallet, Freighter, sert à la fois d'identité et de signature. Trois briques, un seul parcours. Lowbid : les freelances se battent sur le prix, et ils sont sûrs d'être payés. »
+**1:45 — Delivery, rating, release** *(screen: payment panel, « Solde USDC du freelance »)*
+"Yanis delivers: he pastes his pull-request link and signs; the link is recorded on chain as the delivery evidence. I check it, give him five stars, and sign twice: approve, release. Look at his balance: it just went up, in five seconds. No wire, no thirty days."
 
-*(Environ 300 mots parlés, soit 2 min 30 à débit normal, attentes comprises. Lire à voix haute une fois chronométré avant d'enregistrer. Couper au montage les attentes de popup Freighter.)*
+**2:15 — Why it compounds** *(screen: task T2)*
+"Next task. Yanis and Nora apply again. Nora matches the skills better, but Yanis has already delivered well for me: he is now « Validé » and on top, 90 against 20. The company still decides — but trust is earned task by task, and it is on chain."
 
-## B. Deck en 5 slides
+> **Direct-mode variant** (if `LOWBID_PAYMENT_MODE=direct`, see runbook §1.10 / §4.2) — replaces 1:10 and 1:45:
+> **1:10** "Here the payment goes wallet to wallet, without escrow: it's our fallback mode. Nothing is locked in advance."
+> **1:45** "Yanis declares his delivery with the link. I check, give five stars, click « Valider et payer » and sign once in Freighter. Look at his balance: up, in five seconds. Here is the transaction on stellar.expert."
+> Never say "escrow" or "contract" in this variant.
 
-**Slide 1 — Problème**
-- Freelances payés en retard, voire jamais.
-- Clients qui paient trop cher : un seul devis, aucune comparaison.
-- Plateformes : 10 à 20 % de commission, fonds bloqués des semaines.
-- Personne n'a confiance, donc tout le monde paie un intermédiaire.
-- *Note orateur : un chiffre, une phrase par problème, pas plus de 30 secondes.*
+**2:35 — Why Stellar** *(slide 4)*
+"Why Stellar? Because digital dollars, USDC, settle in five seconds for a fraction of a cent. Because the contract that holds the money runs on Soroban, with no bank in the middle. And because the wallet, Freighter, is both the identity and the signature. Three building blocks, one flow. Lowbid: fixed prices, earned trust, guaranteed payment."
+
+*(About 330 spoken words, 2:45 at a normal pace including waits. Read it aloud once with a timer before recording. Cut the Freighter popup waits in editing.)*
+
+## B. Five-slide deck
+
+**Slide 1 — Problem**
+- Freelances paid late, or never.
+- Companies that split a project juggle several freelances, quotes and invoices, with no shared track record.
+- Platforms: 10 to 20 % commission, funds held for weeks.
+- *Speaker note: one figure, one sentence per problem, 30 seconds max.*
 
 **Slide 2 — Solution**
-- Le client poste un besoin avec un budget et un délai maximum.
-- Les freelances enchérissent à la baisse, chaque offre doit battre la précédente.
-- Un score prix + délai + compétences recommande, le client choisit.
-- Paiement en USDC bloqué dans un escrow, libéré à la validation.
-- *Note orateur : insister sur « le client choisit » avant qu'un juré parle de course au moins-disant.*
+- The company splits a project into tasks with a fixed price in USDC.
+- Freelances apply with a message and their skills; no race to the bottom.
+- A deterministic score (history with this company, ratings, skills) recommends; the company chooses.
+- Each task's price is locked in its own Trustless Work escrow once the freelance is chosen, released when the company approves the delivery.
+- *Speaker note: stress "the company chooses" and "fixed price".*
 
-**Slide 3 — Démo (captures)**
-- Formulaire « Poster un besoin ».
-- Détail du besoin : timer, offres, refus d'une offre trop haute, badge « Recommandé », curseurs.
-- Panneau « Paiement en escrow » : étapes + lien stellar.expert du contrat.
-- « Solde USDC du freelance » avant / après la libération.
-- Captures à prendre dans `docs/screenshots/` (noms à vérifier avec ce que l'agent QA a déposé) :
-  - `01-landing.png` — landing, bouton « Connecter mon wallet Freighter »
-  - `02-poster-un-besoin.png` — formulaire rempli (10 USDC, 10 jours, django / stellar / ui)
-  - `03-encheres-ouvertes.png` — besoin ouvert, compte à rebours, offres en direct
-  - `04-offre-refusee.png` — « Doit être strictement inférieur à 9.00 USDC. »
-  - `05-classement-recommande.png` — besoin clôturé, curseurs « Vos priorités », badge « Recommandé »
-  - `06-escrow-fonds-bloques.png` — panneau « Paiement en escrow », étape « Fonds bloqués »
-  - `07-fonds-liberes.png` — « Fonds libérés vers le freelance. Merci ! » + solde du freelance
-  - `08-stellar-expert.png` — page stellar.expert du contrat ou de la libération
-  - `09-mobile.png` — détail d'un besoin sur téléphone (optionnel)
-- *Note orateur : les captures servent de filet si la démo live ne passe pas.*
+**Slide 3 — Demo (screenshots from `docs/screenshots/`)**
+- `03-projet-entreprise.png` — the project page: tasks, statuses, candidates, funding banner.
+- `04-tache-candidats.png` — ranked candidates, « Recommandé », « Choisir » on every row.
+- `05-tache-livree-freelance.png` — the freelance's view after « Déclarer la livraison ».
+- `06-valider-noter.png` — the five-star rating form.
+- `14-paiement-tache.png` — « Tâche payée », hashes linked to stellar.expert, the freelance's balance.
+- `08-tache-valide-recommande.png` — the next task: A 90.0 « Validé » + « Recommandé » vs B 20.0.
+- Optional: `07-tableau-kanban.png` (the freelance's kanban), `mobile-tache-candidats.png` (phone).
+- *Speaker note: the screenshots are the safety net if the live demo fails. They were produced by the e2e run in direct mode; the live demo shows the escrow.*
 
-**Slide 4 — Stack Stellar (schéma)**
-- Freighter : connexion par message signé, signature de chaque paiement.
-- USDC sur Stellar testnet : ~5 s, frais ≈ 0,00001 XLM.
-- Trustless Work : escrow Soroban créé et libéré via son API, appelée par Django.
-- Django + JS vanilla + `@stellar/stellar-sdk` ; Plan B : paiement USDC direct.
-- *Note orateur : montrer le schéma Client / Lowbid / Stellar du README et dire « track Composed ».*
+**Slide 4 — Stellar stack (diagram)**
+- Freighter: login by signed message (SEP-53), every payment step signed in the user's wallet.
+- USDC on Stellar testnet (asset configurable): ~5 s, fees ≈ 0.00001 XLM.
+- Trustless Work: one single-release Soroban escrow per task, built by its API, proxied by Django, signed in Freighter.
+- Django + vanilla JS + `@stellar/stellar-sdk`; fallback: a direct USDC payment.
+- *Speaker note: show the README diagram and say "track Composed".*
 
-**Slide 5 — Suite**
-- Réputation via Stellar Passport, litiges via le rôle dispute resolver de Trustless Work.
-- Sortie en euros via un anchor (SEP-24).
-- Enchères cachées (commit-reveal), puis enchères stockées dans un contrat Soroban.
-- Explication IA de la recommandation : deux phrases « pourquoi cette personne ».
-- *Note orateur : finir sur la phrase de pitch, pas sur la roadmap.*
+**Slide 5 — Next**
+- Disputes through Trustless Work's dispute-resolver role (already set to the platform wallet).
+- Portable reputation (ratings and paid tasks) beyond one company.
+- Off-ramp to euros through an anchor (SEP-24).
+- One click for two signatures (deploy + fund, approve + release), still without any server-side key.
+- *Speaker note: end on the one-line pitch, not on the roadmap.*
 
-## C. Questions des jurés
+## C. Judge Q&A
 
-**1. Une enchère inversée, ça ne pousse pas les prix vers le bas jusqu'au travail bâclé ?**
-Non, parce que le prix ne pèse que 40 % du score : le délai et les compétences comptent pour 60 %. Et surtout, le client choisit librement. Le badge « Recommandé » est une aide, il peut retenir une offre plus chère — c'est exactement ce qu'on fait dans la démo.
+**1. Why fixed prices instead of letting freelances compete on price?**
+Because a race to the lowest price produces rushed work and punishes the freelances who are good. The company knows what a task is worth; freelances compete on fit and track record. The score is public and explainable: 40 points for a task already paid by this company, 8 points per star of average rating from this company, 20 points for the skills match.
 
-**2. Et si le freelance ne livre pas ?**
-Les fonds restent dans l'escrow : ils ne partent chez le freelance qu'après validation du client. Pour les désaccords, Trustless Work prévoit un rôle d'arbitre (dispute resolver) ; le contrat est déjà créé avec l'adresse de la plateforme dans ce rôle, mais on n'a pas branché le flux de litige pendant le hackathon.
+**2. Isn't the score unfair to newcomers?**
+A newcomer can still reach 20 points on skills, and the company can choose anyone: « Choisir » is on every row. The history and rating parts only count the company's own experience with that freelance, so being well rated elsewhere does not crush a newcomer here, and one good delivery is enough to become « Validé ».
 
-**3. Pourquoi pas le mainnet ?**
-Pour ne pas manipuler de vrais fonds pendant un hackathon. Le code est le même : on change le réseau, l'émetteur USDC et l'URL de Trustless Work. C'est aussi pour ça que la démo joue avec 10 USDC : c'est ce que donne le faucet de test.
+**3. What if the freelance never delivers?**
+The money stays in the escrow: it only moves to the freelance after the company approves and releases. For disagreements, Trustless Work has a dispute-resolver role; every escrow is deployed with the platform address in that role, but the dispute screens were not built during the hackathon.
 
-**4. Combien coûte une transaction ?**
-Environ 0,00001 XLM de frais réseau par opération, soit une fraction de centime. Le contrat prévoit une commission plateforme (`platformFee`) ; en démo elle est réglée au minimum. Un modèle viable serait 2 à 3 %, bien en dessous des 10 à 20 % des plateformes.
+**4. Why one escrow per task and not one per project?**
+Trustless Work v1 fixes the receiver when the escrow is deployed, and freezes it once funded. Tasks get their freelance at different times, so a project-wide escrow funded up front could not pay them. Multi-release escrows (one milestone per task) were studied: they allow a receiver per milestone, but only one service provider per escrow, so freelances could not sign their own delivery, and adding a task after deploy needs a platform signature. One single-release escrow per task keeps each freelance in control of their own delivery, and each escrow holds exactly one task's price.
 
-**5. Comment empêcher les fausses offres très basses ?**
-Chaque offre est liée à un wallet connecté par signature : pas d'offre anonyme. Un freelance n'a qu'une offre active par besoin, et le client n'est pas obligé de retenir la moins chère. Gagner sans livrer ne rapporte rien, l'argent reste bloqué. La réputation (Stellar Passport) et un petit dépôt de garantie sont les prochaines protections.
+**5. Why does the company sign four times per task?**
+Every money movement or contract state change is signed by the person it concerns, in their own wallet: deploy the escrow, fund it, approve the delivery, release the funds. The freelance signs the delivery. Lowbid holds no private key: Trustless Work builds unsigned transactions, Freighter signs them, and nobody else can move the funds. The app already chains them (« Financer le projet » = deploy + fund, « Valider et libérer » = approve + release), so it is two clicks.
 
-**6. Pourquoi Django et pas React ?**
-Rendu côté serveur, moins de pièces, plus rapide à construire en un week-end et plus robuste en démo. La partie Stellar tourne dans le navigateur avec le SDK officiel et Freighter : c'est là que la signature doit se faire, et un framework n'y change rien.
+**6. Why not mainnet?**
+To avoid handling real funds during a hackathon. The code is the same: change the network, the asset (`STELLAR_ASSET_CODE` / `STELLAR_ASSET_ISSUER`) and the Trustless Work URL. That is also why the demo uses a few USDC: it is what the test faucet gives.
 
-**7. Qu'est-ce qui est on-chain, honnêtement ?**
-On-chain : l'escrow Soroban (création, dépôt des USDC, livraison, validation, libération) et les paiements USDC. Off-chain, dans SQLite : les besoins, les enchères, le score et le choix du client. La connexion est vérifiée par signature Freighter côté serveur. Mettre les enchères dans un contrat Soroban fait partie de la suite.
+**7. What does a transaction cost?**
+About 0.00001 XLM in network fees per operation. The escrow takes a platform fee (`platformFee`), set to the minimum for the demo, plus the Trustless Work protocol fee. A sustainable model would be 2 to 3 %, far below the 10 to 20 % of platforms.
 
-**8. Et après le hackathon ?**
-Réputation, litiges, sortie en euros via un anchor, enchères cachées, puis enchères on-chain. On veut d'abord tester avec une dizaine de PME et de freelances réels sur testnet.
+**8. What is on chain, honestly?**
+On chain: each task's Soroban escrow (deploy, funding, delivery with the link as evidence, approval, release) and the USDC payments. Off chain, in the database: projects, tasks, applications, scores, ratings and the company's choice. Login is verified server-side from a Freighter signature.
 
-**9. Qu'est-ce qui a vraiment tourné en live, et qu'est-ce qui est construit d'après la doc ?**
-Ce que vous voyez dans la vidéo a tourné sur le testnet Stellar, avec de vrais USDC de test : chaque lien stellar.expert du README le prouve. Le README coche uniquement les étapes qui ont marché à l'enregistrement. L'intégration Trustless Work a été écrite pendant le build d'après le code source de leur SDK et leur référence d'API, sans accès réseau ; on l'a validée la veille par un test de bout en bout sur testnet. Un point reste à confirmer côté vendeur : l'unité exacte de la commission plateforme, d'où la valeur minimale. *(Si la vidéo est en mode direct : « l'escrow est codé et testé hors ligne, mais en live on a utilisé notre mode de secours, le paiement direct ; le README le dit ».)*
+**9. What really ran live, and what was built from the docs?**
+What you see in the video ran on Stellar testnet with test USDC: every stellar.expert link in the README proves it, and the README only ticks the steps that worked on the recording. The Trustless Work integration was written from the source of their SDK and their API reference without network access during the build, then validated by an end-to-end test on testnet the day before. One vendor detail is still unconfirmed: the exact unit of the platform fee, hence the minimum value. *(If the video uses direct mode: "the escrow is coded and tested offline, but live we used our fallback, the direct payment; the README says so.")*
 
-**10. Pourquoi le client signe quatre fois ?**
-Parce que chaque mouvement d'argent ou changement d'état du contrat est signé par la personne concernée, dans son propre wallet : créer le contrat, y déposer les USDC, valider la livraison, libérer les fonds. Le freelance signe sa déclaration de livraison. Lowbid ne détient aucune clé privée : Trustless Work prépare des transactions non signées, Freighter les signe, et personne d'autre ne peut déplacer les fonds. C'est le prix d'un paiement sans intermédiaire de confiance. En production, on enchaînera deux signatures sur un seul clic (créer + bloquer, valider + libérer), sans jamais garder de clé côté serveur.
+**10. Why Django and not React?**
+Server-side rendering, fewer moving parts, faster to build in a weekend and more robust in a demo. The Stellar part runs in the browser with the official SDK and Freighter, which is where signing must happen; a framework changes nothing there.
 
-## D. Checklist jour de démo
+## D. Demo-day checklist
 
-> Version détaillée et cochable : [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md).
+> Detailed, tickable version: [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md).
 
-- [ ] **3 alarmes** : la veille au soir (charger les appareils), 2 h avant (répétition complète), 30 min avant (vérification finale). Puis **10:30** (soumission) et **11:00** (deadline).
-- [ ] **Comptes alimentés** : client, freelance 1, freelance 2 (+ plateforme) ont des XLM (Friendbot) ; le client a **≥ 10 USDC** testnet (faucet sur les 4 comptes, regroupé sur le client).
-- [ ] **Montants ≤ 10 USDC** partout : budget 10, offres 9 → 9,20 refusé → 7,50.
-- [ ] **Trustlines USDC** créées sur les 4 comptes (sinon le freelance ne peut pas recevoir).
-- [ ] **3 profils Chrome** (Client, Freelance 1, Freelance 2), Freighter réglé sur **TESTNET** dans chacun, rien d'autre d'installé.
-- [ ] **Onglets ouverts à l'avance** : deck + landing Lowbid (client, déconnecté), `/besoins/` (Yanis et Nora, connectés), stellar.expert sur le compte de Yanis.
-- [ ] **Besoin de secours** déjà en état « attribué » (Yanis choisi à 9 USDC, escrow pas encore créé).
-- [ ] **Plan B testé** : `LOWBID_PAYMENT_MODE=direct` + redémarrage (≈ 10 s) → bouton « Valider et payer ».
-- [ ] **Vidéo de secours** en local (la répétition de la veille), et partage de connexion du téléphone prêt.
-- [ ] Zoom du navigateur à **110 %**, thème sombre, barre de favoris masquée, notifications coupées, écran de veille désactivé.
+- [ ] **Alarms**: the evening before (charge devices), 2 h before (full rehearsal), 30 min before (final check), then the submission time and the deadline.
+- [ ] **Funded accounts**: company, freelance A, freelance B (+ platform) have XLM (friendbot); the company holds at least T1's price in test USDC.
+- [ ] **USDC trustlines** on the 4 accounts (the freelance cannot be paid without it).
+- [ ] **3 Chrome profiles** (Entreprise, Freelance A, Freelance B), Freighter on **TESTNET** in each.
+- [ ] **Seed with random wallets** (`make seed` with the `LOWBID_DEMO_*` variables empty) so the real freelances start with no history with the real company.
+- [ ] **Tabs open in advance**: deck, Lowbid in each profile (signed in), stellar.expert on the company's and A's accounts.
+- [ ] **Fallback tested**: `LOWBID_PAYMENT_MODE=direct` + restart (≈ 10 s) → « Paiement direct USDC », « Valider et payer ».
+- [ ] **Backup video** stored locally (yesterday's rehearsal), phone hotspot ready.
+- [ ] Browser zoom **110 %**, dark theme, bookmarks bar hidden, notifications and screen saver off.

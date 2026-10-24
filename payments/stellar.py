@@ -184,6 +184,20 @@ def has_usdc_trustline(address: str) -> bool | None:
     return None
 
 
+def transaction_status(tx_hash: str) -> bool | None:
+    """Horizon `/transactions/{hash}` → True (applied, successful) / False (unknown or failed) / None (Horizon down).
+
+    Used to reconcile a submit that timed out (504): the hash is known locally, so the
+    service can finish the step without asking the user to sign again.
+    """
+    status, data = _horizon_get(f"/transactions/{tx_hash}")
+    if status == 200:
+        return bool(data.get("successful", True))
+    if status == 404:
+        return False
+    return None
+
+
 def usdc_balance(address: str) -> Decimal | None:
     """USDC balance as Decimal (0 without trustline / unfunded); None when Horizon could not be reached."""
     status, data = _horizon_get(f"/accounts/{address}")
@@ -398,6 +412,7 @@ __all__ = [
     "parse_payment_xdr",
     "payment_mode",
     "submit_xdr",
+    "transaction_status",
     "usdc_asset",
     "usdc_balance",
 ]

@@ -40,6 +40,7 @@
 
   function errorMessage(err) {
     if (!err) return "Erreur inconnue.";
+    if (err.data && typeof err.data.message === "string" && err.data.message) return err.data.message;
     if (err.data && typeof err.data.error === "string" && err.data.error) return err.data.error;
     var msg = err.message || String(err);
     if (msg === "freighter_missing") return "Installez l’extension Freighter puis rechargez la page.";
@@ -100,10 +101,18 @@
     if (msg) slot.removeAttribute("hidden"); else slot.setAttribute("hidden", "");
   }
 
+  /* data-pay-body JSON, plus the fields of the enclosing <form data-pay-form> (e.g. the delivery note). */
   function parseBody(btn) {
+    var body = {};
     var raw = btn.getAttribute("data-pay-body");
-    if (!raw) return {};
-    try { return JSON.parse(raw) || {}; } catch (e) { console.warn("lowbid-pay: data-pay-body is not JSON", e); return {}; }
+    if (raw) {
+      try { body = JSON.parse(raw) || {}; } catch (e) { console.warn("lowbid-pay: data-pay-body is not JSON", e); }
+    }
+    var form = btn.closest ? btn.closest("form[data-pay-form]") : null;
+    if (form && window.FormData) {
+      new FormData(form).forEach(function (value, key) { body[key] = value; });
+    }
+    return body;
   }
 
   function finish(result, btn) {
@@ -147,7 +156,7 @@
         return Lowbid.api(opts.sendUrl, { method: "POST", body: body });
       }).then(function (res) {
         if (!res || res.ok === false) {
-          var e = new Error((res && res.error) || "Transaction refusée par le réseau.");
+          var e = new Error((res && (res.message || res.error)) || "Transaction refusée par le réseau.");
           e.data = res || {};
           throw e;
         }
@@ -173,7 +182,7 @@
 
       return Lowbid.api(prepareUrl, { method: "POST", body: body }).then(function (prep) {
         if (!prep || prep.ok === false) {
-          var e = new Error((prep && prep.error) || "Préparation impossible.");
+          var e = new Error((prep && (prep.message || prep.error)) || "Préparation impossible.");
           e.data = prep || {};
           throw e;
         }
@@ -213,7 +222,7 @@
       if (btn) { showError(btn, ""); setLoading(btn, true); }
       return Lowbid.api(prepareUrl, { method: "POST", body: { address: CFG.walletAddress || "" } }).then(function (prep) {
         if (!prep || prep.ok === false) {
-          var err = new Error((prep && prep.error) || "Préparation impossible.");
+          var err = new Error((prep && (prep.message || prep.error)) || "Préparation impossible.");
           err.data = prep || {};
           throw err;
         }

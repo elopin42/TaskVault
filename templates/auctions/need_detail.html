@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static lowbid_extras %}
+{% load static lowbid_extras payments_extras %}
 {% block title %}{{ need.title }} · Lowbid{% endblock %}
 {% block meta_description %}{{ need.title }} — budget max {{ need.budget_max|usdc }}, délai max {{ need.delay_max_days }} jours.{% endblock %}
 
@@ -147,7 +147,7 @@
           <p class="ui-meta mt-1">Livraison en {{ winning_bid.delay_days }} jour{{ winning_bid.delay_days|pluralize }}{% if winning_bid.tags %} · {{ winning_bid.tags|join:", " }}{% endif %}</p>
         </section>
       {% endif %}
-      {% include "payments/_escrow_panel.html" with need=need winning_bid=winning_bid %}
+      {% escrow_panel need wallet %}
     {% endif %}
   </aside>
 </div>

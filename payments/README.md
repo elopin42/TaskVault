@@ -1,14 +1,13 @@
-# payments (placeholder)
+# payments
 
-Owned by the payments agent: Soroban escrow via Trustless Work (fund, release,
-dispute) in USDC on testnet.
+Escrow (Trustless Work) and Plan B (direct USDC payment) for an awarded `auctions.Need`.
 
-Mounted at `/pay/` in `lowbid/urls.py`. Templates go in `templates/payments/`.
-Settings you can read: `STELLAR_NETWORK`, `STELLAR_NETWORK_PASSPHRASE`,
-`STELLAR_HORIZON_URL`, `STELLAR_SOROBAN_RPC_URL`, `STELLAR_USDC_ISSUER`,
-`STELLAR_USDC_CODE`, `TRUSTLESS_WORK_API_URL`, `TRUSTLESS_WORK_API_KEY`.
+- `models.py` — `Escrow`, one per need (`need.escrow`): mode, contract id, every tx hash, status.
+- `services.py` — the flow: `prepare_<step>` / `confirm_<step>` per step, role + state gates, `next_action()`.
+  **The state table for both modes is in its module docstring.**
+- `views.py` / `urls.py` — JSON endpoints under `/pay/` driven by `static/js/lowbid-pay.js`.
+- `trustless_work.py` — Trustless Work v1 REST client. `stellar.py` — XDR builders / parser / Horizon.
+- `templatetags/payments_extras.py` — `{% escrow_panel need wallet %}` → `templates/payments/_escrow_panel.html`.
+- Tests: `tests.py` (clients, offline) and `tests_flow.py` (HTTP flow, both modes, mocked network).
 
-Browser side: `window.Lowbid.signTransaction(xdr)` (Freighter) returns the
-signed XDR; `window.StellarSdk` (vendored `@stellar/stellar-sdk`) and
-`window.LOWBID` (network passphrase, Horizon / RPC URLs, USDC asset) are
-available on every page that extends `base.html`.
+Switch to Plan B: `LOWBID_PAYMENT_MODE=direct`. Full write-up: `docs/ARCHITECTURE.md` → Payments.

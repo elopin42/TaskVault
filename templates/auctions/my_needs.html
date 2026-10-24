@@ -35,7 +35,10 @@
             <a href="{% url 'auctions:need_detail' need.pk %}" class="ui-link font-semibold">{{ need.title }}</a>
             <div class="ui-meta">{% if need.tags %}{{ need.tags|join:", " }} · {% endif %}délai max {{ need.delay_max_days }} j</div>
           </td>
-          <td data-label="Statut"><span class="ui-badge {{ need.badge_class }}">{{ need.effective_status_label }}</span></td>
+          <td data-label="Statut">
+            <span class="ui-badge {{ need.badge_class }}">{{ need.effective_status_label }}</span>
+            {% if need.escrow %}<a href="{% url 'auctions:need_detail' need.pk %}#paiement" class="ui-badge {{ need.escrow.badge_class }} ms-1" title="Paiement : {{ need.escrow.status_label }}">{{ need.escrow.status_label }}</a>{% endif %}
+          </td>
           <td data-label="Offres" class="ui-col-end ui-num">{{ need.bids_count }}</td>
           <td data-label="Budget max" class="ui-col-end ui-num">{{ need.budget_max|usdc }}</td>
           <td data-label="Meilleure offre" class="ui-col-end ui-num">{% if need.best_price is not None %}<span class="ui-price">{{ need.best_price|usdc }}</span>{% else %}—{% endif %}</td>

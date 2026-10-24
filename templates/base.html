@@ -39,7 +39,9 @@
           challenge: "{% url 'accounts:challenge' %}",
           verify: "{% url 'accounts:verify' %}",
           logout: "{% url 'accounts:logout' %}",
-          landing: "{% url 'core:landing' %}"
+          landing: "{% url 'core:landing' %}",
+          trustlinePrepare: "{% url 'payments:trustline_prepare' %}",
+          trustlineSend: "{% url 'payments:trustline_send' %}"
         }
       };
     </script>
@@ -93,6 +95,7 @@
     <script src="{% static 'vendor/freighter-api.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
     <script src="{% static 'vendor/stellar-sdk.min.js' %}?v={{ LOWBID_ASSET_VERSION }}" defer></script>
     <script src="{% static 'js/lowbid-wallet.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
+    <script src="{% static 'js/lowbid-pay.js' %}?v={{ LOWBID_ASSET_VERSION }}" defer></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

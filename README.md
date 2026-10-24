@@ -77,15 +77,17 @@ make dev
 
 ## Where Stellar lives in the code
 
-_Paths to confirm._
-
 | Path | What it does |
 |------|--------------|
-| `accounts/` | Wallet login: challenge + Freighter `signMessage` verification |
-| `payments/` | Trustless Work escrow (create, fund, release) proxied by Django + Plan B direct payment |
-| `static/js/lowbid-wallet.js` | Freighter connection and message signing in the browser |
-| `static/js/lowbid-pay.js` | Builds and signs escrow / payment transactions with `@stellar/stellar-sdk` |
-| `docs/STELLAR_NOTES.md` | Network, USDC asset, trustlines, and what is on-chain vs off-chain |
+| `accounts/signing.py` | Verifies the Freighter `signMessage` login signature (SEP-53, with legacy fallbacks) |
+| `payments/trustless_work.py` | Trustless Work v1 REST client: deploy / fund / milestone / approve / release, `send-transaction` |
+| `payments/stellar.py` | Plan B + Horizon helpers: build USDC `payment` / `changeTrust` XDR, parse & check signed XDR, submit, balances, `payment_mode()` |
+| `payments/services.py` | The flow: one `prepare_<step>` / `confirm_<step>` pair per step, role + state gates, both modes (state table in its docstring) |
+| `payments/models.py` | `Escrow`: contract id, every tx hash, status, per-need |
+| `static/js/lowbid-wallet.js` | Freighter connection, login signature, `Lowbid.signTransaction(xdr)` |
+| `static/js/lowbid-pay.js` | Prepare → Freighter sign → send driver for every payment button, live USDC balance from Horizon |
+| `docs/STELLAR_NOTES.md` | Network, USDC asset, trustlines, Trustless Work field reference, what is on-chain vs off-chain |
+| `docs/ARCHITECTURE.md` | Payments section: endpoints, state table, how to switch to Plan B |
 
 ## Testnet addresses
 
@@ -112,6 +114,15 @@ Three Stellar building blocks composed into one flow: **Freighter** for identity
 - [ ] Escrow create (USDC locked)
 - [ ] Escrow release (USDC to freelancer)
 - [ ] Plan B: direct USDC payment
+
+## Live checklist before demo
+
+1. `TRUSTLESS_WORK_API_KEY=` (testnet key from dapp.trustlesswork.com → Settings → API Keys) in `.env`; leave `LOWBID_PAYMENT_MODE=` empty (auto → escrow).
+2. `LOWBID_PLATFORM_ADDRESS=G…` set to a funded testnet account **with a USDC trustline** (it receives `LOWBID_PLATFORM_FEE`).
+3. USDC trustline on all three Freighter accounts (client, freelance 1, freelance 2) — the "Ajouter la trustline USDC" button on the need page does it; the client also needs ≥ bid USDC (Circle faucet).
+4. `python manage.py seed_demo --flush` with `LOWBID_DEMO_CLIENT` / `LOWBID_DEMO_FREELANCE1` / `LOWBID_DEMO_FREELANCE2` set to those addresses, then open `/besoins/4/` (awarded need).
+5. Smoke test §6 of `docs/STELLAR_NOTES.md` once (deploy → sign → send-transaction) and keep the `contractId` as a backup screenshot.
+6. If Trustless Work fails live: `LOWBID_PAYMENT_MODE=direct`, restart — same page, same button, one USDC payment instead of the escrow.
 
 ## Built during the hackathon
 

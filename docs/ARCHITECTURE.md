@@ -13,11 +13,11 @@ Lowbid/
 ├── core/                   # landing, /healthz/, context processors, templatetags/lowbid_extras.py
 ├── accounts/               # WalletUser + Freighter login (challenge / verify / logout), wallet_required
 ├── auctions/               # Need / Bid, services (R1–R14), scoring, seed_demo          mounted at /
-├── payments/               # PLACEHOLDER — Trustless Work escrow (next agent)     mounted at /pay/
+├── payments/               # Escrow model + services (Trustless Work / Plan B), JSON endpoints  mounted at /pay/
 ├── templates/              # base.html, partials/{navbar,toasts,page_header}.html, core/landing.html, 400/403/404/500.html
 ├── static/
 │   ├── css/  lowbid-tokens.css  lowbid-components.css  tailwind.src.css  tailwind.css (BUILT, committed)
-│   ├── js/   lowbid-base.js (theme, toasts, Lowbid.api)  lowbid-wallet.js (Freighter)
+│   ├── js/   lowbid-base.js (theme, toasts, Lowbid.api)  lowbid-wallet.js (Freighter)  lowbid-pay.js (sign & send)
 │   ├── vendor/  fontawesome/  freighter-api.js (UMD → window.freighterApi)  stellar-sdk.min.js (→ window.StellarSdk)
 │   └── img/favicon.svg
 ├── data/                   # db.sqlite3 (gitignored)
@@ -48,7 +48,7 @@ Set `DJANGO_DB_HOST` to switch from SQLite to PostgreSQL (`DJANGO_DB_NAME/USER/P
 | `core` | landing (`core:landing`), `GET /healthz/` (`core:healthz`), error handlers, context processors `core.context_processors.site` (asset version + Stellar config) and `nav_links`, filters `short_addr`, `usdc` (`{% load lowbid_extras %}`) | `/` |
 | `accounts` | `WalletUser(stellar_address, display_name, created_at, last_login_at)`, wallet auth, `wallet_required`, `get_wallet()` | `/auth/challenge/` `accounts:challenge`, `/auth/verify/` `accounts:verify`, `/auth/logout/` `accounts:logout` |
 | `auctions` | `Need` / `Bid`, `services.py` (R1–R14), `scoring.py`, pages + JSON endpoints, `seed_demo` command — see **Auctions** below | `/besoins/…`, `/mes-encheres/`, `/mes-besoins/` |
-| `payments` | *(empty)* escrow fund / release via Trustless Work | `/pay/` |
+| `payments` | `Escrow` (1-1 `Need`), `services.py` (prepare/confirm per step, both modes), `trustless_work.py`, `stellar.py`, `{% escrow_panel %}` tag — see **Payments** below | `/pay/…` |
 
 `datagrid`-style engines were NOT ported from SIPS — list pages here are plain templates.
 
@@ -152,6 +152,66 @@ the detail page passes its config through `window.LOWBID_NEED`. Demo data: `pyth
 payer = `need.client.stellar_address`. The transitions `awarded → funded → delivered → released` belong to
 `payments` (write `need.status`, keep `updated_at`); `auctions` never moves a need past `awarded`, and
 `services.cancel` already refuses once `funded` (R14). `Need.Status` is the enum to import.
+
+## Payments (`payments/`)
+
+**Model** `Escrow` (`payments/models.py`, migration `0001`), one per `Need` (`need.escrow`, created at the
+first prepare): `mode` (`escrow` | `direct`, frozen from `stellar.payment_mode()`, re-frozen while still
+`created`), `amount`, `payer_address` (client), `payee_address` (winner), `platform_address`, `contract_id`,
+`engagement_id` (`lowbid-<need_id>`), one `*_tx_hash` per step (`deploy / fund / deliver / approve / release /
+payment`), `status`, `delivery_note` (≤ 280), `last_error`, `funded_at / delivered_at / released_at`.
+Helpers: `status_label`, `badge_class`, `is_done`, `explorer_links()` (stellar.expert, contract + every hash).
+
+**State table** (`Escrow.status` ⇢ `Need.status`; `payments` owns `awarded → funded → delivered → released`):
+
+| Mode | Step | Who signs | Escrow before → after | Need before → after | On chain |
+|------|------|-----------|-----------------------|---------------------|----------|
+| escrow | `deploy` | client | created → deployed | awarded | TW `/deployer/single-release` → `contract_id` |
+| escrow | `fund` | client | deployed → funded | awarded → **funded** | TW `fund-escrow` |
+| escrow | `deliver` | winner | funded → delivered | funded → **delivered** | TW `change-milestone-status` (+ evidence) |
+| escrow | `approve` | client | delivered → approved | delivered | TW `approve-milestone` |
+| escrow | `release` | client | approved → released | delivered → **released** | TW `release-funds` |
+| direct | `deliver` | winner | created → delivered | awarded → **delivered** | **nothing** (DB only) |
+| direct | `direct_pay` | client | created\|delivered → paid | awarded\|delivered → **released** | one USDC `payment` op via Horizon |
+| any | `trustline` | the wallet | — | — | `changeTrust` (skipped when Horizon already shows it) |
+
+Direct mode (**Plan B**) therefore skips `funded`/`approved`: awarded → (deliver, optional) → direct_pay → released;
+the client's "Valider et payer" *is* the payment. Every signed XDR in direct mode is parsed server-side
+(`stellar.parse_payment_xdr`) and must match source = client, destination = winner, amount = bid, USDC
+issuer — else `tampered`. A Horizon 504 keeps the status, stores the hash and the next prepare reconciles it
+through `/transactions/{hash}` (no second signature). Provider/Horizon refusals never change the status: the
+message is kept in `last_error` and the user retries.
+
+**Services** (`payments/services.py`, no HTTP of its own): `prepare_<step>(need, wallet, data) → {xdr, extra,
+message, done}` / `confirm_<step>(need, wallet, signed_xdr) → {tx_hash, contract_id, explorer_url, message,
+pending}` with role + state gates in both halves, pinned to the session wallet; `prepare(...)` / `confirm(...)`
+dispatchers; `next_action(need, wallet)` (the pending step as this viewer should see it: `step, who, label,
+hint, prepare_url, mine, waiting, evidence, no_tx`); `stepper(mode, status)`; `viewer_role()`;
+`PaymentError(code, message)` with codes `not_awarded · forbidden · wrong_state · wrong_mode · unknown_step ·
+tampered · provider · stellar`.
+
+**URLs** (namespace `payments`, mounted at `/pay/`, all JSON, `@wallet_required` → 401 JSON for fetch):
+
+| Name | Path | Returns |
+|------|------|---------|
+| `prepare` | `POST /pay/prepare/<need_pk>/<step>/` (body: `{evidence?}`) | `{ok, xdr, send_url, extra}` or `{ok, redirect, message}` when nothing to sign |
+| `send` | `POST /pay/send/<need_pk>/<step>/` `{signed_xdr}` | `{ok, redirect, status, tx_hash, contract_id, explorer_url, message, pending}` |
+| `trustline_prepare` | `POST /pay/trustline/prepare/` | `{ok, xdr, send_url}` or `{ok, message}` when present |
+| `trustline_send` | `POST /pay/trustline/send/` `{signed_xdr}` | `{ok, tx_hash, explorer_url, message}` |
+| `need_pay` | `GET /pay/<need_pk>/` | 302 → `/besoins/<pk>/#paiement` |
+
+Business refusals are **HTTP 200 `{ok:false, error:<code>, message}`** (the JS renders `message`).
+
+**UI**: `templates/payments/_escrow_panel.html` is rendered by `{% escrow_panel need wallet %}`
+(`payments/templatetags/payments_extras.py`) from `need_detail.html` once the need is awarded: stepper, amount,
+payee + copy, live `[data-usdc-balance][data-watch]` (Horizon, from the browser), the viewer's next-action
+button (`[data-pay-step][data-prepare-url]`, delivery form for the winner), trustline helper for both parties,
+explorer links. `static/js/lowbid-pay.js` (loaded in `base.html` after the wallet module) does prepare → Freighter
+sign → send → reload; `LOWBID.urls.trustlinePrepare/trustlineSend` are set in `base.html`.
+
+**Switching to Plan B**: `LOWBID_PAYMENT_MODE=direct` in `.env` and restart. Empty = auto (`escrow` when
+`TRUSTLESS_WORK_API_KEY` is set, else `direct`). Needs already deployed on Trustless Work keep their frozen
+`escrow` mode; needs still `created` switch.
 
 ## Adding `auctions` / `payments`
 

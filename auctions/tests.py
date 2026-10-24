@@ -396,7 +396,7 @@ class PageTests(BaseAuctionTest):
         services.award(self.need, bid, self.owner)
         resp = self.detail()
         self.assertContains(resp, 'id="escrow-panel"')
-        self.assertContains(resp, "Paiement en escrow")
+        self.assertContains(resp, 'id="paiement"')  # payments panel (title depends on LOWBID_PAYMENT_MODE)
         self.assertContains(resp, "Retenue")
         self.assertContains(resp, "Non retenue")
         self.assertNotContains(resp, 'data-choose="')

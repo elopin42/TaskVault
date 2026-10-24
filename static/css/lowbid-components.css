@@ -322,3 +322,24 @@ html[data-theme="light"] .lb-theme-dark { display: none; }
 .bid-row.is-lost:hover { opacity: 0.85; }
 .need-card { transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
 .need-card:hover { transform: translateY(-1px); }
+
+/* ====== Payments: stepper + live USDC balance ====== */
+.ui-stepper { display: flex; align-items: flex-start; gap: 0; margin: 0.9rem 0 0; padding: 0; list-style: none; counter-reset: step; }
+.ui-step { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 0.35rem; text-align: center; }
+.ui-step::before {
+    content: ""; position: absolute; top: 0.8rem; inset-inline-start: 50%; width: 100%; height: 2px;
+    background: var(--soft-border); z-index: 0;
+}
+.ui-step:last-child::before { display: none; }
+.ui-step.is-done::before { background: var(--brand-500); }
+.ui-step-dot {
+    position: relative; z-index: 1; width: 1.6rem; height: 1.6rem; border-radius: 999px; display: grid; place-items: center;
+    font-size: 0.72rem; font-weight: 700; font-variant-numeric: tabular-nums;
+    background: var(--soft-bg); border: 2px solid var(--soft-border); color: var(--muted);
+}
+.ui-step.is-done .ui-step-dot { background: var(--brand-600); border-color: var(--brand-600); color: var(--brand-ink); }
+.ui-step.is-current .ui-step-dot { border-color: var(--brand-500); color: var(--brand-500); box-shadow: 0 0 0 4px var(--brand-soft); }
+.ui-step-label { font-size: 0.7rem; line-height: 1.2; font-weight: 600; color: var(--muted); padding: 0 0.2rem; overflow-wrap: anywhere; }
+.ui-step.is-done .ui-step-label, .ui-step.is-current .ui-step-label { color: var(--text); }
+.ui-balance { display: inline-block; transition: color 0.3s ease, transform 0.3s ease; }
+.ui-balance.is-bumped { color: var(--success); transform: scale(1.12); }

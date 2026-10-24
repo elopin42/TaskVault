@@ -1,6 +1,106 @@
 {% extends "base.html" %}
+{% load static lowbid_extras %}
 {% block title %}Tableau de bord · Lowbid{% endblock %}
+{% block meta_description %}Vos besoins, vos enchères et ce qu’il vous reste à faire sur Lowbid.{% endblock %}
+
 {% block content %}
-{% include "partials/page_header.html" with title="Tableau de bord" subtitle="Vos besoins, vos enchères et ce qu’il vous reste à faire." %}
-<p class="ui-meta">En construction.</p>
+<div class="ui-page-header">
+  <div class="min-w-0">
+    <p class="ui-meta mb-2">Tableau de bord</p>
+    <h1 class="ui-page-title flex flex-wrap items-center gap-3">
+      {% include "components/wallet.html" with address=wallet.stellar_address name=wallet.display_name|default:"Mon wallet" size="lg" copy=True nolink=True %}
+    </h1>
+    <p class="ui-page-sub">{% if todo_act %}{{ todo_act }} action{{ todo_act|pluralize }} vous attend{{ todo_act|pluralize }}.{% else %}Rien d’urgent : tout est à jour.{% endif %}</p>
+  </div>
+  <div class="ui-page-actions">
+    <a href="{% url 'dashboard:profile' wallet.stellar_address %}" class="ui-btn"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Mon profil public</a>
+    <a href="{% url 'auctions:need_create' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Poster un besoin</a>
+  </div>
+</div>
+
+<div class="ui-split">
+  <div class="ui-stack">
+    <section class="ui-panel" id="todo" aria-labelledby="todo-title">
+      <div class="ui-panel-head">
+        <div>
+          <h2 class="ui-panel-title" id="todo-title"><i class="fa-solid fa-list-check" style="color: var(--brand-500)" aria-hidden="true"></i> À faire</h2>
+          <p class="ui-panel-sub">Choisir un freelance, signer un paiement, améliorer une offre dépassée.</p>
+        </div>
+        {% if todo %}<span class="ui-badge {% if todo_act %}ui-badge-brand{% else %}ui-badge-neutral{% endif %}">{{ todo|length }}</span>{% endif %}
+      </div>
+      {% if todo %}
+        <div class="ui-next-list" data-todo-list>
+          {% for it in todo %}
+            {% include "components/next_card.html" with tone=it.tone kicker=it.kicker headline=it.headline body=it.body href=it.href cta=it.cta icon=it.icon %}
+          {% endfor %}
+        </div>
+      {% else %}
+        {% include "components/next_card.html" with tone="done" kicker="Tout est à jour" headline="Rien à faire pour l’instant." body="Postez un besoin ou parcourez les enchères ouvertes." href=nav_links.0.href cta="Voir les besoins" icon="fa-list-ul" %}
+      {% endif %}
+    </section>
+
+    <section class="ui-panel" id="activity" aria-labelledby="activity-title">
+      <div class="ui-panel-head">
+        <div><h2 class="ui-panel-title" id="activity-title">Activité récente</h2><p class="ui-panel-sub">Vos offres, vos besoins et les étapes de paiement.</p></div>
+      </div>
+      {% if activity %}
+        <ol class="ui-timeline">
+          {% for e in activity %}
+            <li class="ui-timeline-item{% if e.tone %} is-{{ e.tone }}{% endif %}">
+              <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid {{ e.icon }}"></i></span>
+              <div class="ui-timeline-body">
+                <a href="{{ e.href }}" class="ui-timeline-title hover:underline">{{ e.text }}</a>
+                <div class="ui-timeline-time"><span data-time-ago="{{ e.when|date:'c' }}">{{ e.when|date:"d/m H:i" }}</span></div>
+              </div>
+            </li>
+          {% endfor %}
+        </ol>
+      {% else %}
+        <p class="ui-meta">Aucune activité pour l’instant.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <aside class="ui-stack">
+    <section class="ui-panel" aria-labelledby="client-title">
+      <div class="ui-panel-head">
+        <div><h2 class="ui-panel-title" id="client-title"><i class="fa-solid fa-pen-to-square" style="color: var(--brand-500)" aria-hidden="true"></i> Côté client</h2><p class="ui-panel-sub">Les besoins que vous avez publiés.</p></div>
+        <a href="{% url 'auctions:my_needs' %}" class="ui-link whitespace-nowrap">Mes besoins <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
+      </div>
+      <div class="ui-kpi-band !grid-cols-2 !gap-3">
+        {% url 'auctions:my_needs' as my_needs_url %}
+        {% include "components/kpi.html" with label="Ouverts" value=client_stats.open hint="enchères en cours" icon="fa-bolt" href=my_needs_url %}
+        {% include "components/kpi.html" with label="À choisir" value=client_stats.to_choose hint="terminés avec offres" icon="fa-check" href=my_needs_url %}
+        {% include "components/kpi.html" with label="Attribués" value=client_stats.awarded hint="en cours de paiement" icon="fa-trophy" href=my_needs_url %}
+        {% include "components/kpi.html" with label="Payés" value=client_stats.paid hint="fonds libérés" icon="fa-circle-check" href=my_needs_url %}
+      </div>
+      <dl class="ui-facts mt-4">
+        <dt>Besoins publiés</dt><dd class="ui-num">{{ client_stats.total }}</dd>
+        <dt>Offres reçues</dt><dd class="ui-num">{{ client_stats.bids_received }}</dd>
+        <dt>Engagé (offres retenues)</dt><dd>{% include "components/price.html" with amount=client_stats.committed_usdc %}</dd>
+      </dl>
+    </section>
+
+    <section class="ui-panel" aria-labelledby="freelance-title">
+      <div class="ui-panel-head">
+        <div><h2 class="ui-panel-title" id="freelance-title"><i class="fa-solid fa-gavel" style="color: var(--brand-500)" aria-hidden="true"></i> Côté freelance</h2><p class="ui-panel-sub">Vos offres sur les besoins des autres.</p></div>
+        <a href="{% url 'auctions:my_bids' %}" class="ui-link whitespace-nowrap">Mes enchères <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
+      </div>
+      <div class="ui-kpi-band !grid-cols-2 !gap-3">
+        {% url 'auctions:my_bids' as my_bids_url %}
+        {% include "components/kpi.html" with label="Actives" value=freelancer_stats.active hint="enchères ouvertes" icon="fa-bolt" href=my_bids_url %}
+        {% include "components/kpi.html" with label="En tête" value=freelancer_stats.leading hint="meilleur prix actuel" icon="fa-arrow-trend-down" href=my_bids_url %}
+        {% include "components/kpi.html" with label="Gagnées" value=freelancer_stats.won hint="offres retenues" icon="fa-trophy" href=my_bids_url %}
+        {% include "components/kpi.html" with label="Encaissé" value=freelancer_stats.earned_usdc|usdc:"" unit="USDC" hint="paiements reçus" icon="fa-money-bill-transfer" href=my_bids_url %}
+      </div>
+      <dl class="ui-facts mt-4">
+        <dt>Offres déposées</dt><dd class="ui-num">{{ freelancer_stats.total }}</dd>
+        <dt>Non retenues</dt><dd class="ui-num">{{ freelancer_stats.lost }}</dd>
+        <dt>Taux de succès</dt><dd class="ui-num">{% if freelancer_stats.win_rate is not None %}{{ freelancer_stats.win_rate }} %{% else %}—{% endif %}</dd>
+      </dl>
+    </section>
+  </aside>
+</div>
 {% endblock %}
+
+{% block extra_js %}<script src="{% static 'js/lowbid-auctions.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

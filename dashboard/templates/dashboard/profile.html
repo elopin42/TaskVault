@@ -1,6 +1,83 @@
 {% extends "base.html" %}
-{% block title %}Profil · Lowbid{% endblock %}
+{% load static lowbid_extras %}
+{% block title %}{{ profile.display_name|default:profile.short_address }} · Profil · Lowbid{% endblock %}
+{% block meta_description %}Profil public du wallet {{ profile.short_address }} sur Lowbid : besoins publiés, enchères gagnées.{% endblock %}
+
 {% block content %}
-{% include "partials/page_header.html" with title="Profil" %}
-{% include "components/wallet.html" with address=profile.stellar_address name=profile.display_name size="xl" copy=True nolink=True %}
+<div class="ui-page-header">
+  <div class="min-w-0">
+    <p class="ui-meta mb-2"><a href="{% url 'auctions:need_list' %}" class="ui-link"><i class="fa-solid fa-arrow-left text-[10px]" aria-hidden="true"></i> Besoins</a> · Profil public</p>
+    <h1 class="ui-page-title flex flex-wrap items-center gap-3">
+      {% include "components/wallet.html" with address=profile.stellar_address name=profile.display_name|default:"Wallet anonyme" size="xl" copy=True nolink=True keep=6 you=is_me %}
+    </h1>
+    <p class="ui-page-sub flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> membre depuis le {{ stats.member_since|date:"d/m/Y" }}</span>
+      {% if stats.last_login %}<span><i class="fa-regular fa-clock" aria-hidden="true"></i> dernière connexion <span data-time-ago="{{ stats.last_login|date:'c' }}">{{ stats.last_login|date:"d/m H:i" }}</span></span>{% endif %}
+    </p>
+  </div>
+  <div class="ui-page-actions">
+    <button type="button" class="ui-btn" data-share="{{ request.build_absolute_uri }}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Partager</button>
+    {% if is_me %}<a href="{% url 'dashboard:home' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Tableau de bord</a>{% endif %}
+  </div>
+</div>
+
+{% if is_me %}
+<section class="ui-panel mb-6" id="edit-name" aria-labelledby="edit-name-title">
+  <div class="ui-panel-head"><div><h2 class="ui-panel-title" id="edit-name-title">Éditer mon nom</h2><p class="ui-panel-sub">Affiché à côté de votre adresse sur vos besoins et vos offres. Vide = adresse seule.</p></div></div>
+  <form method="post" class="flex flex-wrap items-end gap-3" data-submit-once>
+    {% csrf_token %}
+    <div class="ui-field flex-1 min-w-[200px]">
+      <label for="display_name" class="ui-label">Nom affiché</label>
+      <input id="display_name" name="display_name" class="ui-input" type="text" maxlength="{{ max_name }}" value="{{ profile.display_name }}" placeholder="Claire, Studio Nova…" autocomplete="nickname">
+    </div>
+    <button type="submit" class="ui-btn ui-btn-primary"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Enregistrer</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="ui-kpi-band mb-6" aria-label="Chiffres publics">
+  {% include "components/kpi.html" with label="Besoins publiés" value=stats.needs_posted hint="en tant que client" icon="fa-pen-to-square" %}
+  {% include "components/kpi.html" with label="Besoins payés" value=stats.needs_completed hint="fonds libérés" icon="fa-circle-check" %}
+  {% include "components/kpi.html" with label="Offres déposées" value=stats.bids_placed hint="en tant que freelance" icon="fa-gavel" %}
+  {% include "components/kpi.html" with label="Offres gagnées" value=stats.bids_won hint="retenues par un client" icon="fa-trophy" %}
+</section>
+
+<section class="ui-section !mt-0" aria-labelledby="needs-title">
+  {% include "components/section_head.html" with title="Besoins publiés" sub="Les 10 plus récents." icon="fa-pen-to-square" %}
+  {% if stats.needs %}
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {% for need in stats.needs %}{% include "auctions/_need_card.html" with need=need %}{% endfor %}
+    </div>
+  {% else %}
+    {% include "components/empty_state.html" with icon="fa-pen-to-square" title="Aucun besoin publié" desc="Ce wallet n’a pas encore publié de besoin." %}
+  {% endif %}
+</section>
+
+<section class="ui-section" aria-labelledby="won-title">
+  {% include "components/section_head.html" with title="Enchères gagnées" sub="Les offres retenues par un client." icon="fa-trophy" %}
+  {% if stats.won_bids %}
+    <div class="ui-panel">
+      <div class="rcard">
+        <table>
+          <thead><tr><th style="width: 40%">Besoin</th><th>Client</th><th class="ui-col-end">Prix</th><th class="ui-col-end">Délai</th><th>Paiement</th></tr></thead>
+          <tbody>
+            {% for bid in stats.won_bids %}
+              <tr>
+                <td data-label="Besoin"><a href="{% url 'auctions:need_detail' bid.need.pk %}" class="ui-link font-semibold">{{ bid.need.title }}</a><div class="ui-meta">{{ bid.created_at|date:"d/m/Y" }}{% if bid.tags %} · {{ bid.tags|join:", " }}{% endif %}</div></td>
+                <td data-label="Client">{% include "components/wallet.html" with address=bid.need.client.stellar_address %}</td>
+                <td data-label="Prix" class="ui-col-end ui-num">{% include "components/price.html" with amount=bid.price %}</td>
+                <td data-label="Délai" class="ui-col-end ui-num">{{ bid.delay_days }} j</td>
+                <td data-label="Paiement">{% if bid.need.escrow %}<a href="{% url 'auctions:need_detail' bid.need.pk %}#paiement" class="ui-badge {{ bid.need.escrow.badge_class }}">{{ bid.need.escrow.status_label }}</a>{% else %}<span class="ui-badge {{ bid.need.badge_class }}">{{ bid.need.effective_status_label }}</span>{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    {% include "components/empty_state.html" with icon="fa-trophy" title="Aucune enchère gagnée" desc="Ce wallet n’a pas encore remporté d’enchère." %}
+  {% endif %}
+</section>
 {% endblock %}
+
+{% block extra_js %}<script src="{% static 'js/lowbid-auctions.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

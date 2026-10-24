@@ -12,7 +12,7 @@
       <a href="{% url 'auctions:need_create' %}" class="ui-btn ui-btn-primary ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> Poster un besoin</a>
       <a href="{% url 'auctions:need_list' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Voir les besoins</a>
     {% else %}
-      <button type="button" class="ui-btn ui-btn-primary ui-btn-lg" data-wallet-connect data-next="{{ next_url }}">
+      <button type="button" class="ui-btn ui-btn-primary ui-btn-lg" data-wallet-connect data-next="{% if next_url %}{{ next_url }}{% else %}{% url 'dashboard:home' %}{% endif %}">
         <i class="fa-solid fa-wallet" aria-hidden="true"></i> Connecter mon wallet Freighter
       </button>
       <a href="{% url 'auctions:need_list' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-list-ul" aria-hidden="true"></i> Parcourir les besoins</a>

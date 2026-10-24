@@ -1,19 +1,24 @@
 #!/usr/bin/env node
 /* Lowbid end-to-end run — the task-board demo scenario (SPEC §8) with a simulated Freighter
- * (fake-freighter.js).
+ * (fake-freighter.js) and a fake Horizon (fake-horizon.js) for the DIRECT payment mode.
  *
- *   make e2e                      # fresh SQLite, runserver on a free port, this script, teardown
- *   E2E_BASE_URL=http://127.0.0.1:8000 node tests/e2e/run.js   # against a server you started
+ *   make e2e                      # fresh SQLite, runserver (direct mode, STELLAR_HORIZON_URL = the fake), this script
+ *   E2E_BASE_URL=http://127.0.0.1:8000 E2E_HORIZON_PORT=8100 node tests/e2e/run.js
+ *                                 # against a server you started with LOWBID_PAYMENT_MODE=direct
+ *                                 # STELLAR_HORIZON_URL=http://127.0.0.1:8100
  *
  * Plain `playwright` library API (no @playwright/test). Three browser contexts (company,
  * freelance A, freelance B) at 1280x800, the key screens re-checked at 390x844. Screenshots land in
  * docs/screenshots/. Exit code 1 on the first failing step, on any unexpected console error or
- * uncaught page error. Nothing here reaches the network: Phase 1 runs "sans argent".
+ * uncaught page error. Nothing here reaches the real network.
  *
  * Scenario: company creates a project + 3 tasks (inline) → A and B apply to T1 → company chooses A
- * → A delivers a link → company validates with note 5 → T1 paid → A and B apply to T2 → A is top
- * with « Validé » + « Recommandé » (90 vs 20). Plus the kanban, dashboard, profile, list filters,
- * mobile (no horizontal scroll), theme toggle and logout.
+ * → A delivers a link (direct mode: DB only) → company validates with note 5: the Rating is saved,
+ * the chained payment FAILS gracefully (company account unknown on Horizon → French message in
+ * [data-pay-error], HTTP 200 {ok:false}) → the fake Horizon "friendbots" the wallets, A adds the
+ * USDC trustline, the company resumes the payment from the panel button → T1 paid, hash + explorer
+ * link shown → A and B apply to T2 → A is top with « Validé » + « Recommandé » (90 vs 20). Plus the
+ * kanban, dashboard, profile, list filters, mobile (no horizontal scroll), theme toggle and logout.
  */
 "use strict";
 
@@ -24,8 +29,11 @@ const { chromium } = require("playwright");
 const REPO = path.resolve(__dirname, "..", "..");
 const StellarSdk = require(path.join(REPO, "node_modules", "@stellar", "stellar-sdk"));
 const { installFakeFreighter } = require("./fake-freighter");
+const { startFakeHorizon } = require("./fake-horizon");
 
 const BASE = (process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const HORIZON_PORT = Number(process.env.E2E_HORIZON_PORT || 0);
+let horizon = null; // the fake Horizon handle (fund / balanceOf / submitted)
 const PASSPHRASE = "Test SDF Network ; September 2015";
 const SHOTS = path.join(REPO, "docs", "screenshots");
 const DESKTOP = { width: 1280, height: 800 };
@@ -54,8 +62,9 @@ async function step(name, fn) {
 
 const consoleErrors = []; // {who, text, source}
 function isExpectedError(e) {
-  // Nothing should reach Horizon in Phase 1, but a sandbox without network must not fail the run.
+  // Horizon reads of an unknown account answer 404 (the fake one included); a sandbox without network must not fail the run.
   if (/horizon/i.test(e.source) || /horizon/i.test(e.text)) return true;
+  if (horizon && (e.source.startsWith(horizon.url) || e.text.includes(horizon.url))) return true;
   if (/ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|ERR_PROXY/.test(e.text) && !e.source.startsWith(BASE)) return true;
   // Business refusals are real 4xx answers from our own API (own_task, forbidden, duplicate …).
   if (/Failed to load resource: the server responded with a status of (400|401|403|404|409)/.test(e.text) && e.source.startsWith(BASE)) return true;
@@ -207,6 +216,12 @@ const EXTRA_PROJECT = {
 
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
+  if (HORIZON_PORT) {
+    horizon = await startFakeHorizon(HORIZON_PORT);
+    log(`fake horizon: ${horizon.url}`);
+  } else {
+    log("E2E_HORIZON_PORT not set: the payment steps will fail gracefully (no Horizon) and the paid-task assertions are skipped");
+  }
   await waitForServer();
   const browser = await chromium.launch({ headless: HEADLESS });
 
@@ -279,9 +294,10 @@ async function main() {
       }
       assert((await cp.locator("[data-kpi-total]").innerText()).replace(/\s+/g, " ").startsWith("1,200.00"), "KPI total = 1,200.00");
       assert(await cp.locator("[data-task-delete]").count() === 3, "every open task of a draft project can be deleted");
-      const fund = cp.locator("[data-fund]");
-      assert(await fund.count() === 1 && (await fund.isDisabled()), "Financer le projet is shown but disabled in Phase 1");
-      assert(/Paiement Stellar branché à l’étape suivante/.test(await cp.locator("main").innerText()), "Phase 2 hint is displayed");
+      // direct payment mode (no Trustless Work key): no funding button, an honest note instead
+      assert(await cp.locator("[data-fund]").count() === 0, "no Financer button in direct mode");
+      assert(await cp.locator("#funding-panel[data-mode=direct]").count() === 1, "funding banner in direct mode");
+      assert(/Mode paiement direct/.test(await cp.locator("#funding-panel").innerText()), "direct-mode note is displayed");
       // server-side validation surfaces under the right field
       await cp.fill("#task-title", "Tâche invalide"); await cp.fill("#task-price", "10"); await cp.fill("#task-tags", "a, b, c, d");
       await cp.click("[data-task-add]");
@@ -371,23 +387,29 @@ async function main() {
       assert(notB.status === 403 && notB.json.error === "not_assigned", `B cannot deliver (got ${notB.status})`);
 
       await pa.goto(`/taches/${taskIds[0]}/`);
+      await pa.locator("#escrow-panel[data-mode=direct]").waitFor();
       await pa.locator("#deliver-panel").waitFor();
+      assert(/Paiement direct USDC/.test(await pa.locator("#escrow-panel").innerText()), "panel announces the direct mode");
+      assert(await pa.locator("#escrow-panel [data-pay-trustline]").count() === 1, "trustline helper offered to the freelance");
       await pa.fill("#deliver-link", "pas-un-lien");
       await pa.click("[data-deliver]");
-      const err = pa.locator('[data-error-for="delivery_link"]:not([hidden])');
+      await acceptConfirm(pa, "deliver (bad link)");
+      const err = pa.locator("#deliver-panel [data-pay-error]:not([hidden])");
       await err.waitFor();
-      assert(/http/.test(await err.innerText()), "link validation message mentions http");
+      assert(/http/.test(await err.innerText()), `link validation message mentions http, got "${await err.innerText()}"`);
+      assert(!(await pa.locator("[data-deliver]").isDisabled()), "deliver button re-enabled after a refusal");
       await pa.fill("#deliver-link", "https://github.com/studio-nova/booking/pull/1");
       await pa.click("[data-deliver]");
       await acceptConfirm(pa, "deliver");
       await pa.locator("[data-status-badge]", { hasText: "Livré" }).waitFor({ timeout: 15000 });
       assert(await pa.locator("[data-delivery-link]").count() === 1, "delivery link displayed");
       assert(await pa.locator("#deliver-panel").count() === 0, "deliver form is gone");
+      assert((await pa.locator("#escrow-panel").getAttribute("data-escrow-status")) === "delivered", "escrow row is delivered");
       await shot(pa, "05-tache-livree-freelance");
     });
 
     // 5 ------------------------------------------------------------------------------------------
-    await step("5. company validates with note 5 → T1 Payé, rating shown, kanban + dashboard reflect it", async () => {
+    await step("5. company validates with note 5: rating saved, the chained payment fails gracefully (account unknown on Horizon)", async () => {
       await cp.goto(`/projets/${projectId}/`);
       await cp.locator(".task-row[data-status=delivered]").waitFor();
       assert(await cp.locator(".task-row[data-status=delivered] a", { hasText: "Valider + noter" }).count() === 1, "project page offers Valider + noter");
@@ -398,17 +420,80 @@ async function main() {
       assert(refused.status === 403 && refused.json.error === "forbidden", `freelance cannot validate (got ${refused.status})`);
       const bad = await api(cp, `/taches/${taskIds[0]}/valider/`, { note: 7 });
       assert(bad.status === 400 && bad.json.error === "invalid", `note 7 refused with invalid (got ${bad.status})`);
+      const early = await api(cp, `/pay/prepare/${taskIds[0]}/direct_pay/`, {});
+      assert(early.status === 200 && early.json.ok === false && early.json.error === "wrong_state", `paying before rating is refused with HTTP 200 {ok:false}: ${JSON.stringify(early.json)}`);
       await cp.check('[data-rate="5"]', { force: true });
       assert(await cp.isChecked('[data-rate="5"]'), "note 5 checked");
       await cp.fill("#validate-comment", "Impeccable, pixel-perfect et en avance.");
       await shot(cp, "06-valider-noter");
       await cp.click("[data-validate-submit]");
       await acceptConfirm(cp, "validate");
-      await cp.locator("[data-status-badge]", { hasText: "Payé" }).waitFor({ timeout: 15000 });
+      // The Rating is stored, then lowbid-projects.js chains direct_pay: the company account does not exist
+      // on (the fake) Horizon yet → prepare answers HTTP 200 {ok:false, error:"stellar"} with a French message.
+      const payErr = cp.locator("#escrow-panel [data-pay-error]:not([hidden])");
+      await payErr.waitFor({ timeout: 15000 });
+      const payMsg = (await payErr.innerText()).trim();
+      assert(/Compte Stellar introuvable|financez|Horizon/.test(payMsg), `French payment error shown, got "${payMsg}"`);
+      assert(await cp.locator("#validate-form").count() === 0, "the rating form is gone (rating saved)");
+      const resume = cp.locator('#escrow-panel [data-pay-step="direct_pay"]');
+      assert(await resume.count() === 1, "a resume button « Payer le freelance » replaces the form");
+      assert((await cp.locator("[data-status-badge]").innerText()).trim() === "Livré", "task is still Livré (nothing paid)");
+      const dup = await api(cp, `/taches/${taskIds[0]}/valider/`, { note: 4 });
+      assert(dup.status === 409 && dup.json.error === "duplicate", `second validation refused (got ${dup.status} ${dup.json && dup.json.error})`);
+      const fail = await api(cp, `/pay/prepare/${taskIds[0]}/direct_pay/`, {});
+      assert(fail.status === 200 && fail.json.ok === false && fail.json.error === "stellar", `prepare fails gracefully: ${JSON.stringify(fail.json)}`);
+      await cp.reload();
+      await cp.locator('#escrow-panel [data-pay-step="direct_pay"]').waitFor();
+      assert(/Compte Stellar introuvable|financez/.test(await cp.locator("#escrow-panel").innerText()), "last_error persisted in the panel after a reload");
+      assert(await cp.locator("#escrow-panel [data-last-error]").count() === 1, "last_error alert");
+      await shot(cp, "13-paiement-echec");
+      // dashboard: the pending payment step surfaces for both roles
+      await cp.goto("/tableau-de-bord/");
+      assert(await cp.locator("[data-todo-list] .ui-next-card.act", { hasText: "Payer « Landing page »" }).count() === 1, "company to-do: pay the task");
+      await pa.goto("/tableau-de-bord/");
+      assert(await pa.locator("[data-todo-list] .ui-next-card", { hasText: "paiement en attente" }).count() === 1, "freelance to-do: payment pending");
+    });
+
+    await step("5b. wallets funded on Horizon, A adds the USDC trustline, the company resumes → T1 Payé with its explorer link", async () => {
+      if (!horizon) { log("      skipped (no fake Horizon)"); return; }
+      horizon.fund(company.address, { usdc: 1000 });
+      horizon.fund(fa.address); // XLM only: the trustline comes from the UI
+      await pa.goto(`/taches/${taskIds[0]}/`);
+      await pa.locator("#escrow-panel [data-pay-trustline]").click();
+      await pa.locator(".lb-toast", { hasText: "Trustline USDC ajoutée" }).waitFor({ timeout: 15000 });
+      assert(horizon.submitted.some((t) => t.type === "change_trust" && t.source === fa.address), "changeTrust reached Horizon");
+      assert(horizon.balanceOf(fa.address) === 0, "A holds the trustline with a 0 balance");
+      const again = await api(pa, "/pay/trustline/prepare/", {});
+      assert(again.json.ok && !again.json.xdr && /déjà présente/.test(again.json.message), `second trustline call says already present: ${JSON.stringify(again.json)}`);
+
+      await cp.goto(`/taches/${taskIds[0]}/`);
+      await cp.locator('#escrow-panel [data-pay-step="direct_pay"]').click();
+      await cp.locator("[data-status-badge]", { hasText: "Payé" }).waitFor({ timeout: 20000 });
+      const payment = horizon.submitted.find((t) => t.type === "payment");
+      assert(payment && payment.source === company.address && payment.destination === fa.address && Number(payment.amount) === 300 && payment.asset === "USDC", `payment submitted to Horizon: ${JSON.stringify(payment)}`);
+      assert(horizon.balanceOf(fa.address) === 300 && horizon.balanceOf(company.address) === 700, "ledger moved 300 USDC");
       assert(await cp.locator('[data-rating="5"]').count() === 1, "rating 5 displayed");
       assert(/Tâche payée/.test(await cp.locator("main").innerText()), "Tâche payée panel");
-      const dup = await api(cp, `/taches/${taskIds[0]}/valider/`, { note: 4 });
-      assert(dup.status === 409 && dup.json.error === "wrong_state", `second validation refused (got ${dup.status} ${dup.json && dup.json.error})`);
+      const link = cp.locator(`#escrow-panel [data-explorer-links] a[href*="stellar.expert/explorer/testnet/tx/${payment.hash}"]`);
+      assert(await link.count() === 1, "the payment hash links to stellar.expert");
+      assert(await cp.locator("#escrow-panel [data-last-error]").count() === 0, "last_error cleared");
+      assert(await cp.locator("#escrow-panel [data-pay-step]").count() === 0, "nothing left to sign");
+      const balance = cp.locator(`[data-usdc-balance="${fa.address}"]`);
+      await cp.waitForFunction((el) => /300\.00/.test(el.textContent), await balance.elementHandle(), { timeout: 15000 });
+      await shot(cp, "14-paiement-tache");
+      const replay = await api(cp, `/pay/prepare/${taskIds[0]}/direct_pay/`, {});
+      assert(replay.status === 200 && replay.json.ok === false && replay.json.error === "wrong_state", `paying twice is refused: ${JSON.stringify(replay.json)}`);
+      await cp.goto(`/projets/${projectId}/`);
+      await cp.locator("#funding-panel").waitFor();
+      const banner = await cp.locator("#funding-panel").innerText();
+      assert(/300\.00 USDC/.test(banner) && /Payé/.test(banner), `banner lists T1 as paid: "${banner.slice(0, 200)}"`);
+      assert(await cp.locator(`#funding-panel a[href*="/tx/${payment.hash}"]`).count() === 1, "banner carries the explorer link");
+      assert((await cp.locator("[data-status-badge]").first().innerText()).trim() === "Financé", "project is Financé after the first direct payment");
+      await shot(cp, "15-financement-projet");
+    });
+
+    await step("5c. kanban + dashboard reflect the paid task", async () => {
+      if (!horizon) { log("      skipped (no fake Horizon)"); return; }
 
       await pa.goto("/taches/");
       assert(await pa.locator(`.kanban-col[data-col="paid"] .kanban-card[data-task-id="${taskIds[0]}"]`).count() === 1, "T1 sits in A's Payé column");
@@ -420,6 +505,7 @@ async function main() {
 
     // 6 ------------------------------------------------------------------------------------------
     await step("6. A and B apply to T2 → A is TOP with Validé + Recommandé (90.0 vs 20.0)", async () => {
+      if (!horizon) { log("      skipped (no fake Horizon: T1 is not paid)"); return; }
       await applyUI(pa, taskIds[1], { message: "J’ai déjà branché Freighter et Horizon sur un back-office Django.", tags: "stellar" });
       assert((await pa.locator("#my-application").innerText()).includes("90.0"), "A's score is 90.0 (40 + 5×8 + 20×½)");
       await applyUI(pb, taskIds[1], { message: "Spécialiste Stellar/JS : SEP-53, trustlines, Soroban.", tags: "stellar, js" });
@@ -447,7 +533,7 @@ async function main() {
       assert(await cp.locator(`#candidates-${taskIds[1]} [data-choose]`).count() === 2, "project page: Choisir on every candidate of T2");
       assert(await cp.locator(`#candidates-${taskIds[1]} [data-badge="valide"]`).count() === 1, "project page: Validé badge");
       assert(await cp.locator(".task-row[data-status=paid]").count() === 1, "T1 row is Payé");
-      assert(await cp.locator("[data-task-delete]").count() === 2, "only the two open tasks can still be deleted");
+      assert(await cp.locator("[data-task-delete]").count() === 0, "project is Financé: tasks are frozen");
       await shot(cp, "03-projet-entreprise");
       await noHorizontalScroll(cp, "desktop project company");
 
@@ -491,7 +577,7 @@ async function main() {
       await cp.goto("/mes-projets/");
       const row = cp.locator("tbody tr", { hasText: PROJECT.title.slice(0, 30) });
       assert(await row.count() === 1, "the project is listed in Mes projets");
-      assert(await row.locator(".ui-badge", { hasText: "Brouillon" }).count() === 1, "project is Brouillon");
+      assert(await row.locator(".ui-badge", { hasText: horizon ? "Financé" : "Brouillon" }).count() === 1, "project status badge in Mes projets");
       assert(/Choisir/.test(await row.innerText()), "row CTA says Choisir (candidates waiting on T2)");
       assert(await cp.locator("tbody tr").count() === 2, "both company projects listed");
       await shot(cp, "09-mes-projets");
@@ -504,14 +590,14 @@ async function main() {
       assert(await cp.locator("[data-todo-list] .ui-next-card.act", { hasText: "Choisir un freelance" }).count() >= 1, "to-do: choose a freelance for T2");
       assert(await cp.locator(".ui-kpi-tile").count() >= 4, "dashboard KPI tiles");
       assert(await cp.locator("#activity .ui-timeline-item").count() >= 1, "activity timeline has entries");
-      assert(/Paiement envoyé/.test(await cp.locator("#activity").innerText()), "activity mentions the payment of T1");
+      if (horizon) assert(/Paiement envoyé/.test(await cp.locator("#activity").innerText()), "activity mentions the payment of T1");
       await shot(cp, "10-tableau-de-bord");
       await noHorizontalScroll(cp, "desktop dashboard");
 
       await pa.goto("/tableau-de-bord/");
       await pa.locator("#todo").waitFor();
       assert(/5\.0\/5/.test(await pa.locator("[data-avg-note]").innerText()), "A's average note is 5.0/5 on the dashboard");
-      assert(await pa.locator("[data-todo-list] .ui-next-card", { hasText: "Intégration Freighter" }).count() >= 1, "A's to-do lists the pending application");
+      if (horizon) assert(await pa.locator("[data-todo-list] .ui-next-card", { hasText: "Intégration Freighter" }).count() >= 1, "A's to-do lists the pending application");
 
       await pa.goto(`/profil/${fa.address}/`);
       await pa.locator("#edit-name").waitFor();
@@ -596,6 +682,7 @@ async function main() {
     });
   } finally {
     await browser.close().catch(() => {});
+    if (horizon) await horizon.close().catch(() => {});
   }
 
   // --- verdict -----------------------------------------------------------------------------

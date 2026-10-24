@@ -1,14 +1,19 @@
 #!/usr/bin/env node
-/* Lowbid end-to-end run — the whole user flow with a simulated Freighter (fake-freighter.js).
+/* Lowbid end-to-end run — the task-board demo scenario (SPEC §8) with a simulated Freighter
+ * (fake-freighter.js).
  *
  *   make e2e                      # fresh SQLite, runserver on a free port, this script, teardown
  *   E2E_BASE_URL=http://127.0.0.1:8000 node tests/e2e/run.js   # against a server you started
  *
- * Plain `playwright` library API (no @playwright/test). Three browser contexts (client, freelance1,
- * freelance2) at 1280x800, the key screens re-checked at 390x844. Screenshots land in
+ * Plain `playwright` library API (no @playwright/test). Three browser contexts (company,
+ * freelance A, freelance B) at 1280x800, the key screens re-checked at 390x844. Screenshots land in
  * docs/screenshots/. Exit code 1 on the first failing step, on any unexpected console error or
- * uncaught page error. Nothing here reaches Horizon / Trustless Work: the only network step
- * exercised is the client's "Payer" button, which must fail gracefully (French message, no 500).
+ * uncaught page error. Nothing here reaches the network: Phase 1 runs "sans argent".
+ *
+ * Scenario: company creates a project + 3 tasks (inline) → A and B apply to T1 → company chooses A
+ * → A delivers a link → company validates with note 5 → T1 paid → A and B apply to T2 → A is top
+ * with « Validé » + « Recommandé » (90 vs 20). Plus the kanban, dashboard, profile, list filters,
+ * mobile (no horizontal scroll), theme toggle and logout.
  */
 "use strict";
 
@@ -49,10 +54,10 @@ async function step(name, fn) {
 
 const consoleErrors = []; // {who, text, source}
 function isExpectedError(e) {
-  // Horizon is unreachable from the sandbox: the balance watcher fails (3 times, then stops).
+  // Nothing should reach Horizon in Phase 1, but a sandbox without network must not fail the run.
   if (/horizon/i.test(e.source) || /horizon/i.test(e.text)) return true;
   if (/ERR_TUNNEL_CONNECTION_FAILED|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_REFUSED|ERR_PROXY/.test(e.text) && !e.source.startsWith(BASE)) return true;
-  // Business refusals are real 4xx answers from our own API (not_lower, forbidden, own_need …).
+  // Business refusals are real 4xx answers from our own API (own_task, forbidden, duplicate …).
   if (/Failed to load resource: the server responded with a status of (400|401|403|404|409)/.test(e.text) && e.source.startsWith(BASE)) return true;
   return false;
 }
@@ -117,13 +122,13 @@ async function noHorizontalScroll(page, label) {
 }
 async function shot(page, name, opts) {
   await pageSane(page, "screenshot " + name);
-  await page.waitForTimeout(250); // let countdowns / fonts settle
+  await page.waitForTimeout(250); // let fonts / transitions settle
   // Phone shots are viewport-only: a full-page capture would paint the fixed tab bar / sticky
   // action bar in the middle of the image instead of at the bottom of the screen.
   const vp = page.viewportSize() || DESKTOP;
   await page.screenshot(Object.assign({ path: path.join(SHOTS, name + ".png"), fullPage: vp.width > 600 }, opts || {}));
 }
-/* The app confirms destructive actions in its own <dialog id="lb-confirm"> (Lowbid.confirm), not window.confirm. */
+/* The app confirms every decision in its own <dialog id="lb-confirm"> (Lowbid.confirm), not window.confirm. */
 async function acceptConfirm(page, label) {
   const dlg = page.locator("#lb-confirm[open]");
   await dlg.waitFor({ timeout: 5000 });
@@ -142,24 +147,28 @@ async function connect(page, who, selector) {
   // The session cookie is what matters; the fake's call log is a bonus sanity check on the flow.
   if (calls.length) assert(calls.includes("signMessage"), `login used signMessage (calls: ${calls.join(",")})`);
 }
-async function postNeed(page, need) {
-  await page.goto("/besoins/nouveau/" + (need.demo ? "?demo=1" : ""));
-  await page.fill("#id_title", need.title);
-  await page.fill("#id_description", need.description);
-  await page.fill("#id_budget_max", String(need.budget));
-  await page.fill("#id_delay_max_days", String(need.delay));
-  await page.fill("#id_tags", need.tags);
-  if (need.duration) { await page.click(`label[for="id_duration_${need.duration}"]`); assert(await page.isChecked("#id_duration_" + need.duration), "duration radio checked"); } // .seg-radio group (inputs are visually hidden)
-  await Promise.all([page.waitForURL(/\/besoins\/\d+\/$/), page.click("#need-form button[type=submit]")]);
-  return Number(page.url().match(/\/besoins\/(\d+)\//)[1]);
+async function createProject(page, project) {
+  await page.goto("/projets/nouveau/");
+  await page.fill("#id_title", project.title);
+  await page.fill("#id_description", project.description);
+  await Promise.all([page.waitForURL(/\/projets\/\d+\/$/), page.click("#project-form button[type=submit]")]);
+  return Number(page.url().match(/\/projets\/(\d+)\//)[1]);
 }
-async function bidUI(page, needId, bid) {
-  await page.goto(`/besoins/${needId}/`);
-  await page.fill("#bid-price", String(bid.price));
-  await page.fill("#bid-delay", String(bid.delay));
-  await page.fill("#bid-tags", bid.tags);
-  if (bid.message) await page.fill("#bid-message", bid.message);
-  await page.click("[data-bid-submit]");
+/* Inline add-task form on the project page: fills, submits through Lowbid.api, waits for the reload. */
+async function addTaskUI(page, task, expectedCount) {
+  await page.fill("#task-title", task.title);
+  await page.fill("#task-description", task.description || "");
+  await page.fill("#task-price", String(task.price));
+  await page.fill("#task-tags", task.tags);
+  await page.click("[data-task-add]");
+  await page.locator(`[data-tasks][data-count="${expectedCount}"]`).waitFor({ timeout: 10000 });
+}
+async function applyUI(page, taskId, app) {
+  await page.goto(`/taches/${taskId}/`);
+  if (app.message) await page.fill("#apply-message", app.message);
+  await page.fill("#apply-tags", app.tags);
+  await page.click("[data-apply-submit]");
+  await page.locator("#my-application").waitFor({ timeout: 10000 });
 }
 function usdc(n) { return Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " USDC"; }
 
@@ -177,35 +186,46 @@ async function waitForServer() {
 
 // --- the scenario ------------------------------------------------------------------------------
 
-const EXTRA_NEEDS = [
-  { title: "Refonte du site vitrine d’une boulangerie", description: "Site vitrine 5 pages (accueil, nos pains, pâtisseries, commandes, contact) avec horaires et carte. Charte fournie, photos à retoucher légèrement, hébergement déjà en place.", budget: 900, delay: 21, tags: "wordpress, design, seo", duration: "120", bids: [["f1", 820, 18, ["wordpress", "seo"], "Thème sur mesure, optimisation Core Web Vitals incluse."], ["f2", 780, 20, ["design"], "Maquettes Figma puis intégration, 2 allers-retours."]] },
-  { title: "Intégration paiement USDC sur une app Django", description: "Ajouter un paiement USDC (Stellar) au tunnel de commande existant : trustline, signature Freighter, webhook de confirmation, page de reçu. Tests inclus.", budget: 1200, delay: 14, tags: "django, stellar, api", duration: "120", bids: [["f2", 1100, 12, ["django", "stellar"], "J’ai déjà branché Horizon et Freighter sur un back-office Django."], ["f1", 990, 14, ["django", "api"], "Backend + tests, front minimal."]] },
-  { title: "Application mobile de réservation pour un salon de coiffure", description: "Prise de rendez-vous, rappels SMS, gestion des créneaux par coiffeur, paiement d’acompte. iOS + Android, publication sur les stores comprise.", budget: 2500, delay: 30, tags: "flutter, firebase, ui", duration: "1440", bids: [["f1", 2300, 28, ["flutter", "firebase"], "Flutter + Firebase, livraison store-ready."]] },
-  { title: "Migration d’une boutique PrestaShop vers Shopify", description: "1 200 produits, 3 langues, redirections SEO, thème équivalent. Import clients et historique de commandes.", budget: 1500, delay: 20, tags: "shopify, liquid, seo", duration: "4320", bids: [] },
+const PROJECT = {
+  title: "Plateforme de réservation pour un studio de yoga",
+  description: "Site de réservation de cours (planning, abonnements, paiement USDC via Freighter) pour un studio de 3 salles. Maquettes Figma fournies, déploiement sur notre VPS. Découpé en trois tâches à prix fixe.",
+};
+const TASKS = [
+  { title: "Landing page", description: "Page d’accueil responsive (Django + Tailwind) depuis la maquette, formulaire de contact.", price: 300, tags: "django, ui" },
+  { title: "Intégration Freighter", description: "Connexion wallet, signature SEP-53 et paiement USDC d’un abonnement depuis le navigateur.", price: 500, tags: "stellar, js" },
+  { title: "Dashboard", description: "Tableau de bord du studio : taux de remplissage, revenus USDC, export CSV.", price: 400, tags: "django, charts" },
 ];
+const EXTRA_PROJECT = {
+  title: "Refonte de la charte et du site vitrine d’une boulangerie",
+  description: "Logo vectoriel, mini charte (couleurs, typos) et site vitrine 5 pages avec horaires et carte. Photos à retoucher légèrement, hébergement déjà en place.",
+  tasks: [
+    { title: "Logo et charte", description: "Logo vectoriel, 2 déclinaisons, mini charte.", price: 250, tags: ["design", "figma"] },
+    { title: "Site vitrine WordPress", description: "5 pages, thème sur mesure, Core Web Vitals verts.", price: 600, tags: ["wordpress", "seo"] },
+    { title: "Retouche photos", description: "30 photos produits : détourage, colorimétrie, exports web.", price: 120, tags: ["photo"] },
+  ],
+};
 
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
   await waitForServer();
   const browser = await chromium.launch({ headless: HEADLESS });
 
-  const client = actor("client");
-  const f1 = actor("freelance1");
-  const f2 = actor("freelance2");
+  const company = actor("company");
+  const fa = actor("freelanceA");
+  const fb = actor("freelanceB");
   const ctx = {
-    client: await newContext(browser, client, DESKTOP),
-    f1: await newContext(browser, f1, DESKTOP),
-    f2: await newContext(browser, f2, DESKTOP),
+    company: await newContext(browser, company, DESKTOP),
+    fa: await newContext(browser, fa, DESKTOP),
+    fb: await newContext(browser, fb, DESKTOP),
     anon: await newContext(browser, null, DESKTOP),
   };
-  const cp = track(await ctx.client.newPage(), "client");
-  const p1 = track(await ctx.f1.newPage(), "freelance1");
-  const p2 = track(await ctx.f2.newPage(), "freelance2");
-  const pa = track(await ctx.anon.newPage(), "anon");
-  const bidder = { f1: p1, f2: p2 };
-  let needId = null;
-  let winner = null;
-  let loser = null;
+  const cp = track(await ctx.company.newPage(), "company");
+  const pa = track(await ctx.fa.newPage(), "freelanceA");
+  const pb = track(await ctx.fb.newPage(), "freelanceB");
+  const pn = track(await ctx.anon.newPage(), "anon");
+  let projectId = null;
+  const taskIds = []; // T1, T2, T3
+  let extraProjectId = null;
 
   try {
     // 1 ------------------------------------------------------------------------------------------
@@ -214,395 +234,349 @@ async function main() {
       assert((await cp.title()).includes("Lowbid"), "title contains Lowbid");
       await cp.locator(".lb-hero-title").waitFor();
       assert(await cp.locator(".lb-hero [data-wallet-connect]").count() === 1, "hero has the connect button");
-      await connect(cp, client, ".lb-hero [data-wallet-connect]");
+      const body = await cp.evaluate(() => document.body.innerText);
+      assert(!/ench[eè]r/i.test(body), "landing copy is about the task board");
+      await connect(cp, company, ".lb-hero [data-wallet-connect]");
       await cp.waitForURL(/\/tableau-de-bord\/$/, { timeout: 10000 });
       await cp.locator("#todo").waitFor();
       assert(await cp.locator("#activity").count() === 1, "dashboard has the activity section");
       assert(await cp.locator(".lb-tabbar").count() === 1, "signed-in pages carry the mobile tab bar markup");
       await cp.goto("/");
-      assert((await cp.locator(".lb-hero a.ui-btn-primary").innerText()).includes("Poster un besoin"), "hero CTA switches to Poster un besoin");
+      assert((await cp.locator(".lb-hero a.ui-btn-primary").innerText()).includes("Nouveau projet"), "hero CTA switches to Nouveau projet");
       assert(await cp.locator("[data-landing-stats]").count() === 1, "landing shows the live stats line");
     });
 
     await step("1b. ?next= after connect (wallet_required redirect) and off-site next dropped", async () => {
-      await p1.goto("/mes-encheres/");
-      assert(new URL(p1.url()).pathname === "/" && new URL(p1.url()).searchParams.get("next") === "/mes-encheres/", `redirected to /?next=…, got ${p1.url()}`);
-      await p1.locator(".lb-hero .ui-alert", { hasText: "/mes-encheres/" }).waitFor();
-      await connect(p1, f1, ".lb-hero [data-wallet-connect]");
-      await p1.waitForURL(/\/mes-encheres\/$/);
-      await p1.locator(".empty-state-title", { hasText: "Aucune enchère" }).waitFor();
+      await pa.goto("/taches/");
+      assert(new URL(pa.url()).pathname === "/" && new URL(pa.url()).searchParams.get("next") === "/taches/", `redirected to /?next=…, got ${pa.url()}`);
+      await pa.locator(".lb-hero .ui-alert", { hasText: "/taches/" }).waitFor();
+      await connect(pa, fa, ".lb-hero [data-wallet-connect]");
+      await pa.waitForURL(/\/taches\/$/);
+      assert(await pa.locator(".kanban-col[data-col]").count() === 4, "kanban has 4 columns");
+      await pa.locator('.kanban-col[data-col="open"] .kanban-empty').waitFor();
 
-      await p2.goto("/?next=https://evil.example/");
-      assert(await p2.locator(".lb-hero .ui-alert").count() === 0, "off-site next is not advertised");
-      await connect(p2, f2, ".lb-hero [data-wallet-connect]");
-      await p2.waitForTimeout(600);
-      assert(p2.url().startsWith(BASE + "/"), `stayed on ${BASE}, got ${p2.url()}`);
+      await pb.goto("/?next=https://evil.example/");
+      assert(await pb.locator(".lb-hero .ui-alert").count() === 0, "off-site next is not advertised");
+      await connect(pb, fb, ".lb-hero [data-wallet-connect]");
+      await pb.waitForTimeout(600);
+      assert(pb.url().startsWith(BASE + "/"), `stayed on ${BASE}, got ${pb.url()}`);
     });
 
     // 2 ------------------------------------------------------------------------------------------
-    await step("2. client posts the need (500 USDC, 10 j, django/stellar/ui, démo 5 min)", async () => {
-      needId = await postNeed(cp, {
-        title: "Landing page Django + paiement Stellar",
-        description: "Une landing page pour notre PME (12 salariés) : présentation, formulaire de contact et un bouton de paiement USDC via Freighter. Maquette fournie, déploiement sur notre VPS.",
-        budget: 500, delay: 10, tags: "django, stellar, ui", duration: "5", demo: true,
-      });
-      await cp.locator(".ui-alert-ok", { hasText: "Besoin publié" }).waitFor();
-      assert((await cp.locator("[data-status-badge]").innerText()).trim() === "Ouvert", "status Ouvert");
-      assert(await cp.locator("#bid-form").count() === 0, "client has no bid form on their own need");
-      await cp.locator("[data-countdown-main]", { hasText: /^0[0-4]:[0-5]\d$/ }).waitFor();
+    await step("2. company creates the project and adds 3 tasks inline (300 / 500 / 400 USDC)", async () => {
+      projectId = await createProject(cp, PROJECT);
+      await cp.locator(".ui-alert-ok", { hasText: "Projet créé" }).waitFor();
+      assert((await cp.locator("[data-status-badge]").innerText()).trim() === "Brouillon", "status Brouillon");
+      await cp.locator('[data-tasks][data-count="0"]').waitFor();
+      assert(await cp.locator("#task-form").count() === 1, "company sees the inline add-task form");
+      assert(await cp.locator("[data-fund]").count() === 0, "no Financer button without a task");
+      for (let i = 0; i < TASKS.length; i++) await addTaskUI(cp, TASKS[i], i + 1);
+      const rows = cp.locator(".task-row");
+      assert(await rows.count() === 3, "3 task rows");
+      for (let i = 0; i < 3; i++) {
+        taskIds.push(Number(await rows.nth(i).getAttribute("data-task-id")));
+        assert((await rows.nth(i).getAttribute("data-status")) === "open", `task ${i + 1} is open`);
+      }
+      assert((await cp.locator("[data-kpi-total]").innerText()).replace(/\s+/g, " ").startsWith("1,200.00"), "KPI total = 1,200.00");
+      assert(await cp.locator("[data-task-delete]").count() === 3, "every open task of a draft project can be deleted");
+      const fund = cp.locator("[data-fund]");
+      assert(await fund.count() === 1 && (await fund.isDisabled()), "Financer le projet is shown but disabled in Phase 1");
+      assert(/Paiement Stellar branché à l’étape suivante/.test(await cp.locator("main").innerText()), "Phase 2 hint is displayed");
+      // server-side validation surfaces under the right field
+      await cp.fill("#task-title", "Tâche invalide"); await cp.fill("#task-price", "10"); await cp.fill("#task-tags", "a, b, c, d");
+      await cp.click("[data-task-add]");
+      const err = cp.locator('[data-error-for="tags"]:not([hidden])');
+      await err.waitFor();
+      assert(/Au plus 3/.test(await err.innerText()), `tags error, got "${await err.innerText()}"`);
+      assert(!(await cp.locator("[data-task-add]").isDisabled()), "submit button re-enabled after a refusal");
+      await cp.goto(`/projets/${projectId}/`);
+      await cp.locator('[data-tasks][data-count="3"]').waitFor();
     });
 
-    await step("2b. extra needs + bids (realistic list for the screenshots)", async () => {
-      for (const n of EXTRA_NEEDS) {
-        n.id = await postNeed(cp, n);
-        for (const [who, price, delay, tags, message] of n.bids) {
-          const r = await api(bidder[who], `/besoins/${n.id}/encherir/`, { price, delay_days: delay, tags, message });
-          assert(r.status === 201, `${who} bid ${price} on #${n.id}: HTTP ${r.status} ${JSON.stringify(r.json)}`);
-        }
+    await step("2b. a second project (API) for the list / kanban screenshots; freelances cannot add tasks", async () => {
+      extraProjectId = await createProject(cp, EXTRA_PROJECT);
+      for (const t of EXTRA_PROJECT.tasks) {
+        const r = await api(cp, `/projets/${extraProjectId}/taches/ajouter/`, t);
+        assert(r.status === 201, `add task on #${extraProjectId}: HTTP ${r.status} ${JSON.stringify(r.json)}`);
       }
-      await cp.goto(`/besoins/${needId}/`); // the client watches their need from now on (polling)
+      const forbidden = await api(pa, `/projets/${projectId}/taches/ajouter/`, { title: "Hack", price: 1, tags: [] });
+      assert(forbidden.status === 403 && forbidden.json.error === "forbidden", `freelance cannot add a task (got ${forbidden.status})`);
+      await pn.goto("/"); // the anonymous context needs the CSRF cookie before its first POST
+      const anon = await api(pn, `/projets/${projectId}/taches/ajouter/`, { title: "Hack", price: 1, tags: [] });
+      assert(anon.status === 401 && anon.json.error === "wallet_required", `anonymous → 401 wallet_required, got ${anon.status}`);
+      await cp.goto(`/projets/${projectId}/`);
     });
 
     // 3 ------------------------------------------------------------------------------------------
-    let clientNavs = 0;
-    cp.on("framenavigated", (f) => { if (f === cp.mainFrame()) clientNavs++; });
-
-    await step("3. descending bids: 450 → 420 → 430 refused (not_lower) → 400 replaces", async () => {
-      await bidUI(p1, needId, { price: 450, delay: 8, tags: "django, stellar", message: "Django + Tailwind, déploiement compris." });
-      await p1.locator("#bid-form-panel .ui-panel-sub", { hasText: `Votre offre actuelle : ${usdc(450)}` }).waitFor();
-      assert((await p1.locator("#bid-form-panel .ui-panel-title").innerText()).includes("Améliorer mon offre"), "panel title switches to Améliorer mon offre");
-
-      await bidUI(p2, needId, { price: 420, delay: 9, tags: "ui", message: "Spécialiste UI, intégration Freighter incluse." });
-      await p2.locator("#bid-form-panel .ui-panel-sub", { hasText: `Votre offre actuelle : ${usdc(420)}` }).waitFor();
-
-      // Server-side rule R1 through the API (deterministic, regardless of polling timing).
-      const refused = await api(p1, `/besoins/${needId}/encherir/`, { price: 430, delay_days: 8, tags: ["django", "stellar"] });
-      assert(refused.status === 400 && refused.json.error === "not_lower", `430 refused with not_lower, got ${refused.status} ${JSON.stringify(refused.json)}`);
-      assert(/strictement inférieur à 420 USDC/.test(refused.json.message), `French not_lower message, got "${refused.json.message}"`);
-
-      // Same attempt through the form: the message lands under the price field (client or server side).
-      await p1.goto(`/besoins/${needId}/`);
-      assert((await p1.locator("[data-price-cap]").innerText()).trim() === usdc(420), "price hint shows the current best (420) after refresh");
-      assert((await p1.locator("#bid-price").getAttribute("max")) === "420", "input max is the plain decimal 420");
-      await p1.fill("#bid-price", "430"); await p1.fill("#bid-delay", "8"); await p1.fill("#bid-tags", "django, stellar");
-      await p1.click("[data-bid-submit]");
-      const err = p1.locator('[data-error-for="price"]:not([hidden])');
-      await err.waitFor();
-      assert(/inférieur à 420/.test(await err.innerText()), `price error mentions 420, got "${await err.innerText()}"`);
-      assert(!(await p1.locator("[data-bid-submit]").isDisabled()), "submit button re-enabled after a refusal");
-
-      await p1.fill("#bid-price", "400");
-      await p1.click("[data-bid-submit]");
-      await p1.locator("#bid-form-panel .ui-panel-sub", { hasText: `Votre offre actuelle : ${usdc(400)}` }).waitFor();
-      assert(await p1.locator(".bid-row").count() === 2, "f1's 450 was replaced, 2 rows remain");
-      assert(await p1.locator(".bid-row", { hasText: "450.00" }).count() === 0, "the superseded 450 is gone");
+    await step("3. A and B apply to T1 (A: django,ui · B: django); company cannot apply; duplicates refused", async () => {
+      await applyUI(pa, taskIds[0], { message: "Django + Tailwind au quotidien, je livre en 5 jours avec le déploiement.", tags: "django, ui" });
+      assert((await pa.locator("#my-application").innerText()).includes("20.0"), "A's score is 20.0 (tags only, no history)");
+      await applyUI(pb, taskIds[0], { message: "Intégration propre depuis Figma, 2 itérations comprises.", tags: "django" });
+      assert((await pb.locator("#my-application").innerText()).includes("10.0"), "B's score is 10.0");
+      assert(await pb.locator('[data-candidates][data-count="2"]').count() === 1, "B sees 2 candidates");
+      const dup = await api(pa, `/taches/${taskIds[0]}/postuler/`, { message: "encore", tags: ["django"] });
+      assert(dup.status === 409 && dup.json.error === "duplicate", `second application refused with duplicate, got ${dup.status} ${JSON.stringify(dup.json)}`);
+      const own = await api(cp, `/taches/${taskIds[0]}/postuler/`, { message: "moi", tags: [] });
+      assert(own.status === 403 && own.json.error === "own_task", `own_task refused, got ${own.status}`);
+      assert(/propre tâche/.test(own.json.message), `French own_task message, got "${own.json.message}"`);
+      await pa.goto(`/taches/${taskIds[0]}/`);
+      assert(await pa.locator("[data-choose]").count() === 0, "a freelance has no Choisir button");
     });
 
-    await step("3b. client's page updates by polling (2 bids, Meilleur prix on 400, no reload)", async () => {
+    await step("3b. company's task page updates by polling (2 candidates, Recommandé on A, Choisir on EVERY row)", async () => {
+      await cp.goto(`/taches/${taskIds[0]}/`);
+      let navs = 0;
+      cp.on("framenavigated", (f) => { if (f === cp.mainFrame()) navs++; });
+      // B's application landed before this page load; A's and B's rows are already there. Add a third
+      // candidate through the API and watch the list refresh without a reload.
+      const fc = actor("freelanceC");
+      const cctx = await newContext(browser, fc, DESKTOP);
+      const pc = track(await cctx.newPage(), "freelanceC");
+      await pc.goto("/");
+      await connect(pc, fc, ".lb-hero [data-wallet-connect]");
+      const r = await api(pc, `/taches/${taskIds[0]}/postuler/`, { message: "Dispo tout de suite.", tags: ["ui"] });
+      assert(r.status === 201, `C applies: HTTP ${r.status}`);
       const t0 = Date.now();
-      await cp.locator('[data-bids][data-count="2"]').waitFor({ timeout: 8000 });
-      await cp.locator(".bid-row", { hasText: "400.00" }).locator(".ui-badge", { hasText: "Meilleur prix" }).waitFor({ timeout: 8000 });
-      const elapsed = Date.now() - t0;
-      assert(clientNavs === 0, `no navigation on the client page (saw ${clientNavs})`);
-      assert((await cp.locator("[data-kpi-count]").innerText()).trim() === "2", "KPI count = 2");
-      const bestTile = (await cp.locator("[data-kpi-best]").innerText()).replace(/\s+/g, " ").trim();
-      assert(bestTile.startsWith("400.00"), `KPI best = 400.00 (got "${bestTile}")`);
-      assert((bestTile.match(/USDC/g) || []).length === 1, `KPI best tile has exactly one USDC unit (got "${bestTile}")`);
+      await cp.locator('[data-candidates][data-count="3"]').waitFor({ timeout: 8000 });
+      log(`      polling delivered the list in ${Date.now() - t0} ms`);
+      assert(navs === 0, `no navigation on the company page (saw ${navs})`);
+      assert((await cp.locator("[data-kpi-count]").innerText()).trim() === "3", "KPI count = 3");
       assert(await cp.locator("[data-live-dot]:not([hidden])").count() === 1, "live dot shown");
-      log(`      polling delivered the list in ${elapsed} ms`);
-    });
-
-    await step("3c. screenshots: enchères ouvertes (desktop + mobile), liste, landing", async () => {
-      await p1.goto(`/besoins/${needId}/`);
-      await p1.locator('[data-bids][data-count="2"]').waitFor();
-      await shot(p1, "04-detail-encheres-ouvertes");
-      await noHorizontalScroll(p1, "desktop detail open");
-      const m1 = await mobileClone(browser, ctx.f1, f1);
-      const mp = track(await m1.newPage(), "mobile f1");
-      await mp.goto(`/besoins/${needId}/`);
-      await mp.locator('[data-bids][data-count="2"]').waitFor();
-      await noHorizontalScroll(mp, "mobile detail open");
-      await shot(mp, "09-mobile");
-      await mp.goto("/besoins/");
-      await noHorizontalScroll(mp, "mobile liste");
-      await shot(mp, "10-mobile-liste");
-      await mp.goto("/besoins/nouveau/");
-      await noHorizontalScroll(mp, "mobile formulaire");
-      await shot(mp, "mobile-poster-besoin");
-      // mobile menu opens and closes
-      await mp.click("[data-nav-toggle]");
-      assert(await mp.locator("#lb-mobile-nav:not([hidden])").count() === 1, "mobile nav opens");
-      await mp.click("[data-nav-toggle]");
-      assert(await mp.locator("#lb-mobile-nav[hidden]").count() === 1, "mobile nav closes");
-      await m1.close();
-
-      await cp.bringToFront();
-      const lp = track(await ctx.client.newPage(), "client-list");
-      await lp.goto("/besoins/nouveau/?demo=1");
-      await lp.fill("#id_title", "Refonte du site vitrine d’une boulangerie");
-      await lp.fill("#id_description", "Site vitrine 5 pages avec horaires, carte et formulaire de commande. Charte fournie.");
-      await lp.fill("#id_budget_max", "9"); await lp.fill("#id_delay_max_days", "21"); await lp.fill("#id_tags", "wordpress, design, seo");
-      await lp.locator("[data-tags-help]", { hasText: "3 / 3 compétences" }).waitFor();
-      await shot(lp, "03-poster-besoin");
-      await noHorizontalScroll(lp, "desktop formulaire");
-      await lp.goto("/besoins/");
-      assert(await lp.locator(".need-card").count() >= 5, "list shows the 5 open needs");
-      await shot(lp, "02-liste-besoins");
-      await noHorizontalScroll(lp, "desktop liste");
-      await lp.close();
-
-      await pa.goto("/");
-      await pa.locator(".need-card").first().waitFor();
-      await shot(pa, "01-landing");
-      await noHorizontalScroll(pa, "desktop landing");
-      const ma = await newContext(browser, null, MOBILE, { isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
-      const map = track(await ma.newPage(), "mobile anon");
-      await map.goto("/");
-      await noHorizontalScroll(map, "mobile landing");
-      await shot(map, "mobile-landing");
-      await map.goto(`/besoins/${needId}/`);
-      await noHorizontalScroll(map, "mobile detail anon");
-      assert(await map.locator("[data-wallet-connect][data-next]").count() >= 1, "anonymous detail offers connect with next");
-      await ma.close();
+      assert(await cp.locator("[data-choose]").count() === 3, "a Choisir button on EVERY candidate");
+      const rec = cp.locator("[data-recommended]");
+      assert(await rec.count() === 1, "exactly one Recommandé badge");
+      const recRow = cp.locator(".cand-row:has([data-recommended])");
+      assert((await recRow.getAttribute("data-freelancer")) === fa.address, "A (20.0) is recommended");
+      assert((await recRow.locator("[data-score]").innerText()).trim() === "20.0", "A scores 20.0");
+      assert(await cp.locator(".badge-validated").count() === 0, "nobody is Validé yet");
+      // C withdraws nothing — just drop them from the demo by letting the company pick A below.
+      await cctx.close();
+      await shot(cp, "04-tache-candidats");
+      await noHorizontalScroll(cp, "desktop task candidates");
     });
 
     // 4 ------------------------------------------------------------------------------------------
-    await step("4. client cannot bid on own need; freelance cannot close", async () => {
-      assert(await cp.locator("#bid-form").count() === 0, "no bid form for the client");
-      const own = await api(cp, `/besoins/${needId}/encherir/`, { price: 300, delay_days: 5, tags: ["django"] });
-      assert(own.status === 400 && own.json.error === "own_need", `own_need refused, got ${own.status} ${JSON.stringify(own.json)}`);
-      assert(await p1.locator("[data-need-close]").count() === 0, "no close button for a freelance");
-      const close = await api(p1, `/besoins/${needId}/cloturer/`, {});
-      assert(close.status === 403 && close.json.error === "forbidden", `close forbidden for a freelance, got ${close.status}`);
-      const anon = await api(pa, `/besoins/${needId}/encherir/`, { price: 300, delay_days: 5, tags: [] });
-      assert(anon.status === 401 && anon.json.error === "wallet_required", `anonymous bid → 401 wallet_required, got ${anon.status}`);
+    await step("4. company chooses A → Pris, others Non retenu; B cannot deliver; A delivers a link", async () => {
+      const rowA = cp.locator(`.cand-row[data-freelancer="${fa.address}"]`);
+      await rowA.locator("[data-choose]").click();
+      await acceptConfirm(cp, "choose A");
+      await cp.locator("[data-status-badge]", { hasText: "Pris" }).waitFor({ timeout: 15000 });
+      assert(await cp.locator("[data-choose]").count() === 0, "no more Choisir buttons");
+      assert(await cp.locator(".cand-row.is-chosen").count() === 1, "chosen row highlighted");
+      assert((await cp.locator(".cand-row.is-chosen").getAttribute("data-freelancer")) === fa.address, "A is the chosen one");
+      assert(await cp.locator(".cand-row.is-rejected").count() === 2, "the two others are Non retenu");
+      assert(await cp.locator(".cand-row.is-rejected .ui-badge", { hasText: "Non retenu" }).count() === 2, "Non retenu badges");
+
+      const notB = await api(pb, `/taches/${taskIds[0]}/livrer/`, { delivery_link: "https://example.com/pr" });
+      assert(notB.status === 403 && notB.json.error === "not_assigned", `B cannot deliver (got ${notB.status})`);
+
+      await pa.goto(`/taches/${taskIds[0]}/`);
+      await pa.locator("#deliver-panel").waitFor();
+      await pa.fill("#deliver-link", "pas-un-lien");
+      await pa.click("[data-deliver]");
+      const err = pa.locator('[data-error-for="delivery_link"]:not([hidden])');
+      await err.waitFor();
+      assert(/http/.test(await err.innerText()), "link validation message mentions http");
+      await pa.fill("#deliver-link", "https://github.com/studio-nova/booking/pull/1");
+      await pa.click("[data-deliver]");
+      await acceptConfirm(pa, "deliver");
+      await pa.locator("[data-status-badge]", { hasText: "Livré" }).waitFor({ timeout: 15000 });
+      assert(await pa.locator("[data-delivery-link]").count() === 1, "delivery link displayed");
+      assert(await pa.locator("#deliver-panel").count() === 0, "deliver form is gone");
+      await shot(pa, "05-tache-livree-freelance");
     });
 
     // 5 ------------------------------------------------------------------------------------------
-    await step("5. client closes bidding → Terminé, Recommandé on the best score, 3 sliders", async () => {
-      await cp.locator("[data-need-close]").first().click();
-      await acceptConfirm(cp, "close bidding");
-      await cp.locator("[data-status-badge]", { hasText: "Terminé" }).waitFor({ timeout: 15000 });
-      assert((await cp.locator("[data-countdown-main]").innerText()).trim() === "Terminé", "countdown reads Terminé");
-      assert(await cp.locator("[data-weight]").count() === 3, "3 sliders");
-      const rec = cp.locator("[data-recommended]:not([hidden])");
-      assert(await rec.count() === 1, "exactly one Recommandé badge");
-      const recRow = cp.locator(".bid-row:has([data-recommended]:not([hidden]))");
-      assert((await recRow.innerText()).includes("400.00"), "the recommended bid is the 400 (score 34.0 vs 19.4)");
-      assert((await recRow.locator("[data-score]").innerText()).trim() === "34.0", "score 34.0 at 40/30/30");
-      assert(await cp.locator("[data-choose]").count() === 2, "a Choisir button on EVERY bid row");
-      await shot(cp, "05-detail-cloture-sliders");
-      await noHorizontalScroll(cp, "desktop detail closed");
-      const mc = await mobileClone(browser, ctx.client, client);
-      const mcp = track(await mc.newPage(), "mobile client");
-      await mcp.goto(`/besoins/${needId}/`);
-      await mcp.locator("[data-weight]").first().waitFor();
-      await noHorizontalScroll(mcp, "mobile detail closed");
-      await shot(mcp, "mobile-detail-cloture-sliders");
-      await mc.close();
-    });
+    await step("5. company validates with note 5 → T1 Payé, rating shown, kanban + dashboard reflect it", async () => {
+      await cp.goto(`/projets/${projectId}/`);
+      await cp.locator(".task-row[data-status=delivered]").waitFor();
+      assert(await cp.locator(".task-row[data-status=delivered] a", { hasText: "Valider + noter" }).count() === 1, "project page offers Valider + noter");
+      await cp.goto(`/taches/${taskIds[0]}/`);
+      await cp.locator("#validate-panel").waitFor();
+      assert(await cp.locator("[data-validate] [data-rate]").count() === 5, "5 star radios");
+      const refused = await api(pa, `/taches/${taskIds[0]}/valider/`, { note: 5 });
+      assert(refused.status === 403 && refused.json.error === "forbidden", `freelance cannot validate (got ${refused.status})`);
+      const bad = await api(cp, `/taches/${taskIds[0]}/valider/`, { note: 7 });
+      assert(bad.status === 400 && bad.json.error === "invalid", `note 7 refused with invalid (got ${bad.status})`);
+      await cp.check('[data-rate="5"]', { force: true });
+      assert(await cp.isChecked('[data-rate="5"]'), "note 5 checked");
+      await cp.fill("#validate-comment", "Impeccable, pixel-perfect et en avance.");
+      await shot(cp, "06-valider-noter");
+      await cp.click("[data-validate-submit]");
+      await acceptConfirm(cp, "validate");
+      await cp.locator("[data-status-badge]", { hasText: "Payé" }).waitFor({ timeout: 15000 });
+      assert(await cp.locator('[data-rating="5"]').count() === 1, "rating 5 displayed");
+      assert(/Tâche payée/.test(await cp.locator("main").innerText()), "Tâche payée panel");
+      const dup = await api(cp, `/taches/${taskIds[0]}/valider/`, { note: 4 });
+      assert(dup.status === 409 && dup.json.error === "wrong_state", `second validation refused (got ${dup.status} ${dup.json && dup.json.error})`);
 
-    await step("5b. sliders: 70/10/20 re-scores client-side, sum stays 100; server honours ?wp=&wd=&ws=", async () => {
-      const before = await cp.locator("[data-score]").allInnerTexts();
-      async function slide(i, v) {
-        await cp.locator(`[data-weight="${i}"]`).evaluate((el, value) => { el.value = String(value); el.dispatchEvent(new Event("input", { bubbles: true })); }, v);
-      }
-      await slide(2, 20); await slide(1, 10); await slide(0, 70);
-      const outs = (await cp.locator("[data-weight-out]").allInnerTexts()).map(Number);
-      assert(outs.reduce((a, b) => a + b, 0) === 100, `weights sum to 100 (${outs.join("/")})`);
-      assert(outs[0] === 70, `price weight is 70 (${outs.join("/")})`);
-      const after = await cp.locator("[data-score]").allInnerTexts();
-      assert(after.join() !== before.join(), `scores update (${before.join()} → ${after.join()})`);
-      assert(await cp.locator("[data-recommended]:not([hidden])").count() === 1, "still one Recommandé badge");
-      assert(new URL(cp.url()).searchParams.get("wp") === "70", "URL carries wp=70 (shareable weights)");
-      await cp.goto(`/besoins/${needId}/?wp=70&wd=10&ws=20`);
-      assert((await cp.locator("[data-weight-out]").allInnerTexts()).join("/") === "70/10/20", "server renders 70/10/20");
-      assert((await cp.locator(".bid-row", { hasText: "400.00" }).locator("[data-score]").innerText()).trim() === "29.3", "400 scores 29.3 at 70/10/20");
-      assert((await cp.locator(".bid-row", { hasText: "420.00" }).locator("[data-score]").innerText()).trim() === "18.9", "420 scores 18.9 at 70/10/20");
-    });
-
-    await step("5c. client deliberately chooses the NON-recommended bid → winner card, Non retenue, #paiement", async () => {
-      const other = cp.locator(".bid-row:not(:has([data-recommended]:not([hidden])))");
-      assert(await other.count() === 1, "one non-recommended row");
-      const label = await other.locator("[data-choose]").getAttribute("data-choose-label");
-      assert(label.includes(f2.short) && label.includes("420.00"), `non-recommended is f2 at 420 (${label})`);
-      await other.locator("[data-choose]").click();
-      await acceptConfirm(cp, "choose bid");
-      await cp.locator("[data-status-badge]", { hasText: "Attribué" }).waitFor({ timeout: 15000 });
-      winner = f2; loser = f1;
-      assert(await cp.locator(".bid-row.is-won").count() === 1, "winner row highlighted");
-      assert((await cp.locator(".bid-row.is-won").innerText()).includes("420.00"), "winner row is the 420");
-      assert(await cp.locator(".bid-row.is-lost .ui-badge", { hasText: "Non retenue" }).count() === 1, "other row says Non retenue");
-      assert(await cp.locator("[data-choose]").count() === 0, "no more Choisir buttons");
-      assert((await cp.locator(".ui-panel", { hasText: "Offre retenue" }).innerText()).includes(f2.short), "Offre retenue card names f2");
-      await cp.locator("#paiement").waitFor({ state: "attached" });
-      assert(await cp.locator("#escrow-panel").isVisible(), "escrow panel visible");
-      const payBtn = cp.locator('#escrow-panel [data-pay-step="direct_pay"]');
-      assert(await payBtn.count() === 1, "client sees the pay button");
-      assert(/Payer/.test(await payBtn.innerText()), `pay button says Payer… (${await payBtn.innerText()})`);
-      assert(await cp.locator("#escrow-panel [data-pay-error]").count() === 1, "an error slot exists for the pay button");
-      await cp.locator("#escrow-panel [data-usdc-balance]").waitFor();
-      await shot(cp, "06-detail-gagnant-paiement");
-      await noHorizontalScroll(cp, "desktop detail awarded");
-
-      // Winner: delivery form. Loser: read-only panel.
-      // a #fragment-only goto would be a same-document navigation (no reload): use the plain URL
-      await p2.goto(`/besoins/${needId}/`);
-      await p2.locator("#escrow-panel").waitFor();
-      assert(await p2.locator('#escrow-panel [data-pay-step="deliver"]').count() === 1, "winner sees Déclarer la livraison");
-      assert(/Déclarer la livraison/.test(await p2.locator('#escrow-panel [data-pay-step="deliver"]').innerText()), "winner button label");
-      assert(await p2.locator("#pay-evidence").isVisible(), "winner has the delivery note textarea");
-      assert(await p2.locator("#bid-form").count() === 0, "no bid form once awarded");
-      await p1.goto(`/besoins/${needId}/`);
-      assert(await p1.locator("#escrow-panel").isVisible(), "loser still sees the panel");
-      assert(await p1.locator("#escrow-panel [data-pay-step]").count() === 0, "loser has no action button (read-only)");
-      assert((await p1.locator("#escrow-panel [data-pay-action]").innerText()).includes("En attente"), "loser sees the waiting copy");
-      assert(await p1.locator("#escrow-panel [data-pay-trustline]").count() === 0, "trustline helper is for the two parties only");
-      await pa.goto(`/besoins/${needId}/`);
-      assert(await pa.locator("#escrow-panel [data-pay-step]").count() === 0, "anonymous: read-only panel");
-
-      const mc = await mobileClone(browser, ctx.client, client);
-      const mcp = track(await mc.newPage(), "mobile client");
-      await mcp.goto(`/besoins/${needId}/#paiement`);
-      await mcp.locator("#escrow-panel").waitFor();
-      await noHorizontalScroll(mcp, "mobile detail awarded");
-      await shot(mcp, "mobile-detail-gagnant-paiement");
-      // tap targets: every button/link in the panel is at least 36 px tall on the phone
-      const small = await mcp.locator("#escrow-panel button, #escrow-panel a.ui-btn").evaluateAll((els) => els.filter((e) => e.offsetParent !== null && e.getBoundingClientRect().height < 32).map((e) => e.outerHTML.slice(0, 80)));
-      assert(small.length === 0, `mobile tap targets under 32 px in the panel: ${small.join(" | ")}`);
-      await mc.close();
+      await pa.goto("/taches/");
+      assert(await pa.locator(`.kanban-col[data-col="paid"] .kanban-card[data-task-id="${taskIds[0]}"]`).count() === 1, "T1 sits in A's Payé column");
+      assert(await pa.locator(".kanban-col[data-col=open] .kanban-card").count() >= 2, "open tasks of the company are in A's Ouvert column");
+      assert(await pa.locator(`.kanban-col[data-col="open"] .kanban-card[data-task-id="${taskIds[0]}"]`).count() === 0, "T1 is no longer open");
+      await shot(pa, "07-tableau-kanban");
+      await noHorizontalScroll(pa, "desktop kanban");
     });
 
     // 6 ------------------------------------------------------------------------------------------
-    await step("6. Mes enchères (Gagnée / Non retenue) and Mes besoins (Attribué)", async () => {
-      await p2.goto("/mes-encheres/");
-      const wonRow = p2.locator("tbody tr", { hasText: "Landing page Django" });
-      assert(await wonRow.locator(".ui-badge", { hasText: "Gagnée" }).count() === 1, "f2's bid is Gagnée");
-      assert(await wonRow.locator("a", { hasText: "Voir le paiement" }).count() === 1, "payment link on the won row");
-      await shot(p2, "07-mes-encheres");
-      await noHorizontalScroll(p2, "desktop mes enchères");
-      await p1.goto("/mes-encheres/");
-      assert(await p1.locator("tbody tr", { hasText: "Landing page Django" }).count() === 0, "default tab (en cours) hides the lost bid");
-      await p1.goto("/mes-encheres/?tab=all");
-      const lostRow = p1.locator("tbody tr", { hasText: "Landing page Django" });
-      assert(await lostRow.locator(".ui-badge", { hasText: "Non retenue" }).count() === 1, "f1's bid is Non retenue");
-      assert(await p1.locator("tbody tr", { hasText: "450.00" }).locator(".ui-badge", { hasText: "Remplacée" }).count() === 1, "f1's superseded 450 is Remplacée");
-      await cp.goto("/mes-besoins/");
-      const needRow = cp.locator("tbody tr", { hasText: "Landing page Django" });
-      assert(await needRow.locator(".ui-badge", { hasText: "Attribué" }).count() === 1, "need is Attribué in Mes besoins");
-      assert(await cp.locator("tbody tr").count() === 1 + EXTRA_NEEDS.length, "all the client's needs are listed");
-      await noHorizontalScroll(cp, "desktop mes besoins");
-      await shot(cp, "08-mes-besoins");
+    await step("6. A and B apply to T2 → A is TOP with Validé + Recommandé (90.0 vs 20.0)", async () => {
+      await applyUI(pa, taskIds[1], { message: "J’ai déjà branché Freighter et Horizon sur un back-office Django.", tags: "stellar" });
+      assert((await pa.locator("#my-application").innerText()).includes("90.0"), "A's score is 90.0 (40 + 5×8 + 20×½)");
+      await applyUI(pb, taskIds[1], { message: "Spécialiste Stellar/JS : SEP-53, trustlines, Soroban.", tags: "stellar, js" });
+      assert((await pb.locator("#my-application").innerText()).includes("20.0"), "B's score is 20.0 (tags only)");
 
-      const m2 = await mobileClone(browser, ctx.f2, f2);
-      const m2p = track(await m2.newPage(), "mobile f2");
-      await m2p.goto("/mes-encheres/");
-      await m2p.locator("tbody tr").first().waitFor();
-      await noHorizontalScroll(m2p, "mobile mes enchères");
-      await shot(m2p, "mobile-mes-encheres");
-      await m2p.goto("/mes-besoins/");
-      await noHorizontalScroll(m2p, "mobile mes besoins (empty)");
-      await m2.close();
-      const mc = await mobileClone(browser, ctx.client, client);
-      const mcp = track(await mc.newPage(), "mobile client");
-      await mcp.goto("/mes-besoins/");
-      await mcp.locator("tbody tr").first().waitFor();
-      await noHorizontalScroll(mcp, "mobile mes besoins");
+      await cp.goto(`/taches/${taskIds[1]}/`);
+      await cp.locator('[data-candidates][data-count="2"]').waitFor();
+      const rows = cp.locator(".cand-row");
+      assert((await rows.nth(0).getAttribute("data-freelancer")) === fa.address, "A ranks first");
+      assert((await rows.nth(0).locator("[data-score]").innerText()).trim() === "90.0", "A = 90.0");
+      assert((await rows.nth(1).locator("[data-score]").innerText()).trim() === "20.0", "B = 20.0");
+      assert(await rows.nth(0).locator('[data-badge="valide"]').count() === 1, "A carries Validé");
+      assert(await rows.nth(0).locator("[data-recommended]").count() === 1, "A carries Recommandé");
+      assert(await rows.nth(1).locator('[data-badge="valide"]').count() === 0, "B is not Validé");
+      assert(await rows.nth(1).locator("[data-recommended]").count() === 0, "B is not Recommandé");
+      assert(await cp.locator("[data-choose]").count() === 2, "Choisir on both candidates (the company stays free to pick B)");
+      const json = await api(cp, `/taches/${taskIds[1]}/candidats.json`, undefined, "GET");
+      assert(json.status === 200 && json.json.candidates[0].score === "90.0" && json.json.candidates[0].validated === true && json.json.candidates[0].recommended === true, `candidats.json ranks A first with the badges: ${JSON.stringify(json.json.candidates)}`);
+      await shot(cp, "08-tache-valide-recommande");
+      await noHorizontalScroll(cp, "desktop task T2");
+
+      // the project page shows the same candidates block with Choisir buttons
+      await cp.goto(`/projets/${projectId}/`);
+      await cp.locator(`#candidates-${taskIds[1]}`).waitFor();
+      assert(await cp.locator(`#candidates-${taskIds[1]} [data-choose]`).count() === 2, "project page: Choisir on every candidate of T2");
+      assert(await cp.locator(`#candidates-${taskIds[1]} [data-badge="valide"]`).count() === 1, "project page: Validé badge");
+      assert(await cp.locator(".task-row[data-status=paid]").count() === 1, "T1 row is Payé");
+      assert(await cp.locator("[data-task-delete]").count() === 2, "only the two open tasks can still be deleted");
+      await shot(cp, "03-projet-entreprise");
+      await noHorizontalScroll(cp, "desktop project company");
+
+      const mc = await mobileClone(browser, ctx.company, company);
+      const mcp = track(await mc.newPage(), "mobile company");
+      await mcp.goto(`/taches/${taskIds[1]}/`);
+      await mcp.locator('[data-candidates][data-count="2"]').waitFor();
+      await noHorizontalScroll(mcp, "mobile task T2");
+      await shot(mcp, "mobile-tache-candidats");
+      await mcp.goto(`/projets/${projectId}/`);
+      await mcp.locator('[data-tasks][data-count="3"]').waitFor();
+      await noHorizontalScroll(mcp, "mobile project company");
+      await shot(mcp, "mobile-projet");
+      // tap targets: every button in the candidates block is at least 32 px tall on the phone
+      const small = await mcp.locator(`#candidates-${taskIds[1]} button, #candidates-${taskIds[1]} a.ui-btn`).evaluateAll((els) => els.filter((e) => e.offsetParent !== null && e.getBoundingClientRect().height < 32).map((e) => e.outerHTML.slice(0, 80)));
+      assert(small.length === 0, `mobile tap targets under 32 px: ${small.join(" | ")}`);
       await mc.close();
     });
 
-    // 6b -----------------------------------------------------------------------------------------
-    await step("6b. dashboard to-do + KPIs, public profile (name edit), list search / sort / chips", async () => {
+    // 7 ------------------------------------------------------------------------------------------
+    await step("7. list / search / tag chips, Mes projets, dashboard to-do + KPIs, public profile (note 5.0, name edit)", async () => {
+      await pn.goto("/projets/");
+      assert(await pn.locator(".project-card").count() === 2, "list shows the 2 projects");
+      await shot(pn, "02-liste-projets");
+      await noHorizontalScroll(pn, "desktop liste");
+      await pn.goto("/projets/?tab=all&q=Freighter");
+      assert(await pn.locator(".project-card").count() === 1, "search matches a task title");
+      await pn.goto("/projets/?tab=all&q=zzzzqqqq");
+      assert(await pn.locator(".empty-state").count() === 1, "no match → empty state");
+      await pn.goto("/projets/?sort=budget");
+      assert(await pn.locator('select[name="sort"]').inputValue() === "budget", "sort select reflects the query");
+      assert(await pn.locator(".ui-chip-row .ui-tag").count() >= 1, "popular tag chips rendered");
+      await pn.locator(".ui-chip-row .ui-tag").first().click();
+      assert(new URL(pn.url()).searchParams.get("tag"), "chip click filters by tag");
+      await noHorizontalScroll(pn, "desktop liste filtrée");
+      await pn.goto("/");
+      await pn.locator(".project-card").first().waitFor();
+      await shot(pn, "01-landing");
+      await noHorizontalScroll(pn, "desktop landing");
+
+      await cp.goto("/mes-projets/");
+      const row = cp.locator("tbody tr", { hasText: PROJECT.title.slice(0, 30) });
+      assert(await row.count() === 1, "the project is listed in Mes projets");
+      assert(await row.locator(".ui-badge", { hasText: "Brouillon" }).count() === 1, "project is Brouillon");
+      assert(/Choisir/.test(await row.innerText()), "row CTA says Choisir (candidates waiting on T2)");
+      assert(await cp.locator("tbody tr").count() === 2, "both company projects listed");
+      await shot(cp, "09-mes-projets");
+      await noHorizontalScroll(cp, "desktop mes projets");
+
       await cp.goto("/tableau-de-bord/");
       await cp.locator("#todo").waitFor();
       const todo = cp.locator("[data-todo-list] .ui-next-card");
-      assert(await todo.count() >= 1, "client has at least one to-do (the awarded need's payment)");
-      assert(await cp.locator("[data-todo-list] .ui-next-card.act").count() >= 1, "at least one item needs the client's action");
+      assert(await todo.count() >= 1, "company has at least one to-do");
+      assert(await cp.locator("[data-todo-list] .ui-next-card.act", { hasText: "Choisir un freelance" }).count() >= 1, "to-do: choose a freelance for T2");
       assert(await cp.locator(".ui-kpi-tile").count() >= 4, "dashboard KPI tiles");
       assert(await cp.locator("#activity .ui-timeline-item").count() >= 1, "activity timeline has entries");
-      await shot(cp, "12-tableau-de-bord");
+      assert(/Paiement envoyé/.test(await cp.locator("#activity").innerText()), "activity mentions the payment of T1");
+      await shot(cp, "10-tableau-de-bord");
       await noHorizontalScroll(cp, "desktop dashboard");
 
-      await p2.goto("/tableau-de-bord/");
-      await p2.locator("#todo").waitFor();
-      assert(await p2.locator("[data-todo-list] .ui-next-card", { hasText: "livraison" }).count() >= 1, "winner's to-do mentions the delivery");
+      await pa.goto("/tableau-de-bord/");
+      await pa.locator("#todo").waitFor();
+      assert(/5\.0\/5/.test(await pa.locator("[data-avg-note]").innerText()), "A's average note is 5.0/5 on the dashboard");
+      assert(await pa.locator("[data-todo-list] .ui-next-card", { hasText: "Intégration Freighter" }).count() >= 1, "A's to-do lists the pending application");
 
-      await p2.goto(`/profil/${f2.address}/`);
-      await p2.locator("#edit-name").waitFor();
-      await p2.fill("#edit-name input#display_name", "Nora");
-      await p2.locator("#edit-name button[type=submit]").click();
-      await p2.locator(".ui-alert-ok").waitFor();
-      assert((await p2.locator(".ui-wallet-name").first().innerText()).includes("Nora"), "display name updated on the profile");
-      await shot(p2, "13-profil");
-      await noHorizontalScroll(p2, "desktop profil");
-      await p1.goto(`/profil/${f2.address}/`);
-      assert(await p1.locator("#edit-name").count() === 0, "another wallet cannot edit the name");
-      assert((await p1.locator(".ui-wallet-name").first().innerText()).includes("Nora"), "public profile shows the new name");
-      const unknown = await p1.goto("/profil/GUNKNOWN/");
+      await pa.goto(`/profil/${fa.address}/`);
+      await pa.locator("#edit-name").waitFor();
+      await pa.fill("#edit-name input#display_name", "Yanis");
+      await pa.locator("#edit-name button[type=submit]").click();
+      await pa.locator(".ui-alert-ok").waitFor();
+      assert((await pa.locator(".ui-wallet-name").first().innerText()).includes("Yanis"), "display name updated on the profile");
+      assert((await pa.locator('[data-avg-note="5.0"]').count()) === 1, "public profile shows the 5.0 average");
+      assert(/Notes reçues/.test(await pa.locator("main").innerText()), "ratings section rendered");
+      await shot(pa, "11-profil");
+      await noHorizontalScroll(pa, "desktop profil");
+      await pb.goto(`/profil/${fa.address}/`);
+      assert(await pb.locator("#edit-name").count() === 0, "another wallet cannot edit the name");
+      assert((await pb.locator(".ui-wallet-name").first().innerText()).includes("Yanis"), "public profile shows the new name");
+      const unknown = await pb.goto("/profil/GUNKNOWN/");
       assert(unknown.status() === 404, `unknown wallet → 404, got ${unknown.status()}`);
-
-      await pa.goto("/besoins/?tab=all&q=Landing");
-      assert(await pa.locator(".need-card").count() >= 1, "search finds the landing-page need");
-      await pa.goto("/besoins/?tab=all&q=zzzzqqqq");
-      assert(await pa.locator(".empty-state").count() === 1, "no match → empty state");
-      await pa.goto("/besoins/?sort=budget");
-      assert(await pa.locator('select[name="sort"]').inputValue() === "budget", "sort select reflects the query");
-      assert(await pa.locator(".ui-chip-row .ui-tag").count() >= 1, "popular tag chips rendered");
-      await pa.locator(".ui-chip-row .ui-tag").first().click();
-      assert(new URL(pa.url()).searchParams.get("tag"), "chip click filters by tag");
-      await noHorizontalScroll(pa, "desktop liste filtrée");
-
-      const md = await mobileClone(browser, ctx.client, client);
-      const mdp = track(await md.newPage(), "mobile dashboard");
-      await mdp.goto("/tableau-de-bord/");
-      await mdp.locator("#todo").waitFor();
-      assert(await mdp.locator(".lb-tabbar").isVisible(), "mobile tab bar visible on the phone");
-      await noHorizontalScroll(mdp, "mobile dashboard");
-      await shot(mdp, "mobile-tableau-de-bord");
-      await md.close();
-    });
-
-    // 7 ------------------------------------------------------------------------------------------
-    await step("7. Payer with no network → French error in [data-pay-error], HTTP 200 {ok:false}, no 500", async () => {
-      await cp.goto(`/besoins/${needId}/`);
-      await cp.locator("#escrow-panel").waitFor();
-      const btn = cp.locator('#escrow-panel [data-pay-step="direct_pay"]');
-      const waitPrepare = cp.waitForResponse((r) => r.url().includes("/pay/prepare/"), { timeout: 30000 });
-      await btn.click();
-      const resp = await waitPrepare;
-      assert(resp.status() === 200, `prepare answers 200, got ${resp.status()}`);
-      const body = await resp.json();
-      assert(body.ok === false && typeof body.message === "string" && body.message.length > 0, `prepare refuses with a message: ${JSON.stringify(body)}`);
-      assert(["stellar", "provider"].includes(body.error), `error code stellar/provider, got ${body.error}`);
-      const slot = cp.locator("#escrow-panel [data-pay-error]:not([hidden])");
-      await slot.waitFor();
-      const text = (await slot.innerText()).trim();
-      assert(text === body.message, `panel shows the server message ("${text}")`);
-      assert(/[éèêàç]/.test(text), `message is French: "${text}"`);
-      await cp.waitForTimeout(300);
-      assert(!(await btn.isDisabled()), "pay button is usable again (retry)");
-      assert(await cp.evaluate(() => !!(window.__fakeFreighter && !window.__fakeFreighter.calls.some((c) => c.name === "signTransaction"))), "Freighter was not asked to sign (nothing to sign)");
-      await cp.reload();
-      const persisted = cp.locator("#escrow-panel .ui-alert-attn", { hasText: text });
-      assert(await persisted.count() === 1, "last_error persisted on the escrow row and shown after reload");
-      assert((await cp.locator("#escrow-panel .ui-badge").first().innerText()).length > 0, "escrow status badge rendered");
-      const my = await cp.locator("#escrow-panel [data-usdc-balance]").innerText();
-      assert(my.trim() === "—" || my.trim() === "…" || /USDC/.test(my), `balance slot degrades gracefully ("${my}")`);
     });
 
     // 8 ------------------------------------------------------------------------------------------
-    await step("8. theme toggle persists, light-mode escrow panel, logout clears the navbar", async () => {
+    await step("8. mobile: kanban, liste, formulaire, dashboard, landing — no horizontal scroll, menu toggles", async () => {
+      const ma = await mobileClone(browser, ctx.fa, fa);
+      const map = track(await ma.newPage(), "mobile A");
+      await map.goto("/taches/");
+      await map.locator(".kanban-col[data-col=open]").waitFor();
+      await noHorizontalScroll(map, "mobile kanban");
+      await shot(map, "mobile-kanban");
+      await map.goto("/projets/");
+      await noHorizontalScroll(map, "mobile liste");
+      await shot(map, "mobile-liste");
+      await map.goto("/projets/nouveau/");
+      await noHorizontalScroll(map, "mobile formulaire");
+      await map.goto("/tableau-de-bord/");
+      await map.locator("#todo").waitFor();
+      assert(await map.locator(".lb-tabbar").isVisible(), "mobile tab bar visible on the phone");
+      await noHorizontalScroll(map, "mobile dashboard");
+      await shot(map, "mobile-tableau-de-bord");
+      await map.click("[data-nav-toggle]");
+      assert(await map.locator("#lb-mobile-nav:not([hidden])").count() === 1, "mobile nav opens");
+      await map.click("[data-nav-toggle]");
+      assert(await map.locator("#lb-mobile-nav[hidden]").count() === 1, "mobile nav closes");
+      await ma.close();
+
+      const mn = await newContext(browser, null, MOBILE, { isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+      const mnp = track(await mn.newPage(), "mobile anon");
+      await mnp.goto("/");
+      await noHorizontalScroll(mnp, "mobile landing");
+      await shot(mnp, "mobile-landing");
+      await mnp.goto(`/taches/${taskIds[2]}/`);
+      await noHorizontalScroll(mnp, "mobile task anon");
+      assert(await mnp.locator("[data-wallet-connect][data-next]").count() >= 1, "anonymous task page offers connect with next");
+      await mn.close();
+    });
+
+    // 9 ------------------------------------------------------------------------------------------
+    await step("9. theme toggle persists (light shot), logout clears the navbar, 404 on unknown task", async () => {
+      await cp.goto(`/taches/${taskIds[1]}/`);
       await cp.click("[data-theme-toggle]");
       assert((await cp.getAttribute("html", "data-theme")) === "light", "html[data-theme=light]");
       await cp.reload();
       assert((await cp.getAttribute("html", "data-theme")) === "light", "light theme survives a reload (no flash to dark)");
-      await cp.locator("#escrow-panel").waitFor();
-      await shot(cp, "11-detail-gagnant-paiement-light");
-      const contrast = await cp.locator("#escrow-panel").evaluate((el) => {
+      await cp.locator("#candidates-panel").waitFor();
+      await shot(cp, "12-tache-light");
+      const contrast = await cp.locator("#candidates-panel").evaluate((el) => {
         const cs = getComputedStyle(el);
-        const bg = cs.backgroundColor;
-        const text = getComputedStyle(el.querySelector(".ui-panel-title")).color;
-        return { bg, text };
+        return { bg: cs.backgroundColor, text: getComputedStyle(el.querySelector(".ui-panel-title")).color };
       });
       assert(contrast.bg !== contrast.text, `panel text differs from its background (${JSON.stringify(contrast)})`);
       await cp.click("[data-theme-toggle]");
@@ -613,10 +587,12 @@ async function main() {
       await Promise.all([cp.waitForURL((u) => new URL(u).pathname === "/"), cp.click('details.lb-wallet-menu button[type="submit"]')]);
       assert(await cp.locator(".lb-wallet-btn.is-connected").count() === 0, "no connected address in the navbar");
       assert(await cp.locator(".lb-nav [data-wallet-connect]").count() === 1, "connect button is back");
-      await cp.goto("/mes-besoins/");
-      assert(new URL(cp.url()).pathname === "/" && new URL(cp.url()).searchParams.get("next") === "/mes-besoins/", "session really gone (wallet_required redirect)");
-      const r404 = await cp.request.get(BASE + "/besoins/999999/");
-      assert(r404.status() === 404, `unknown need → 404 (got ${r404.status()})`);
+      await cp.goto("/mes-projets/");
+      assert(new URL(cp.url()).pathname === "/" && new URL(cp.url()).searchParams.get("next") === "/mes-projets/", "session really gone (wallet_required redirect)");
+      const r404 = await cp.request.get(BASE + "/taches/999999/");
+      assert(r404.status() === 404, `unknown task → 404 (got ${r404.status()})`);
+      const p404 = await cp.request.get(BASE + "/projets/999999/");
+      assert(p404.status() === 404, `unknown project → 404 (got ${p404.status()})`);
     });
   } finally {
     await browser.close().catch(() => {});
@@ -626,16 +602,14 @@ async function main() {
   const unexpected = consoleErrors.filter((e) => !isExpectedError(e));
   const expected = consoleErrors.length - unexpected.length;
   log("");
-  log(`console: ${consoleErrors.length} error message(s), ${expected} expected (Horizon unreachable / API 4xx), ${unexpected.length} unexpected`);
+  log(`console: ${consoleErrors.length} error message(s), ${expected} expected (API 4xx), ${unexpected.length} unexpected`);
   for (const e of unexpected) log(`  UNEXPECTED [${e.who}] ${e.text}  (${e.source})`);
-  const horizonErrors = consoleErrors.filter((e) => /horizon/i.test(e.source) || /ERR_TUNNEL|ERR_NAME_NOT_RESOLVED/.test(e.text));
-  log(`console: ${horizonErrors.length} Horizon failure(s) across all awarded-page loads (watcher stops after 3 per page)`);
   const failed = results.filter((r) => !r.ok);
   log(`steps: ${results.length - failed.length}/${results.length} passed`);
   log(`screenshots: ${fs.readdirSync(SHOTS).filter((f) => f.endsWith(".png")).sort().join(", ")}`);
   if (unexpected.length) throw new Error(`${unexpected.length} unexpected console/page error(s)`);
   if (failed.length) throw new Error(`${failed.length} step(s) failed`);
-  if (winner && loser) log(`actors: client=${short(client.address)} winner=${short(winner.address)} loser=${short(loser.address)}`);
+  log(`actors: company=${short(company.address)} A=${short(fa.address)} B=${short(fb.address)} project=#${projectId} tasks=${taskIds.join(",")} extra=#${extraProjectId}`);
 }
 
 main().then(

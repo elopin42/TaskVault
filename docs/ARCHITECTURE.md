@@ -14,14 +14,18 @@ Lowbid/
 ├── accounts/               # WalletUser + Freighter login (challenge / verify / logout), wallet_required
 ├── auctions/               # Need / Bid, services (R1–R14), scoring, seed_demo          mounted at /
 ├── payments/               # Escrow model + services (Trustless Work / Plan B), JSON endpoints  mounted at /pay/
-├── templates/              # base.html, partials/{navbar,toasts,page_header}.html, core/landing.html, 400/403/404/500.html
+├── dashboard/              # no models: signed-in home (/tableau-de-bord/) + public wallet profile (/profil/<addr>/)
+├── templates/              # base.html, partials/{navbar,tabbar,toasts,modal,page_header}.html, core/landing.html, 400/403/404/500.html
+│   └── components/         # reusable includes: wallet, status_badge, countdown, tags, kpi, price, empty_state, pager, next_card, section_head
 ├── static/
 │   ├── css/  lowbid-tokens.css  lowbid-components.css  tailwind.src.css  tailwind.css (BUILT, committed)
-│   ├── js/   lowbid-base.js (theme, toasts, Lowbid.api)  lowbid-wallet.js (Freighter)  lowbid-pay.js (sign & send)
+│   ├── js/   lowbid-base.js (theme, toasts, Lowbid.api)  lowbid-ui.js (confirm modal, menus, identicons, sparklines, Lowbid.poll)
+│   │         lowbid-wallet.js (Freighter)  lowbid-pay.js (sign & send)  lowbid-auctions.js (countdowns, bid form, polling, sliders)
 │   ├── vendor/  fontawesome/  freighter-api.js (UMD → window.freighterApi)  stellar-sdk.min.js (→ window.StellarSdk)
 │   └── img/favicon.svg
 ├── data/                   # db.sqlite3 (gitignored)
-├── docs/                   # PRODUCT.md, PITCH.md, STELLAR_NOTES.md, this file
+├── docs/                   # PRODUCT.md, PITCH.md, STELLAR_NOTES.md, FRONTEND.md (design system), HACKATHON_DAY.md, DEMO_RUNBOOK.md, this file
+├── CLAUDE.md               # project instructions for an AI assistant (commands, conventions, don'ts)
 ├── requirements.txt  requirements-dev.txt  ruff.toml  Makefile  .env.example
 ├── package.json  tailwind.config.js        # npm run build:css / npm run vendor
 ├── Dockerfile  compose.yml                 # optional: django + postgres
@@ -35,8 +39,11 @@ make dev          # venv + pip install + .env from .env.example + migrate + runs
 make test         # manage.py check + makemigrations --check + test
 make lint         # ruff check .
 make css          # npm ci + tailwind build  (commit static/css/tailwind.css!)
+make css-check    # rebuild and fail when the committed tailwind.css is stale (= CI tailwind-in-sync)
+make check        # lint + test + css-check — the pre-commit gate
+make seed         # python manage.py seed_demo --flush (demo wallets, needs, bids)
 make vendor       # re-copy Font Awesome / freighter-api / stellar-sdk from node_modules
-make e2e          # Playwright end-to-end with a simulated Freighter (see E2E below)
+make e2e          # Playwright end-to-end with a simulated Freighter (see E2E below); `make shots` is an alias
 ```
 
 Settings come from `.env` (python-dotenv). `DJANGO_DEBUG=0` **requires** `DJANGO_SECRET_KEY`.
@@ -66,6 +73,7 @@ Trustless Work) are out of scope.
 | `accounts` | `WalletUser(stellar_address, display_name, created_at, last_login_at)`, wallet auth, `wallet_required`, `get_wallet()` | `/auth/challenge/` `accounts:challenge`, `/auth/verify/` `accounts:verify`, `/auth/logout/` `accounts:logout` |
 | `auctions` | `Need` / `Bid`, `services.py` (R1–R14), `scoring.py`, pages + JSON endpoints, `seed_demo` command — see **Auctions** below | `/besoins/…`, `/mes-encheres/`, `/mes-besoins/` |
 | `payments` | `Escrow` (1-1 `Need`), `services.py` (prepare/confirm per step, both modes), `trustless_work.py`, `stellar.py`, `{% escrow_panel %}` tag — see **Payments** below | `/pay/…` |
+| `dashboard` | No models. `home` (`dashboard:home`, `@wallet_required`): the signed-in landing — what the viewer has to do next (needs to award, payments to sign, deliveries to declare), KPIs as client and as freelancer, recent activity. `profile` (`dashboard:profile`, public): a wallet's identicon, display name (editable by its owner), needs posted, bids won. Reads `auctions` / `payments` only | `/tableau-de-bord/` `dashboard:home`, `/profil/<address>/` `dashboard:profile` |
 
 `datagrid`-style engines were NOT ported from SIPS — list pages here are plain templates.
 
@@ -146,7 +154,7 @@ Weights come from `?wp=&wd=&ws=`; the detail page re-ranks client-side from `dat
 
 | Name | Path | Method | Who |
 |------|------|--------|-----|
-| `need_list` | `/besoins/?tab=open|closed|all&tag=` | GET | public |
+| `need_list` | `/besoins/?tab=open|closed|all&tag=&q=&sort=ending|newest|budget|bids&page=` | GET | public — toolbar: text search `q`, tag filter, sort, pagination (`components/pager.html` keeps the query string via `{% qs %}`) |
 | `need_create` | `/besoins/nouveau/` (`?demo=1` shows a 5-min deadline) | GET/POST | wallet |
 | `need_detail` | `/besoins/<pk>/?wp=&wd=&ws=` | GET | public (form / sliders by role) |
 | `my_bids` | `/mes-encheres/` | GET | wallet |
@@ -158,7 +166,9 @@ Weights come from `?wp=&wd=&ws=`; the detail page re-ranks client-side from `dat
 | `need_cancel` | `/besoins/<pk>/annuler/` | POST | client |
 
 Templates: `templates/auctions/{need_list,need_form,need_detail,my_bids,my_needs}.html`, partials
-`_need_card.html`, `_bids_list.html` (also returned as `html` by `encheres.json`). Page JS:
+`_need_card.html`, `_bids_list.html` (also returned as `html` by `encheres.json`). The detail page also shows a
+**price history sparkline** (`svg.ui-sparkline[data-points][data-cap]`, drawn by `Lowbid.sparkline`), a **bid timeline**
+(`.ui-timeline`, every bid including superseded ones) and a **share** button (`[data-share]`, Web Share or copy). Page JS:
 `static/js/lowbid-auctions.js` (countdowns on every page, bid form, polling, sliders, choose/close/cancel);
 the detail page passes its config through `window.LOWBID_NEED`. Demo data: `python manage.py seed_demo [--flush]`
 (addresses from `LOWBID_DEMO_CLIENT` / `LOWBID_DEMO_FREELANCE1` / `LOWBID_DEMO_FREELANCE2`).
@@ -236,10 +246,22 @@ sign → send → reload; `LOWBID.urls.trustlinePrepare/trustlineSend` are set i
   `makemigrations --check`). Use `WalletUser` FKs (`on_delete=PROTECT`) for client / freelancer.
 - Views are plain function views; return `render(...)` or `JsonResponse`. Unsafe JSON calls from the
   browser go through `Lowbid.api(url, {method:"POST", body:{…}})` (CSRF + JSON handled).
-- Register URL names in `<app>/urls.py` (namespaces `auctions` / `payments`); the navbar entries live in
-  `core/context_processors.py::NAV_LINKS` (Besoins · Poster un besoin · Mes enchères · Mes besoins).
+- Register URL names in `<app>/urls.py` (namespaces `auctions` / `payments` / `dashboard`); the navbar **and** the
+  mobile tab bar entries live in `core/context_processors.py::NAV_LINKS` (Besoins · Mes enchères · Poster un besoin ·
+  Mes besoins · Tableau de bord).
 - Templates extend `base.html`; blocks: `title`, `meta_description`, `extra_head`, `body_class`,
   `content`, `extra_js`. Header: `{% include "partials/page_header.html" with title=… subtitle=… %}`.
+- Compose with the includes in `templates/components/` — `wallet` (identicon + short address, links to the profile),
+  `status_badge`, `countdown`, `tags`, `kpi`, `price`, `empty_state`, `pager` (Django `Page`), `next_card`
+  (`act|wait|done`), `section_head` — parameters are documented in each file's `{% comment %}` header and in
+  `docs/FRONTEND.md`. Template tags: `{% qs page=2 %}` (current query string with keys replaced), `|pct`, `|hue`.
+- `static/js/lowbid-ui.js` (loaded on every page): `Lowbid.confirm({...})` (the `#lb-confirm` dialog from
+  `partials/modal.html` — never `window.confirm`), `Lowbid.modal`, `Lowbid.identicon` / `[data-identicon]`,
+  `Lowbid.timeAgo` / `[data-time-ago]`, `Lowbid.sparkline`, `Lowbid.poll(fn, {interval})` (visibility-aware, backoff),
+  `Lowbid.refreshUI(root)` after an `innerHTML` swap, `Lowbid.setBusy(btn, on, label)`, and the declarative
+  `[data-share]`, `form[data-confirm]`, `[data-search-clear]`, `[data-auto-submit]`, `details.ui-menu`.
+- Mobile: tables in `.rcard` (+ `data-label` per cell), form buttons in `.ui-sticky-actions` inside a `.ui-form-scope`,
+  and the signed-in bottom tab bar (`partials/tabbar.html`, fed by `NAV_LINKS` — `short` label, `primary` flag).
 - UI vocabulary (all theme-token driven, dark + light): `.glass-card`, `.glass-soft`, `.ui-panel`
   (+`-head/-title/-sub`), `.ui-page-header/-title/-sub/-actions`, `.ui-btn` (+`-primary -ghost -danger
   -danger-solid -sm -lg -block`), `.ui-field .ui-label .ui-input .ui-select .ui-textarea .ui-help
@@ -247,9 +269,13 @@ sign → send → reload; `LOWBID.urls.trustlinePrepare/trustlineSend` are set i
   -danger -info -brand -neutral`; **`.ui-badge-brand` is the "Recommandé" badge**), `.ui-tag` (+`.is-match`),
   `.ui-alert` (+`-ok -attn -danger -info`), `.ui-kpi-band .ui-kpi-tile/-label/-value/-hint`,
   `.ui-countdown` (+`.is-urgent`), `.ui-price .ui-price-unit`, `.ui-list .ui-list-row .ui-rank`,
-  `.empty-state/-icon/-title/-desc`, `.seg-tabs .seg-tab.is-active`, `.ui-meta .ui-link .ui-num`,
+  `.empty-state/-icon/-title/-desc`, `.seg-tabs .seg-tab.is-active`, `.seg-radio`, `.ui-meta .ui-link .ui-num`,
+  `.ui-toolbar .ui-search .ui-select-inline .ui-chip-row`, `.ui-pager`, `.ui-menu .ui-menu-panel .ui-menu-item`,
+  `.ui-modal .ui-modal-card`, `.ui-timeline .ui-timeline-item.is-brand/.is-ok/.is-muted`, `.ui-next-card.act/.wait/.done`,
+  `.ui-wallet .ui-identicon`, `.ui-sparkline`, `.ui-skeleton`, `.ui-progress`, `.ui-facts`, `.ui-live`, `.ui-split .ui-stack`,
+  `.ui-section-head`, `.ui-sticky-actions` (+ `.ui-form-scope`), `.lb-tabbar .lb-tab`,
   and `.rcard` (wrapper div around a `<table>`; each `<td data-label="…">` — stacks into cards under
-  640 px of container width, no horizontal scroll). Tailwind utilities are available on top
+  640 px of container width, no horizontal scroll). Full reference with markup: `docs/FRONTEND.md`. Tailwind utilities are available on top
   (`brand-*` colours follow the theme) — **rebuild `tailwind.css` after adding classes**.
 - Toasts: `Lowbid.toast("…", "success|error|warning|info", {title, duration})`.
 - Money / addresses in templates: `{{ amount|usdc }}` → `1,234.50 USDC`, `{{ addr|short_addr }}` → `GABC…WXYZ`.

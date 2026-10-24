@@ -47,6 +47,8 @@ Plan B (LOWBID_PAYMENT_MODE=direct): steps 9-10 become one "Payer le freelance" 
 9. The client funds the job in two Freighter signatures: **"Créer l'escrow"** (Trustless Work deploys a Soroban single-release escrow) then **"Bloquer les fonds"** (the USDC moves into the contract).
 10. The freelancer clicks **"Déclarer la livraison"**; the client clicks **"Valider la livraison"** then **"Libérer les fonds"**, and the escrow pays the USDC to the freelancer (minus fees). Every button is one signature by the wallet that holds that role.
 
+Around the flow: a **dashboard** (`/tableau-de-bord/`, the signed-in home) lists what the wallet has to do next (offers to choose, payments to sign, deliveries to declare) with KPIs as client and as freelancer, and every wallet has a **public profile** (`/profil/<address>/`: identicon, display name, needs posted, bids won). The needs list has text search, tag filters, sorting and pagination; the need page shows the price history and the full bid timeline. Dark and light themes, mobile-first (stacked cards, bottom tab bar), no horizontal scroll.
+
 ## Why Stellar
 
 - **USDC** on Stellar: the freelancer gets a dollar-stable payment, not a volatile token.
@@ -79,7 +81,7 @@ make dev
 
 `.env` is read once at startup: after any change (API key, `LOWBID_PAYMENT_MODE`, demo wallets…) stop the server and run `make run` again.
 
-Tests: `make test` (Django unit + payment-flow tests, network mocked) and `make e2e` (Playwright flow test in a real browser with a simulated Freighter, on a throwaway SQLite; screenshots land in `docs/screenshots/`).
+Tests: `make test` (Django unit + payment-flow tests, network mocked) and `make e2e` (Playwright flow test in a real browser with a simulated Freighter, on a throwaway SQLite; screenshots land in `docs/screenshots/`). `make check` = lint + tests + Tailwind-in-sync (run it before every commit); `make seed` loads the demo dataset (3 wallets, 4 needs, bids).
 
 ## Where Stellar lives in the code
 
@@ -106,6 +108,9 @@ Tests: `make test` (Django unit + payment-flow tests, network mocked) and `make 
 | [`docs/DEMO_RUNBOOK.md`](docs/DEMO_RUNBOOK.md) | Step-by-step live demo script (French): accounts, faucet, trustlines, clicks and lines to say, troubleshooting |
 | [`docs/STELLAR_NOTES.md`](docs/STELLAR_NOTES.md) | Stellar / Trustless Work / Freighter integration notes: endpoints, payloads, USDC asset, gotchas, smoke test |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Code layout, apps, payment endpoints and state table, how to switch to Plan B |
+| [`docs/FRONTEND.md`](docs/FRONTEND.md) | Design system (French): tokens, every `ui-` component with markup, template components, `window.Lowbid` JS API, responsive & a11y rules, page recipes |
+| [`docs/HACKATHON_DAY.md`](docs/HACKATHON_DAY.md) | Day-of checklist (French): setup in 10 lines, 5-minute smoke test, team split, "where do I change X", Plan B, commit hygiene, triage |
+| [`CLAUDE.md`](CLAUDE.md) | Project instructions for an AI coding assistant: commands, repo map, conventions, frontend rules, e2e DOM contracts, don'ts |
 
 ## Testnet addresses
 

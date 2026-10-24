@@ -70,11 +70,12 @@ def pct(value, total) -> int:
 
 @register.filter
 def hue(address) -> str:
-    """Same two hues as Lowbid.identicon() in lowbid-ui.js, as 'a b' — for SSR identicons without JS."""
+    """Same two hues as Lowbid.identicon() in lowbid-ui.js, as an inline style string
+    (`--id-a:38;--id-b:200`) so identicons render server-side, before JS runs: `style="{{ addr|hue }}"`."""
     s = str(address or "")
     h1, h2 = 7, 13
     for ch in s:
         c = ord(ch)
         h1 = (h1 * 31 + c) & 0xFFFFFFFF
         h2 = (h2 * 17 + c * 7) & 0xFFFFFFFF
-    return f"{h1 % 360} {(h2 % 360 + 120) % 360}"
+    return f"--id-a:{h1 % 360};--id-b:{(h2 % 360 + 120) % 360}"

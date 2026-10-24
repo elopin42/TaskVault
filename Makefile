@@ -1,4 +1,5 @@
-# Lowbid — hackathon toolchain. `make dev` is the only command a teammate needs.
+# Lowbid — hackathon toolchain. `make dev` is the only command a teammate needs;
+# `make check` (lint + tests + tailwind in sync) is the pre-commit gate; `make seed` loads the demo data.
 PY      ?= python3.13
 VENV    ?= .venv
 PIP     := $(VENV)/bin/pip
@@ -7,7 +8,7 @@ RUFF    := $(VENV)/bin/ruff
 HOST    ?= 0.0.0.0
 PORT    ?= 8000
 
-.PHONY: dev venv env migrate run test lint fmt css watch-css vendor check e2e clean
+.PHONY: dev venv env migrate run seed test lint fmt css css-check watch-css vendor check e2e shots clean
 
 $(VENV)/bin/activate: requirements.txt requirements-dev.txt
 	test -d $(VENV) || $(PY) -m venv $(VENV)
@@ -27,6 +28,10 @@ run: venv env
 	$(PYTHON) manage.py runserver $(HOST):$(PORT)
 
 dev: venv env migrate run
+
+# Demo dataset: 3 wallets (LOWBID_DEMO_* or random), 4 needs in every state, bids. Flushes needs/bids first.
+seed: venv env migrate
+	$(PYTHON) manage.py seed_demo --flush
 
 test: venv env
 	$(PYTHON) manage.py check
@@ -50,10 +55,14 @@ css: node_modules/.package-lock.json
 watch-css: node_modules/.package-lock.json
 	npm run watch:css
 
+# Same gate as the CI job `tailwind-in-sync`: a diff means a template/JS gained a class without a rebuild.
+css-check: css
+	git diff --exit-code -- static/css/tailwind.css
+
 vendor: node_modules/.package-lock.json
 	npm run vendor
 
-check: lint test
+check: lint test css-check
 
 # End-to-end (Playwright, simulated Freighter): fresh SQLite at data/e2e.sqlite3, runserver on a
 # free port, node tests/e2e/run.js (screenshots -> docs/screenshots/), server killed on exit.
@@ -70,6 +79,9 @@ e2e: venv
 	E2E_BASE_URL=http://127.0.0.1:$$port node tests/e2e/run.js; status=$$?; \
 	if [ $$status -ne 0 ]; then echo "--- data/e2e-server.log (tail) ---"; tail -n 40 data/e2e-server.log; fi; \
 	exit $$status
+
+# Regenerate the pitch screenshots in docs/screenshots/ (alias of e2e).
+shots: e2e
 
 clean:
 	rm -rf $(VENV) node_modules staticfiles .ruff_cache

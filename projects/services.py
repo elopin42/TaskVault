@@ -161,7 +161,8 @@ def create_project(company, title, description) -> Project:
 
 
 def add_task(project: Project, company, title, description, price, tags) -> Task:
-    """Only the company, only while the project is `draft` (after funding the amount is locked)."""
+    """Only the company, until the project is `closed`. One escrow per task: funding a task locks
+    THAT task's price, never the project, so new tasks can be added at any time before closing."""
     _require_company(project, company)
     title = _clean_title(title, "de la tâche")
     price = parse_price(price)
@@ -169,8 +170,8 @@ def add_task(project: Project, company, title, description, price, tags) -> Task
     description = str(description or "").strip()
     with transaction.atomic():
         locked = Project.objects.select_for_update().get(pk=project.pk)
-        if locked.status != Project.Status.DRAFT:
-            raise ProjectError("wrong_state", "Le projet est financé : ses tâches ne peuvent plus changer.")
+        if locked.status == Project.Status.CLOSED:
+            raise ProjectError("wrong_state", "Le projet est terminé : plus de nouvelle tâche.")
         position = (locked.tasks.count() or 0) + 1
         task = Task.objects.create(
             project=locked, title=title, description=description, price=price, tags=tags, position=position
@@ -180,12 +181,10 @@ def add_task(project: Project, company, title, description, price, tags) -> Task
 
 
 def delete_task(task: Task, company) -> None:
-    """Allowed while the project is draft and the task still open (applications go with it)."""
+    """Only the company, only an OPEN task (nothing chosen, nothing funded); its applications go with it."""
     _require_company(task.project, company)
     with transaction.atomic():
         locked = _locked_task(task)
-        if locked.project.status != Project.Status.DRAFT:
-            raise ProjectError("wrong_state", "Le projet est financé : ses tâches ne peuvent plus être supprimées.")
         if locked.status != Task.Status.OPEN:
             raise ProjectError("wrong_state", "Seule une tâche ouverte peut être supprimée.")
         pk = locked.pk

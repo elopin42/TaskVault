@@ -141,10 +141,13 @@ class AddTaskTests(BaseProjectTest):
             services.add_task(self.project, None, "Hack", "", "1", [])
         self.assertEqual(ctx.exception.code, "forbidden")
 
-    def test_only_while_draft(self):
+    def test_until_closed(self):
         Project.objects.filter(pk=self.project.pk).update(status=Project.Status.FUNDED)
+        task = services.add_task(self.project, self.company, "Encore une", "", "10", [])  # one escrow per task: funded ≠ frozen
+        self.assertEqual(task.status, "open")
+        Project.objects.filter(pk=self.project.pk).update(status=Project.Status.CLOSED)
         with self.assertRaises(ProjectError) as ctx:
-            services.add_task(self.project, self.company, "Encore une", "", "10", [])
+            services.add_task(self.project, self.company, "Trop tard", "", "10", [])
         self.assertEqual(ctx.exception.code, "wrong_state")
 
     def test_task_validation(self):
@@ -176,9 +179,8 @@ class DeleteTaskTests(BaseProjectTest):
             services.delete_task(self.t3, self.company)
         self.assertEqual(ctx.exception.code, "wrong_state")
         Project.objects.filter(pk=self.project.pk).update(status=Project.Status.FUNDED)
-        with self.assertRaises(ProjectError) as ctx:
-            services.delete_task(self.t2, self.company)
-        self.assertEqual(ctx.exception.code, "wrong_state")
+        services.delete_task(self.t2, self.company)  # still open → deletable whatever the project status
+        self.assertFalse(Task.objects.filter(pk=self.t2.pk).exists())
 
 
 # --- freelance: apply ---------------------------------------------------------------------------
@@ -763,7 +765,7 @@ class TaskAddDeleteEndpointTests(BaseProjectTest):
         self.assertEqual((r.status_code, r.json()["error"]), (400, "invalid"))
         r = self.post_json(self.client, url, {"title": "Tâche", "price": "5", "tags": "a b c d"})
         self.assertEqual((r.status_code, r.json()["error"]), (400, "bad_tags"))
-        Project.objects.filter(pk=self.project.pk).update(status=Project.Status.FUNDED)
+        Project.objects.filter(pk=self.project.pk).update(status=Project.Status.CLOSED)
         r = self.post_json(self.client, url, {"title": "Tâche", "price": "5"})
         self.assertEqual((r.status_code, r.json()["error"]), (409, "wrong_state"))
         self.assertEqual(self.client.get(url).status_code, 405)

@@ -166,7 +166,7 @@ def my_projects(request):
 
 ### Company: project and tasks
 1. `POST /projets/nouveau/` (`ProjectForm`, classic form with `data-submit-once`) → `Project(status=draft)` → redirect to the project page.
-2. The inline form `#task-form` posts through `Lowbid.api` to `/projets/<pk>/taches/ajouter/` → `services.add_task` (company, project `draft`, price/tags parsed) → 201; the page reloads with `[data-tasks][data-count]` incremented. Field errors land in `[data-error-for="<field>"]`.
+2. The inline form `#task-form` posts through `Lowbid.api` to `/projets/<pk>/taches/ajouter/` → `services.add_task` (company, project not `closed`, price/tags parsed) → 201; the page reloads with `[data-tasks][data-count]` incremented. Field errors land in `[data-error-for="<field>"]`.
 3. `[data-task-delete]` → `Lowbid.confirm` → `/taches/<pk>/supprimer/` → `services.delete_task`.
 
 ### Freelance: apply, then the company's live list

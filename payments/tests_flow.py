@@ -247,8 +247,11 @@ class EscrowHappyPathTests(BasePayTest):
             self.assertEqual(router.last(tw.PATH_FUND), {"contractId": CONTRACT, "signer": self.company.stellar_address, "amount": 120})
             self.assertEqual((sent["next"]["step"], sent["next"]["mine"]), ("deliver", False), "the freelance acts next")
             self.assertEqual(Project.objects.get(pk=self.project.pk).status, Project.Status.FUNDED)
-            with self.assertRaises(projects.ProjectError):  # the scope is frozen once funded
-                projects.add_task(self.project, self.company, "Extra", "", "1", [])
+            # One escrow per task: funding T1 locks T1's price only, the company can still add a task.
+            extra = projects.add_task(self.project, self.company, "Extra", "", "1", [])
+            self.assertEqual(extra.status, "open")
+            with self.assertRaises(projects.ProjectError):  # … but a chosen task can no longer be deleted
+                projects.delete_task(self.task, self.company)
 
             # 3. freelance delivers: TW milestone change + projects.services.deliver(link)
             login(self.client, self.freelance)

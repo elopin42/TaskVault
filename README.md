@@ -40,7 +40,7 @@ ends with one « Payer le freelance » payment signed in Freighter.
 ```
 
 1. The **company** connects its **Freighter** wallet (Stellar testnet). Login is a signed message, no password.
-2. It creates a **project** (title, description) and splits it into **tasks**, each with a title, a **fixed price** in USDC and up to 3 skill tags. Tasks can be added or deleted while the project is a draft.
+2. It creates a **project** (title, description) and splits it into **tasks**, each with a title, a **fixed price** in USDC and up to 3 skill tags. Tasks can be added until the project is closed; an open task can still be deleted.
 3. **Freelances** connect their own wallet. The kanban (`/taches/`) shows every open task of other companies plus their own tasks, in four columns: Ouvert, Pris, Livré, Payé.
 4. A freelance **applies** to a task with a short message and their skills. There is no price to fight over: the price is fixed by the company.
 5. Lowbid ranks the candidates with a **deterministic score** (no AI). Two badges help: **« Validé »** (already paid by this company with an average rating ≥ 3) and **« Recommandé »** (the best score).

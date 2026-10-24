@@ -2,8 +2,8 @@
 
 A company splits a Project into fixed-price Tasks; freelances apply to open tasks; the
 company picks one freelance per task; the chosen one delivers; the company validates and
-rates. Payments (Phase 2) attach an Escrow to the Project and a milestone to each Task —
-nothing Stellar-related is stored here.
+rates. The payments app attaches one Escrow row to each Task (one Trustless Work escrow per task,
+or one direct payment) — nothing Stellar-related is stored here.
 """
 
 from decimal import Decimal
@@ -41,8 +41,8 @@ class ProjectQuerySet(models.QuerySet):
 
 class Project(models.Model):
     class Status(models.TextChoices):
-        DRAFT = "draft", "Brouillon"  # not funded yet, tasks editable
-        FUNDED = "funded", "Financé"  # escrow holds the money (Phase 2) / direct mode armed
+        DRAFT = "draft", "Brouillon"  # no task funded / paid yet
+        FUNDED = "funded", "Financé"  # every assigned task holds funds (escrow) / a first payment was made (direct)
         CLOSED = "closed", "Terminé"  # every task paid
 
     company = models.ForeignKey("accounts.WalletUser", on_delete=models.PROTECT, related_name="projects")

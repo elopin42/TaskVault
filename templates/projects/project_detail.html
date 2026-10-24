@@ -127,9 +127,9 @@ payments.services.project_funding().
         </section>
       {% endif %}
       {% if project.is_draft %}
-        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Projet en brouillon : les tâches restent modifiables{% if not funding.is_direct %} jusqu’au blocage des fonds{% endif %}. Les freelances peuvent déjà postuler.</span></div>
+        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Projet en brouillon : aucun fonds engagé. Les freelances peuvent déjà postuler ; une tâche ouverte se supprime encore.</span></div>
       {% elif project.status == 'funded' %}
-        <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Projet financé : {% if funding.is_direct %}un premier paiement a été signé{% else %}le prix des tâches attribuées est bloqué en escrow{% endif %} — les tâches ne peuvent plus changer.</span></div>
+        <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Projet financé : {% if funding.is_direct %}un premier paiement a été signé{% else %}le prix de chaque tâche attribuée est bloqué dans son escrow{% endif %}. Vous pouvez encore ajouter des tâches ; une tâche attribuée ne se supprime plus.</span></div>
       {% elif project.status == 'closed' %}
         <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Projet terminé : toutes les tâches sont payées.</span></div>
       {% endif %}

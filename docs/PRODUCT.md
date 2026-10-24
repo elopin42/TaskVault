@@ -46,8 +46,8 @@ The rules below are derived from `projects/services.py`, `projects/scoring.py` a
 
 ### Projects and tasks
 - **R2** Any signed-in wallet can create a project; it becomes that project's company. Title 3 to 120 characters, description required. A new project is `draft` (« Brouillon »).
-- **R3** Only the project's company can add a task (`forbidden`, 403), and only while the project is `draft` (`wrong_state`, 409). Title 3 to 120 characters; price strictly positive, at most 7 decimals, below 10¹¹ (`invalid`, 400); tags separated by commas, spaces or semicolons, normalised to lowercase slugs, de-duplicated, at most 3, at most 24 characters each (`bad_tags`, 400); description optional.
-- **R4** A task can be deleted only by the company, only while the project is `draft` and the task `open`. Its applications are deleted with it.
+- **R3** Only the project's company can add a task (`forbidden`, 403), at any time until the project is `closed` (`wrong_state`, 409): one escrow per task means funding locks a task's price, never the project. Title 3 to 120 characters; price strictly positive, at most 7 decimals, below 10¹¹ (`invalid`, 400); tags separated by commas, spaces or semicolons, normalised to lowercase slugs, de-duplicated, at most 3, at most 24 characters each (`bad_tags`, 400); description optional.
+- **R4** A task can be deleted only by the company and only while it is `open` (`wrong_state` once a freelance is chosen), whatever the project status. Its applications are deleted with it.
 
 ### Applications, score and badges
 - **R5** Any signed-in wallet except the project's company can apply to an `open` task (`own_task`, 403; `wrong_state`, 409), once per task (`duplicate`, 409, also a database constraint). Message at most 280 characters; tags as in R3. An application carries no price.
@@ -61,7 +61,7 @@ The rules below are derived from `projects/services.py`, `projects/scoring.py` a
 
 ### Funding
 - **R11** A task can be funded only once a freelance is chosen (`not_chosen`): Trustless Work fixes the escrow's receiver when it is deployed. In escrow mode the company signs `deploy` then `fund` for each task; the escrow's amount is the task's price and its receiver is the chosen freelance. « Financer le projet » chains both steps for every assigned task that is not funded yet (two signatures per task); with nothing to fund it is disabled and says why.
-- **R12** A project moves from `draft` to `funded` (« Financé ») when every assigned (non-open) task's escrow holds its money (escrow mode), or at the first payment (direct mode, where nothing is locked in advance). From then on tasks can no longer be added or deleted.
+- **R12** A project moves from `draft` to `funded` (« Financé ») when every assigned (non-open) task's escrow holds its money (escrow mode), or at the first payment (direct mode, where nothing is locked in advance). Tasks can still be added; only an `open` task can be deleted (R4).
 
 ### Delivery
 - **R13** Only the chosen freelance delivers (`not_assigned`, 403), only a `taken` task (`wrong_state`). The link is required, starts with `http://` or `https://` and has at most 500 characters (`invalid`). In escrow mode the delivery is an on-chain milestone change signed by the freelance, possible only once the escrow is funded (a database-only delivery is refused); the first 280 characters of the link go on chain as evidence. In direct mode the delivery is a declaration with no transaction.
@@ -136,13 +136,13 @@ Studio Nova chooses Yanis. He delivers, the company rates him **5/5**, and T1 is
 | `funded` | « Financé » | see above | every task paid → `closed` |
 | `closed` | « Terminé » | every task `paid` | — |
 
-Tasks can be added or deleted only in `draft`. A project with a single task paid directly goes from `draft` straight to `closed`.
+Tasks can be added until `closed`; only an `open` task can be deleted. A project with a single task paid directly goes from `draft` straight to `closed`.
 
 ### Task
 
 | Status | Label | Enters when | Next |
 |--------|-------|-------------|------|
-| `open` | « Ouvert » | added | the company chooses → `taken` (or deleted, project `draft` only) |
+| `open` | « Ouvert » | added | the company chooses → `taken` (or deleted while still open) |
 | `taken` | « Pris » | a freelance is chosen | the freelance delivers → `delivered` |
 | `delivered` | « Livré » | delivery confirmed (on chain in escrow mode) | the company rates, then the payment is confirmed → `paid` |
 | `paid` | « Payé » | release / direct payment confirmed | — |
@@ -190,7 +190,7 @@ Signatures for one task: escrow mode = 4 by the company (deploy, fund, approve, 
 | `/` | everyone | Landing: pitch, live stats (open tasks, projects, USDC paid), latest projects; « Nouveau projet » once signed in | `01-landing.png`, `mobile-landing.png` |
 | `/projets/` | everyone | Project list: tabs En cours / Terminés / Tous, search (project or task title, tags), tag chips, sort (newest, highest total, most open tasks), pagination | `02-liste-projets.png`, `mobile-liste.png` |
 | `/projets/nouveau/` | signed in | New project form (title, description) | — |
-| `/projets/<pk>/` | everyone | Project page: KPIs (total of the task prices, tasks, applications, paid tasks), the task table with each task's status and payment status, the inline add-task form (company, draft), candidates per open task with « Choisir » (company), the funding banner and « Financer le projet » (company) | `03-projet-entreprise.png`, `15-financement-projet.png`, `mobile-projet.png` |
+| `/projets/<pk>/` | everyone | Project page: KPIs (total of the task prices, tasks, applications, paid tasks), the task table with each task's status and payment status, the inline add-task form (company, until the project is closed), candidates per open task with « Choisir » (company), the funding banner and « Financer le projet » (company) | `03-projet-entreprise.png`, `15-financement-projet.png`, `mobile-projet.png` |
 | `/taches/<pk>/` | everyone | Task page: KPIs (fixed price, candidates, project, current step), tags, the apply form (freelance), the ranked candidates with badges and score bars (polled every 5 s), the payment panel (stepper, next step, delivery form, rating form, trustline, live balance, stellar.expert links) | `04-tache-candidats.png`, `05-tache-livree-freelance.png`, `06-valider-noter.png`, `08-tache-valide-recommande.png`, `12-tache-light.png`, `13-paiement-echec.png`, `14-paiement-tache.png`, `mobile-tache-candidats.png` |
 | `/taches/` | signed in | Freelance kanban: Ouvert (open tasks of other companies, the ones I applied to first), Pris, Livré, Payé (my tasks) | `07-tableau-kanban.png`, `mobile-kanban.png` |
 | `/mes-projets/` | signed in | The company's projects: KPIs (drafts, tasks to choose for, deliveries to validate, finished), tabs En cours / Terminés / Tous, a row per project with its next action | `09-mes-projets.png` |

@@ -245,7 +245,7 @@ def project_detail(request: HttpRequest, pk: int) -> HttpResponse:
         my_apps = {a.task_id: a for a in Application.objects.filter(task__project=project, freelancer=wallet)}
     for task in tasks:
         task.project = project  # reuse the annotated instance (no extra query per row)
-        task.can_delete = is_company and project.is_draft and task.is_open
+        task.can_delete = is_company and task.is_open
         task.my_application = my_apps.get(task.pk)
         task.is_mine = wallet is not None and task.assigned_to_id == wallet.pk
     candidate_blocks = []
@@ -268,7 +268,7 @@ def project_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "tasks": tasks,
             "wallet": wallet,
             "viewer_is_company": is_company,
-            "can_add_task": is_company and project.is_draft,
+            "can_add_task": is_company and project.status != Project.Status.CLOSED,
             "funding": funding,
             # The company sees "Financer le projet" as soon as the project has a task; it is enabled
             # only when an assigned task still has to be deployed/funded (escrow mode).

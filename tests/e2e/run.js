@@ -533,7 +533,9 @@ async function main() {
       assert(await cp.locator(`#candidates-${taskIds[1]} [data-choose]`).count() === 2, "project page: Choisir on every candidate of T2");
       assert(await cp.locator(`#candidates-${taskIds[1]} [data-badge="valide"]`).count() === 1, "project page: Validé badge");
       assert(await cp.locator(".task-row[data-status=paid]").count() === 1, "T1 row is Payé");
-      assert(await cp.locator("[data-task-delete]").count() === 0, "project is Financé: tasks are frozen");
+      // One escrow per task: the project is Financé but only the still-open tasks (T2, T3) can be deleted; T1 (paid) cannot.
+      assert(await cp.locator("[data-task-delete]").count() === 2, "project is Financé: only the two open tasks keep a delete button");
+      assert(await cp.locator("#task-title").count() === 1, "project is Financé: the add-task form is still there");
       await shot(cp, "03-projet-entreprise");
       await noHorizontalScroll(cp, "desktop project company");
 

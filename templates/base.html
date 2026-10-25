@@ -10,20 +10,22 @@
     <title>{% block title %}Lowbid{% endblock %}</title>
     <link rel="icon" href="{% static 'img/favicon.svg' %}?v={{ LOWBID_ASSET_VERSION }}" type="image/svg+xml">
 
-    <!-- Anti-flash: apply the saved theme BEFORE any stylesheet so the dark/light
-         canvas paints on the first frame instead of flashing white. -->
+    <!-- Anti-flash: apply the saved theme BEFORE any stylesheet so the right canvas paints
+         on the first frame. Light is the default (no data-theme); dark is the stored opt-in. -->
     <script>
       (function () {
         var saved = null;
         try { saved = localStorage.getItem("lowbid_theme"); } catch (e) {}
-        if (saved === "light" || saved === "dark") {
-          document.documentElement.setAttribute("data-theme", saved);
+        if (saved === "dark") {
+          document.documentElement.setAttribute("data-theme", "dark");
+        } else if (saved === "light") {
+          document.documentElement.removeAttribute("data-theme");
         }
       })();
     </script>
     <style>
-      html { color-scheme: dark; background-color: #0b0e14; }
-      html[data-theme="light"] { color-scheme: light; background-color: #ffffff; }
+      html { color-scheme: light; }
+      html[data-theme="dark"] { color-scheme: dark; }
     </style>
 
     <!-- window.LOWBID — the only per-request values the static JS needs. -->

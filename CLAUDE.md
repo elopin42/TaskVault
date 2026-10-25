@@ -9,7 +9,7 @@ There is **no GSD workflow** in this repo. Edit files directly, run `make check`
 - Python 3.13 · Django 5.2 (server-rendered templates, function views, no DRF) · SQLite by default (`data/db.sqlite3`, moved by `LOWBID_SQLITE_PATH`), PostgreSQL when `DJANGO_DB_HOST` is set · whitenoise for static files · gunicorn in Docker.
 - Frontend: **self-hosted Tailwind v3** compiled into the committed `static/css/tailwind.css`, two hand-written CSS files (`lowbid-tokens.css`, `lowbid-components.css`), vanilla JS (`static/js/lowbid-*.js`). Vendored under `static/vendor/`: Font Awesome, `@stellar/freighter-api` (global `freighterApi`), `@stellar/stellar-sdk` (global `StellarSdk`). **Nothing loads from a CDN.**
 - Stellar: the Freighter wallet is the identity (SEP-53 `signMessage` login). The payment asset is `STELLAR_ASSET_CODE` / `STELLAR_ASSET_ISSUER` (default: Circle testnet USDC; `XLM` with an empty issuer means native XLM, which forces direct mode). Trustless Work v1 REST runs the escrow; Horizon serves balances, trustlines and direct payments. Python side: `stellar-sdk`.
-- Tests: Django test runner (`manage.py test`, 222 tests, network mocked) and a Playwright e2e run with a simulated Freighter and a fake Horizon (`make e2e`). Linter: ruff (baseline rules only, see `ruff.toml`).
+- Tests: Django test runner (`manage.py test`, 223 tests, network mocked) and a Playwright e2e run with a simulated Freighter and a fake Horizon (`make e2e`). Linter: ruff (baseline rules only, see `ruff.toml`).
 
 ## Commands
 
@@ -63,7 +63,7 @@ Pages: `/projets/` (list, public) · `/projets/nouveau/` · `/projets/<pk>/` (pu
 
 ## Frontend rules
 
-1. **Load order is law:** `lowbid-tokens.css` (the `:root` palette, light mode under `html[data-theme="light"]`) → `lowbid-components.css` (the `ui-` vocabulary) → `tailwind.css`. Components read `var(--*)` only; **never hardcode a colour**. Dark is the default, light comes for free.
+1. **Load order is law:** `lowbid-tokens.css` (the `:root` palette = the light « coutrio » canvas, dark mode under `html[data-theme="dark"]`) → `lowbid-components.css` (the `ui-` vocabulary) → `tailwind.css`. Components read `var(--*)` only; **never hardcode a colour**. Light is the default, dark comes via the toggle (`localStorage["lowbid_theme"]`).
 2. **Tailwind is a build artifact.** Any new utility class in a template or `static/js/*.js` needs `npm run build:css` and the rebuilt `static/css/tailwind.css` committed, or the `tailwind-in-sync` CI job fails. Classes assembled at runtime must be in the `safelist` of `tailwind.config.js`.
 3. Prefer the vocabulary over utilities: `.ui-panel`, `.ui-btn*`, `.ui-badge*`, `.ui-field/.ui-input/.ui-form-grid`, `.ui-kpi-*`, `.ui-toolbar/.ui-search`, `.ui-pager`, `.ui-timeline`, `.ui-next-card`, `.ui-modal`, `.ui-menu`, `.ui-wallet/.ui-identicon`, `.ui-stepper`, `.ui-stars`, `.ui-scorebar`, `.cand-row`, `.kanban*`, `.ui-progress`, `.seg-tabs`, `.rcard`, `.empty-state`. Full reference with markup: `docs/FRONTEND.md`.
 4. Reuse the includes in `templates/components/` (`wallet`, `status_badge`, `tags`, `kpi`, `price`, `empty_state`, `pager`, `next_card`, `section_head`) instead of re-typing markup; their parameters are documented in each file's `{% comment %}` header.

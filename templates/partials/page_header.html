@@ -1,7 +1,7 @@
-{# Usage: {% include "partials/page_header.html" with title="…" subtitle="…" %} + optional {% block header_actions %} via `actions` HTML-safe string #}
+{% load lowbid_extras %}{# Usage: {% include "partials/page_header.html" with title="…" subtitle="…" %} + optional `actions` HTML-safe string. The title's last word gets the amber underline (|underline_last). #}
 <div class="ui-page-header">
   <div class="min-w-0">
-    <h1 class="ui-page-title">{{ title }}</h1>
+    <h1 class="ui-page-title">{{ title|underline_last }}</h1>
     {% if subtitle %}<p class="ui-page-sub">{{ subtitle }}</p>{% endif %}
   </div>
   {% if actions %}<div class="ui-page-actions">{{ actions }}</div>{% endif %}

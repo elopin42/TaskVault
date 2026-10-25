@@ -6,7 +6,7 @@
 {% block content %}
 <div class="ui-page-header">
   <div class="min-w-0">
-    <h1 class="ui-page-title">Projets</h1>
+    <h1 class="ui-page-title">{{ "Projets"|underline_last }}</h1>
     <p class="ui-page-sub">Chaque projet est découpé en tâches à prix fixe. Les freelances postulent, l’entreprise choisit, la tâche validée est payée en USDC.</p>
   </div>
   <div class="ui-page-actions">
@@ -23,9 +23,9 @@
   <input type="hidden" name="tab" value="{{ tab }}">
   {% if tag %}<input type="hidden" name="tag" value="{{ tag }}">{% endif %}
   <div class="ui-search ui-toolbar-grow">
-    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
     <input type="search" name="q" value="{{ q }}" class="ui-input" placeholder="Rechercher un projet, une tâche, une compétence…" aria-label="Rechercher" autocomplete="off">
     {% if q %}<button type="button" class="ui-search-clear" data-search-clear aria-label="Effacer la recherche"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>{% endif %}
+    <button type="submit" class="ui-search-btn" aria-label="Rechercher"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></button>
   </div>
   <nav class="seg-tabs" aria-label="Filtrer les projets">
     {% for key, label in tabs %}

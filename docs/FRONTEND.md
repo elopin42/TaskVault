@@ -2,7 +2,7 @@
 
 The whole front end is **server-rendered** (Django) and styled by three stylesheets loaded in this order by `templates/base.html`:
 
-1. `static/css/lowbid-tokens.css` — the palette (`:root`, light mode under `html[data-theme="light"]`);
+1. `static/css/lowbid-tokens.css` — the palette (`:root` = the **light « coutrio » canvas**, dark mode under `html[data-theme="dark"]`);
 2. `static/css/lowbid-components.css` — the `ui-` / `lb-` / `seg-` / `rcard` / `glass-` / `kanban-` / `cand-` vocabulary;
 3. `static/css/tailwind.css` — **build artifact** (`npm run build:css`), loaded last so utilities win specificity ties.
 
@@ -12,24 +12,27 @@ Golden rules: components only read `var(--*)` (never a hardcoded colour); any ne
 
 ## 1. Tokens (`lowbid-tokens.css`)
 
+**The look ("coutrio" DNA).** A warm off-white canvas (`--bg-1` `#F4F3EF`), pure-white cards with a 1px warm hairline (`--border` `#E6E4DE`, 13–16px radius, almost no shadow), near-black text (`#141414`) and grey secondary text (`#6B6B6B`). Every control is a **pill**: black for the primary action / the active tab or chip (`--ink`), white with a hairline for the secondary ones, and **amber** (`--brand-500` `#F2A93B`) only where it carries meaning — the price pill (`.ui-price`, `.ui-badge-brand`), the short underline under a page title's last word (`.ui-underline`), the live dot, progress and the large identicon ring.
+
 | Family | Variables | Role |
 |--------|-----------|------|
-| Brand (amber) | `--brand-500` `--brand-600` `--brand-700` `--brand-800` `--brand-soft` `--brand-ink` | Accent, primary buttons (`--brand-ink` = text on amber) |
+| Brand (amber) | `--brand-500` `--brand-600` `--brand-700` `--brand-800` `--brand-soft` `--brand-ink` | The one accent: price pills, title underline, progress (`--brand-ink` = dark text on an amber pill) |
+| Ink (black pill) | `--ink` `--ink-hover` `--on-ink` | Primary buttons, active nav tab / chip / pager page, search button (an off-white pill in dark mode) |
 | Brand RGB | `--brand-50-rgb` … `--brand-950-rgb` | `r g b` triplets for Tailwind utilities such as `bg-brand-500/20` (see `tailwind.config.js`) |
 | Secondary / accent | `--secondary-500` `--secondary-soft` `--accent-500` `--accent-soft` | Sky / violet, occasional use |
-| Status | `--success` `--warning` `--error` `--info` + `*-soft` | Solid colour + translucent background |
+| Status | `--success` `--warning` `--error` `--info` + `*-soft` (+ `--on-error`) | Dark tint for text / icons + the pastel fill of the soft pills and alerts |
 | Badge text | `--ui-badge-ok-text` `--ui-badge-attn-text` `--ui-badge-danger-text` `--ui-badge-brand-text` `--ui-badge-info-text` | ≥ 4.5:1 on the `*-soft` background in both themes |
-| Type | `--text-meta` 12px · `--text-body` 14px · `--text-heading` 16px · `--text-display` 28px · `--font-sans` · `--font-mono` | Four-step scale, system font (no web font) |
+| Type | `--text-meta` 12px · `--text-body` 14px · `--text-heading` ≈15.5px · `--text-display` ≈23px · `--font-sans` · `--font-mono` | Four-step scale, system font (no web font) |
 | Surfaces | `--bg-1/2/3` (canvas + gradient) `--surface` `--surface-soft` `--glass-bg` `--soft-bg` | Page background, cards, insets |
-| Text | `--text` (= `--text-main`) `--muted` (= `--text-muted`) | Main / secondary text |
-| Borders & shadows | `--border` `--border-strong` `--glass-border` `--soft-border` `--hover-border` `--divider` `--shadow` `--glass-shadow` `--hover-shadow` | Rules, hover |
+| Text | `--text` (= `--text-main`) `--muted` (= `--text-muted`) `--text-faint` | Main / secondary / placeholder text |
+| Borders & shadows | `--border` `--border-strong` `--glass-border` `--soft-border` `--hover-border` `--divider` `--shadow` `--glass-shadow` `--hover-shadow` `--shadow-pop` `--backdrop` `--focus-ring` | Hairlines, hover, floating panels (menus, toasts, modal), the modal backdrop, the keyboard focus ring |
 | Glows | `--glow-1` `--glow-2` | Radial halo behind the page (transparent in light mode) |
-| Radii | `--radius-lg` 16px · `--radius-md` 12px | |
-| Navbar | `--nav-bg` `--nav-border` `--nav-link-hover-bg` `--nav-active` | Shared with the mobile tab bar |
+| Radii | `--radius-lg` 16px · `--radius-md` 13px · `--radius-sm` 10px | Cards / panels · inputs, alerts |
+| Navbar | `--nav-bg` `--nav-border` `--nav-link-hover-bg` `--nav-active` | The bar is canvas-coloured; the links sit in a white pill, the active one is `--nav-active` (= `--ink`) |
 | Rows | `--row-hover` | Table / list row hover |
 | Layout | `--tabbar-h` | Height of the mobile tab bar (0 on desktop), read by `.ui-sticky-actions` |
 
-**Light mode**: `html[data-theme="light"]` redefines the same variables (flat white canvas, dark amber `#B45309` for 5:1 on white, transparent glows). The theme is applied **before** the stylesheets by an inline script in `base.html` (no flash) and persisted in `localStorage["lowbid_theme"]`; `Lowbid.toggleTheme()` / `[data-theme-toggle]`.
+**Light is the default** (`<html>` without `data-theme`). **Dark mode**: `html[data-theme="dark"]` redefines the same variables (the former dark palette: `#0b0e14` canvas, `#121722` cards, `#FBBF24` amber, translucent white hairlines; the black pill becomes an off-white one). The stored choice is applied **before** the stylesheets by an inline script in `base.html` (no flash) and persisted in `localStorage["lowbid_theme"]` (`"dark"` sets the attribute, `"light"` removes it); `Lowbid.toggleTheme()` / `[data-theme-toggle]` (sun in light mode, moon in dark mode).
 
 ---
 
@@ -39,40 +42,42 @@ Golden rules: components only read `var(--*)` (never a hardcoded colour); any ne
 
 | Class | Use |
 |-------|-----|
-| `.glass-card` | Card (`--glass-bg` background, border, shadow, amber hover) |
+| `.glass-card` | Card (white, 1px hairline, 13px radius, no visible shadow; stronger hairline on hover) |
 | `.glass-soft` | Secondary inset (`--soft-bg`, 8px radius) |
 | `.ui-panel` + `.ui-panel-head` `.ui-panel-title` `.ui-panel-sub` | Padded section; two consecutive panels space themselves |
-| `.ui-page-header` + `.ui-page-title` `.ui-page-sub` `.ui-page-actions` | Page header (title + subtitle + buttons) — see `partials/page_header.html` |
+| `.ui-page-header` + `.ui-page-title` `.ui-page-sub` `.ui-page-actions` | Page header (title + subtitle + buttons) — see `partials/page_header.html`. The title's **last word** carries the amber underline: `{{ title\|underline_last }}` wraps it in `<span class="ui-underline">` (a `.ui-wallet-name` inside the h1 is underlined too) |
+| `.ui-underline` | The short amber underline (also `.lb-hero-accent` on the landing) |
+| `.ui-icon-tile` | 36px rounded square on a light grey fill, for an icon at the start of a row |
 | `.ui-section` + `.ui-section-head` `.ui-section-title` `.ui-section-sub` | h2 above a grid — see `components/section_head.html` |
 | `.ui-split` (+ `.is-even`) / `.ui-stack` | Two columns 3/2 (or 1/1) from 1024px, stacked below; vertical stack |
-| `.ui-facts` | Two-column `<dl>`, label / right-aligned value (the funding banner's totals) |
+| `.ui-facts` | Stat rows: label left, bold value right, one hairline per row (dashboard stats, funding totals) |
 | `.ui-form-scope` | Declares a *container* so `.ui-sticky-actions` knows its width |
 
 ### Text
 
-`.ui-meta` (12px grey) · `.ui-label` (uppercase label) · `.ui-link` · `.ui-num` / `.ui-num-strong` (tabular figures) · `.text-muted` · `.text-strong` · `.ui-price` + `.ui-price-unit` (amount + small unit) · `.font-mono`.
+`.ui-meta` (12px grey) · `.ui-label` (uppercase label) · `.ui-link` (text-coloured, hairline underline that turns amber on hover) · `.ui-num` / `.ui-num-strong` (tabular figures) · `.text-muted` · `.text-strong` · `.ui-price` + `.ui-price-unit` (**the amber price pill**, `components/price.html`; inside `.ui-kpi-value` the unit is just a small grey suffix) · `.font-mono`.
 
 ### Forms
 
-`.ui-field` · `.ui-input` `.ui-select` `.ui-textarea` (44px, amber focus, `aria-invalid="true"` → red border) · `.ui-help` · `.ui-error` · `.ui-form-grid` (1 column, 2 from 640px, `.ui-field-wide` for full width) · `.ui-input-group` + `.ui-input-addon` (the « USDC » suffix of the task price) · `.ui-search` (input + icon + `[data-search-clear]`) · `.ui-select-inline` (compact toolbar select).
+`.ui-field` · `.ui-input` `.ui-select` `.ui-textarea` (42px, white, 10px radius, soft amber focus ring, `aria-invalid="true"` → red border) · `.ui-help` · `.ui-error` · `.ui-form-grid` (1 column, 2 from 640px, `.ui-field-wide` for full width) · `.ui-input-group` + `.ui-input-addon` (the « USDC » suffix of the task price) · `.ui-search` (a pill input + the round black `.ui-search-btn` submit at its end + optional `[data-search-clear]`) · `.ui-select-inline` (compact pill select).
 
 Server-side field errors from `Lowbid.api` land in `<p class="ui-error" data-error-for="<field>" hidden>` (add-task form: `title`, `price`, `tags`; apply form: `message`, `tags`; `_` for the rest).
 
 ### Buttons
 
-`.ui-btn` + modifiers `-primary` `-ghost` `-danger` `-danger-solid` `-sm` `-lg` `-block`; states `:disabled` / `.is-loading` (an `<i class="fa-spinner">` spins). `.ui-copy-btn` (32px, icon only, `data-copy="…"`). `.lb-icon-btn` (40px, navbar).
+All pills. `.ui-btn` = white with a hairline (secondary); `-primary` = **black pill** (`--ink`, white text); `-ghost` = bare; `-danger` = white with red text, `-danger-solid` = red; sizes `-sm` (34px) / default 40px (44px on touch screens) / `-lg` (46px); `-block`; states `:disabled` / `.is-loading` (an `<i class="fa-spinner">` spins). `.ui-copy-btn` (32px, icon only, `data-copy="…"`). `.lb-icon-btn` (38px round, navbar).
 
 ### Badges, tags, alerts, states
 
 | Class | Use |
 |-------|-----|
-| `.ui-badge` + `-ok` `-attn` `-danger` `-info` `-brand` `-neutral` | Status pill. Task: Ouvert `info`, Pris `brand`, Livré `attn`, Payé `ok`. Project: Brouillon `neutral`, Financé `ok`, Terminé `brand`. **`.ui-badge-brand` = « Recommandé » / « Choisi »**, `.ui-badge-ok.badge-validated` = « Validé » |
+| `.ui-badge` + `-ok` `-attn` `-danger` `-info` `-brand` `-neutral` | Soft tinted pill with dark text (≥ 4.5:1). Task: Ouvert `info`, Pris `brand`, Livré `attn`, Payé `ok`. Project: Brouillon `neutral`, Financé `ok`, Terminé `brand`. **`.ui-badge-brand` is the FILLED amber pill** (« Recommandé » / « Choisi » / « Postulé »), `.ui-badge-ok.badge-validated` = « Validé » |
 | `.ui-status` + `.ui-dot` (`.is-open` `.is-taken` `.is-delivered` `.is-paid`) | Coloured dot + label (kanban column titles) |
 | `.ui-live` + `.ui-live-dot` | "live" with a pulsing dot (`[data-live-dot]` on the task page while polling) |
-| `.ui-tag` (+ `.is-match`) | Skill; `.is-match` = also asked by the task |
-| `.ui-chip-row` | Row of tags that scrolls horizontally on a phone, wraps from 768px (popular tags on the list page) |
+| `.ui-tag` (+ `.is-match`) | Skill pill on a light grey fill; `.is-match` (also asked by the task / the active filter) = black pill |
+| `.ui-chip-row` | Row of filter chips (white bordered pills, the active one black) that scrolls horizontally on a phone, wraps from 768px (popular tags on the list page) |
 | `.ui-alert` + `-ok` `-attn` `-danger` `-info` | Inline message with icon (payment errors `[data-last-error]`, « Tâche payée ») |
-| `.empty-state` + `-icon` `-title` `-desc` | Centred empty state — see `components/empty_state.html` |
+| `.empty-state` + `-icon` `-title` `-desc` | Centred empty state: grey icon tile, bold title, grey line, black pill CTA — see `components/empty_state.html` |
 | `.ui-skeleton` / `.ui-skeleton-line` (+ `.w-1/2` `.w-1/3` `.w-3/4`) | Animated placeholders (`aria-hidden`) |
 | `.ui-progress` (+ `.is-ok`) `> span` | Progress bar (inline width) — paid tasks / tasks on the project card |
 
@@ -93,19 +98,20 @@ Server-side field errors from `Lowbid.api` land in `<p class="ui-error" data-err
 
 | Class | Use |
 |-------|-----|
-| `.lb-nav` `.lb-nav-inner` `.lb-brand` `.lb-brand-mark` `.lb-nav-links` `.lb-nav-link.is-active` `.lb-nav-actions` | Sticky glass bar (`partials/navbar.html`); desktop links from 1024px |
+| `.lb-nav` `.lb-nav-inner` `.lb-brand` `.lb-brand-name` `.lb-brand-dot` `.lb-nav-links` `.lb-nav-link.is-active` `.lb-nav-actions` | Sticky bar (`partials/navbar.html`): the lowercase wordmark « lowbid. » (amber dot) left, the links **centred in a white pill** (the active link is a black pill with its icon; labels hide between 1024 and 1200px), theme toggle + wallet chip right |
 | `.lb-mobile-nav` (`#lb-mobile-nav`, `[data-nav-toggle]`) | Drop-down mobile menu under the bar |
-| `.lb-wallet-btn` (+ `.is-connected`) `.lb-wallet-dot` `.lb-wallet-menu` `.lb-wallet-dropdown` `.lb-dropdown-item` | « Connecter » button / the connected wallet's menu (« Tableau de bord », « Mon profil public », logout) |
-| `.lb-tabbar` + `.lb-tab` (+ `.is-active` `.is-primary`) | Fixed bottom tab bar, < 1024px, **signed-in only** (`body.has-tabbar`, `partials/tabbar.html`, fed by `NAV_LINKS`: Projets · Tableau · Créer (raised) · Mes projets · Bord) |
-| `.seg-tabs` + `.seg-tab.is-active` | Segmented tabs (list filters: En cours / Terminés / Tous); full width below 480px |
+| `.lb-wallet-btn` (+ `.is-connected`) `.lb-wallet-dot` `.lb-wallet-menu` `.lb-wallet-dropdown` `.lb-dropdown-item` | « Connecter » = black pill; the connected chip = white pill with the amber-ringed identicon, the short address and a chevron, opening the menu (« Tableau de bord », « Mon profil public », logout) |
+| `.lb-tabbar` + `.lb-tab` (+ `.is-active` `.is-primary`) | Fixed white bottom tab bar, < 1024px, **signed-in only** (`body.has-tabbar`, `partials/tabbar.html`, fed by `NAV_LINKS`: Projets · Tableau · Créer (amber pill) · Mes projets · Bord); the active tab's icon sits in a black pill |
+| `.seg-tabs` + `.seg-tab.is-active` (+ `.seg-count`) | Filter pills (En cours / Terminés / Tous): white with a hairline, the active one black; full width below 480px |
 | `.ui-toolbar` `.ui-toolbar-grow` `.ui-toolbar-end` | List toolbar (search · tabs · sort · count) |
 | `.ui-pager` `.ui-pager-count` `.ui-pager-nav` `.ui-pager-btn` `.ui-pager-num.is-active` | Pagination; numbers hidden below 480px — see `components/pager.html` |
 
 ```html
 <form method="get" class="ui-toolbar">
-  <div class="ui-search ui-toolbar-grow"><i class="fa-solid fa-magnifying-glass"></i>
+  <div class="ui-search ui-toolbar-grow">
     <input class="ui-input" type="search" name="q" value="{{ q }}" placeholder="Rechercher un projet, une tâche, une compétence…">
     {% if q %}<button type="button" class="ui-search-clear" data-search-clear aria-label="Effacer"><i class="fa-solid fa-xmark"></i></button>{% endif %}
+    <button type="submit" class="ui-search-btn" aria-label="Rechercher"><i class="fa-solid fa-magnifying-glass"></i></button>
   </div>
   <nav class="seg-tabs">…</nav>
   <div class="ui-toolbar-end">
@@ -146,7 +152,7 @@ The global confirm modal `#lb-confirm` (`partials/modal.html`, included by `base
 
 | Class | Use |
 |-------|-----|
-| `.ui-list` + `.ui-list-row` + `.ui-rank` | Vertical list separated by rules; `a.ui-list-row` is hoverable |
+| `.ui-list` + `.ui-list-row` + `.ui-rank` | Vertical list separated by hairlines; `.ui-rank` is a 32px rounded-square tile with the rank; `a.ui-list-row` is hoverable |
 | `.rcard` | **Mandatory wrapper around a `<table>`**; every `<td data-label="Colonne">`; `th/td.ui-col-end` right-aligns; `tr.is-attn` highlights (a project with candidates to choose or a delivery to validate). Below 640px of **container** width the table becomes stacked cards (no horizontal scroll). Used by the project's task table (`.task-row[data-task-id][data-status]`, `projects/_task_row.html`), Mes projets and the profile |
 | `.project-card` | Project card on the list and the landing (lift on hover) — `projects/_project_card.html` |
 
@@ -180,7 +186,7 @@ The global confirm modal `#lb-confirm` (`partials/modal.html`, included by `base
   </div>
 </div>
 ```
-`.ui-scorebar` is a 160px track; each segment's width is its points (out of 100): history brand, ratings `--info`, skills `--success`. `.cand-row.is-chosen` gets the brand-soft background, `.is-rejected` fades to 55 % opacity. The legend under the list repeats the weights (Historique 40, Notes ×8, Compétences 20).
+`.ui-scorebar` is a 160px track; each segment's width is its points (out of 100): history brand, ratings `--info`, skills `--success`. `.cand-row.is-chosen` gets the brand-soft background and an amber rank tile, `.is-rejected` fades to 55 % opacity. The legend under the list repeats the weights (Historique 40, Notes ×8, Compétences 20).
 
 **Kanban** (`projects/board.html`, `projects/_board_card.html`):
 
@@ -196,7 +202,7 @@ The global confirm modal `#lb-confirm` (`partials/modal.html`, included by `base
   </section>
 </div></div>
 ```
-`.kanban-wrap` is a container (`container-name: kanban`): 4 columns, 2 below 1024px, and below 640px one full-width column at a time with horizontal **snap-scroll** — the one deliberate exception to "no horizontal scroll" (the page itself never overflows). `.kanban-card.is-applied` marks a task the freelance already applied to.
+`.kanban-wrap` is a container (`container-name: kanban`): 4 columns, 2 below 1024px, and below 640px one full-width column at a time with horizontal **snap-scroll** — the one deliberate exception to "no horizontal scroll" (the page itself never overflows). Columns sit directly on the canvas (uppercase grey title + count pill); the cards are white. `.kanban-card.is-applied` marks a task the freelance already applied to (amber border).
 
 **Star rating** (`.ui-stars`, in the validation form of the payment panel):
 
@@ -251,14 +257,14 @@ Used by the dashboard activity (`#activity`) and the profile.
 </a>
 <button class="ui-copy-btn" data-copy="{{ addr }}"><i class="fa-regular fa-copy"></i></button>
 ```
-The identicon's two hues are derived from the address by `Lowbid.identicon()` (JS) or the `|hue` filter (SSR, `style="--id-a:…;--id-b:…"`). → `components/wallet.html`.
+The identicon is round; its two hues are derived from the address by `Lowbid.identicon()` (JS) or the `|hue` filter (SSR, `style="--id-a:…;--id-b:…"`); the `is-lg` / `is-xl` sizes (and the navbar chip) carry the amber ring. → `components/wallet.html`.
 
 ### Sticky actions & misc
 
-- `.ui-sticky-actions`: static on wide screens; below 640px of container width (it needs a `.ui-form-scope` ancestor) it becomes a glass bar stuck to the bottom, above the tab bar (`--tabbar-h`), with stretched buttons. Used by the project form, the add-task form, the apply form and the payment panel's forms.
+- `.ui-sticky-actions`: static on wide screens; below 640px of container width (it needs a `.ui-form-scope` ancestor) it becomes a white bar stuck to the bottom, above the tab bar (`--tabbar-h`), with stretched buttons. Used by the project form, the add-task form, the apply form and the payment panel's forms.
 - `.lb-toast-container` `.lb-toast` (+ `[data-type]`): toasts (`Lowbid.toast`).
-- `.lb-hero*` `.lb-steps` `.lb-step*`: landing.
-- Global keyboard focus: amber ring on `:focus-visible`. `@media print` hides nav, tab bar, toasts, sticky actions. `prefers-reduced-motion` stops animations.
+- `.lb-hero*` `.lb-steps` `.lb-step*`: landing (`.lb-hero-accent` = the amber underline on « prix fixe », `.lb-step-num` = grey number tile).
+- Global keyboard focus: soft amber ring (`--focus-ring`) on `:focus-visible`. `@media print` hides nav, tab bar, toasts, sticky actions. `prefers-reduced-motion` stops animations.
 - Present in the CSS but not used by the current templates: `.ui-sparkline` (+ `Lowbid.sparkline`) and `.seg-radio`.
 
 ---
@@ -276,7 +282,7 @@ The identicon's two hues are derived from the address by `Lowbid.identicon()` (J
 | `components/pager.html` | `page` (Django `Page`) | Pagination keeping the query string (`{% qs %}`) |
 | `components/next_card.html` | `tone="act\|wait\|done"`, `kicker`, `headline`, `body`, `href`, `cta`, `icon` | "What's next" card |
 | `components/section_head.html` | `title`, `sub`, `icon`, `link_href`, `link_label` | Section title + link |
-| `partials/page_header.html` | `title`, `subtitle`, `actions` (safe HTML) | Page header |
+| `partials/page_header.html` | `title`, `subtitle`, `actions` (safe HTML) | Page header (the title goes through `\|underline_last`) |
 | `partials/modal.html` / `partials/tabbar.html` / `partials/toasts.html` / `partials/navbar.html` | — | Included once by `base.html` |
 
 Task-board partials (not generic, but reusable within `projects`): `_project_card.html` (list / landing card), `_task_row.html` (task table row), `_task_form.html` (inline add-task form), `_candidates.html` (ranked candidates), `_funding_panel.html` (project funding banner), `_board_card.html` (kanban card).
@@ -293,6 +299,7 @@ Task-board partials (not generic, but reusable within `projects`): `_project_car
 | `qs` (tag) | `{% qs page=2 sort="" %}` | `?tab=active&page=2` — replaces / drops keys, keeps the rest |
 | `pct` | `{{ done\|pct:total }}` | integer 0–100 |
 | `hue` | `style="{{ addr\|hue }}"` | `--id-a:38;--id-b:200`: the identicon's two hues (same algorithm as `Lowbid.identicon`), rendered server-side so nothing flashes before the JS |
+| `underline_last` | `{{ "Mes projets"\|underline_last }}` | `<span class="ui-title">Mes <span class="ui-underline">projets</span></span>` — the amber underline under a title's last word (input escaped) |
 
 `{% load payments_extras %}`: `{% escrow_panel task wallet %}` renders `payments/_escrow_panel.html`.
 

@@ -1,8 +1,23 @@
 from decimal import Decimal, InvalidOperation
 
 from django import template
+from django.utils.html import escape
+from django.utils.safestring import mark_safe
 
 register = template.Library()
+
+
+@register.filter
+def underline_last(value) -> str:
+    """Wrap the LAST word of a title in <span class="ui-underline"> (the short amber underline of the
+    coutrio look): `{{ "Mes projets"|underline_last }}` → `Mes <span class="ui-underline">projets</span>`.
+    The input is escaped first; an empty value stays empty."""
+    s = escape(str(value or "").strip())
+    if not s:
+        return ""
+    head, sep, last = s.rpartition(" ")
+    # One outer span: inside a flex h1 (title + status badge) the words must stay ONE flex item.
+    return mark_safe(f'<span class="ui-title">{head}{sep}<span class="ui-underline">{last}</span></span>')
 
 
 @register.filter

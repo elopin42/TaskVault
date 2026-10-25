@@ -2,9 +2,8 @@
 <header class="lb-nav" role="banner">
   <div class="lb-nav-inner">
     <a href="{% url 'core:landing' %}" class="lb-brand" aria-label="Lowbid — accueil">
-      <span class="lb-brand-mark" aria-hidden="true"><i class="fa-solid fa-table-columns"></i></span>
-      <span class="lb-brand-name">Lowbid</span>
-      <span class="ui-badge ui-badge-brand hidden sm:inline-flex">{{ STELLAR_NETWORK }}</span>
+      <span class="lb-brand-name">lowbid<span class="lb-brand-dot">.</span></span>
+      <span class="ui-badge ui-badge-neutral hidden sm:inline-flex">{{ STELLAR_NETWORK }}</span>
     </a>
 
     <nav class="lb-nav-links" aria-label="Navigation principale">
@@ -26,7 +25,7 @@
       {% if wallet_address %}
         <details class="lb-wallet-menu">
           <summary class="lb-wallet-btn is-connected" title="{{ wallet_address }}" data-identicon="{{ wallet_address }}">
-            <span class="ui-identicon" style="width:1.1rem;height:1.1rem;border-radius:0.35rem" aria-hidden="true"></span>
+            <span class="ui-identicon" style="width:1.6rem;height:1.6rem" aria-hidden="true"></span>
             <span class="lb-wallet-dot" aria-hidden="true"></span>
             <span class="font-mono">{{ wallet_address|short_addr }}</span>
             <i class="fa-solid fa-chevron-down text-[10px] opacity-60" aria-hidden="true"></i>

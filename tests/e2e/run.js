@@ -654,21 +654,22 @@ async function main() {
     });
 
     // 9 ------------------------------------------------------------------------------------------
-    await step("9. theme toggle persists (light shot), logout clears the navbar, 404 on unknown task", async () => {
+    await step("9. theme toggle persists (dark shot), logout clears the navbar, 404 on unknown task", async () => {
       await cp.goto(`/taches/${taskIds[1]}/`);
+      assert((await cp.getAttribute("html", "data-theme")) === null, "light is the default (no data-theme)");
       await cp.click("[data-theme-toggle]");
-      assert((await cp.getAttribute("html", "data-theme")) === "light", "html[data-theme=light]");
+      assert((await cp.getAttribute("html", "data-theme")) === "dark", "html[data-theme=dark]");
       await cp.reload();
-      assert((await cp.getAttribute("html", "data-theme")) === "light", "light theme survives a reload (no flash to dark)");
+      assert((await cp.getAttribute("html", "data-theme")) === "dark", "dark theme survives a reload (no flash to light)");
       await cp.locator("#candidates-panel").waitFor();
-      await shot(cp, "12-tache-light");
+      await shot(cp, "12-tache-dark");
       const contrast = await cp.locator("#candidates-panel").evaluate((el) => {
         const cs = getComputedStyle(el);
         return { bg: cs.backgroundColor, text: getComputedStyle(el.querySelector(".ui-panel-title")).color };
       });
       assert(contrast.bg !== contrast.text, `panel text differs from its background (${JSON.stringify(contrast)})`);
       await cp.click("[data-theme-toggle]");
-      assert((await cp.getAttribute("html", "data-theme")) === "dark", "back to dark");
+      assert((await cp.getAttribute("html", "data-theme")) === null, "back to light (attribute removed)");
 
       await cp.click("details.lb-wallet-menu summary");
       await cp.locator("details.lb-wallet-menu[open]").waitFor();

@@ -13,7 +13,7 @@ payments.services.project_funding().
 <div class="ui-page-header">
   <div class="min-w-0">
     <p class="ui-meta mb-1"><a href="{% url 'projects:project_list' %}" class="ui-link"><i class="fa-solid fa-arrow-left text-[10px]" aria-hidden="true"></i> Projets</a> · #{{ project.pk }}</p>
-    <h1 class="ui-page-title flex flex-wrap items-center gap-2">{{ project.title }} {% include "components/status_badge.html" with obj=project live=True %}</h1>
+    <h1 class="ui-page-title flex flex-wrap items-center gap-2">{{ project.title|underline_last }} {% include "components/status_badge.html" with obj=project live=True %}</h1>
     <p class="ui-page-sub flex flex-wrap items-center gap-x-3 gap-y-1">
       {% include "components/wallet.html" with address=project.company.stellar_address name=project.company.display_name label="Entreprise" you=viewer_is_company %}
       <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> créé <span data-time-ago="{{ project.created_at|date:'c' }}">le {{ project.created_at|date:"d/m/Y à H:i" }}</span></span>

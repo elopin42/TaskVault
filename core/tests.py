@@ -67,6 +67,14 @@ class FilterTests(TestCase):
         self.assertEqual(usdc(0), "0.00 USDC")
         self.assertEqual(usdc(None), "—")
 
+    def test_underline_last(self):
+        from core.templatetags.lowbid_extras import underline_last
+
+        self.assertEqual(underline_last("Mes projets"), '<span class="ui-title">Mes <span class="ui-underline">projets</span></span>')
+        self.assertEqual(underline_last("Projets"), '<span class="ui-title"><span class="ui-underline">Projets</span></span>')
+        self.assertEqual(underline_last("a <b>"), '<span class="ui-title">a <span class="ui-underline">&lt;b&gt;</span></span>')
+        self.assertEqual(underline_last(""), "")
+
     def test_plain(self):
         self.assertEqual(plain(Decimal("500.0000000")), "500")
         self.assertEqual(plain(Decimal("400.5000000")), "400.5")

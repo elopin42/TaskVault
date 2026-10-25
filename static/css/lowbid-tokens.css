@@ -1,148 +1,167 @@
-/* Lowbid design tokens — ONE :root palette, dark-first, light via html[data-theme="light"].
+/* Lowbid design tokens — ONE :root palette, LIGHT-first ("coutrio" look), dark via html[data-theme="dark"].
    base.html loads this FIRST; lowbid-components.css and tailwind.css read these var(--*).
-   DNA inherited from SIPS (glass surfaces, soft borders, 44px targets); the brand hue is
-   warm amber — it reads "work / finance" and stays legible on both canvases. */
+   The DNA: a warm off-white canvas, pure-white cards with a 1px warm hairline and almost no shadow,
+   near-black text, BLACK pills for the primary actions / active tabs, and ONE accent — amber — used
+   sparingly (price pills, the underline of a title's last word, live dots, progress). */
 
 :root {
-    /* Brand (amber) */
-    --brand-500: #FBBF24;
-    --brand-600: #F59E0B;
-    --brand-700: #D97706;
-    --brand-800: #B45309;
-    --brand-soft: rgba(245,158,11,0.14);
-    --brand-ink: #1a1200;          /* text on a filled brand button */
+    /* Brand (amber) — the only accent hue */
+    --brand-500: #F2A93B;
+    --brand-600: #E89B22;
+    --brand-700: #C47F12;
+    --brand-800: #9A620A;
+    --brand-soft: rgba(242,169,59,0.16);
+    --brand-ink: #141414;          /* text on a filled amber pill ("dès 23 €") — 9:1 */
 
     /* Brand RGB triplets for Tailwind alpha utilities (bg-brand-500/20 …) */
-    --brand-50-rgb:  255 251 235;
-    --brand-100-rgb: 254 243 199;
-    --brand-200-rgb: 253 230 138;
-    --brand-300-rgb: 252 211 77;
-    --brand-400-rgb: 251 191 36;
-    --brand-500-rgb: 245 158 11;
-    --brand-600-rgb: 217 119 6;
-    --brand-700-rgb: 180 83 9;
-    --brand-800-rgb: 146 64 14;
-    --brand-900-rgb: 120 53 15;
-    --brand-950-rgb: 69 26 3;
+    --brand-50-rgb:  254 247 234;
+    --brand-100-rgb: 253 237 207;
+    --brand-200-rgb: 250 220 160;
+    --brand-300-rgb: 247 199 112;
+    --brand-400-rgb: 244 184 80;
+    --brand-500-rgb: 242 169 59;
+    --brand-600-rgb: 232 155 34;
+    --brand-700-rgb: 196 127 18;
+    --brand-800-rgb: 154 98 10;
+    --brand-900-rgb: 112 70 8;
+    --brand-950-rgb: 66 40 4;
 
-    /* Secondary (sky) + accent (violet) */
+    /* Ink — the black pill (primary button, active nav tab, active chip, search button) */
+    --ink: #141414;
+    --ink-hover: #2B2B2B;
+    --on-ink: #FFFFFF;
+
+    /* Secondary (sky) + accent (violet) — occasional */
     --secondary-500: #0ea5e9;
     --secondary-soft: rgba(14,165,233,0.12);
-    --accent-500: #8b5cf6;
-    --accent-soft: rgba(139,92,246,0.12);
+    --accent-500: #7c5cd6;
+    --accent-soft: rgba(124,92,214,0.12);
 
-    /* Status */
-    --success: #34D399;
-    --success-soft: rgba(16,185,129,0.15);
-    --warning: #fb923c;
-    --warning-soft: rgba(251,146,60,0.15);
-    --error: #f87171;
-    --error-soft: rgba(220,38,38,0.15);
-    --info: #7dd3fc;
-    --info-soft: rgba(14,165,233,0.14);
+    /* Status — soft tinted pills with dark text (≥ 4.5:1 on their fill) */
+    --success: #1F7A45;
+    --success-soft: #E3F3E8;
+    --warning: #9A5A08;
+    --warning-soft: #FDEBCB;
+    --error: #B42318;
+    --error-soft: #FBE4E1;
+    --on-error: #FFFFFF;
+    --info: #2F5680;
+    --info-soft: #E7EEF6;
 
-    /* Badge text — passes >= 4.5:1 on its soft fill over the dark surface */
-    --ui-badge-ok-text:     var(--success);
-    --ui-badge-attn-text:   var(--warning);
-    --ui-badge-danger-text: var(--error);
-    --ui-badge-brand-text:  var(--brand-500);
-    --ui-badge-info-text:   var(--info);
+    --ui-badge-ok-text:     #1B6B3A;
+    --ui-badge-attn-text:   #8A4B08;
+    --ui-badge-danger-text: #A12A22;
+    --ui-badge-brand-text:  var(--brand-ink);
+    --ui-badge-info-text:   #2C4A6E;
 
-    /* Type scale — Meta 12 / Body 14 / Heading 16 / Display 28 */
+    /* Type scale — Meta 12 / Body 14 / Heading 15.5 / Display 23 */
     --text-meta:    0.75rem;
     --text-body:    0.875rem;
-    --text-heading: 1rem;
-    --text-display: 1.75rem;
+    --text-heading: 0.97rem;
+    --text-display: 1.45rem;
     --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
     /* Surfaces / text / borders */
+    --bg-1: #F4F3EF;
+    --bg-2: #F4F3EF;
+    --bg-3: #F4F3EF;
+    --surface: #FFFFFF;
+    --surface-soft: #F3F2EE;        /* icon tiles, inset chips */
+    --text-main: #141414;
+    --text-muted: #6B6B6B;
+    --text-faint: #9A9A96;
+    --text: var(--text-main);
+    --muted: var(--text-muted);
+    --border: #E6E4DE;
+    --border-strong: #D6D3CB;
+    --shadow: 0 1px 2px rgba(20,20,20,0.03);
+    --shadow-pop: 0 12px 32px -16px rgba(20,20,20,0.25);
+    --backdrop: rgba(20,20,20,0.35);
+    --radius-lg: 16px;
+    --radius-md: 13px;
+    --radius-sm: 10px;
+
+    --glass-bg: var(--surface);
+    --glass-border: var(--border);
+    --glass-shadow: var(--shadow);
+    --soft-bg: var(--surface-soft);
+    --soft-border: var(--border);
+    --hover-border: var(--border-strong);
+    --hover-shadow: 0 1px 2px rgba(20,20,20,0.04), 0 6px 18px -12px rgba(20,20,20,0.18);
+    --glow-1: transparent;
+    --glow-2: transparent;
+    --divider: #ECEAE4;
+    --row-hover: #FAF9F6;
+    --focus-ring: rgba(242,169,59,0.38);
+
+    /* Navbar (canvas-coloured bar, the links sit in a white pill) */
+    --nav-bg: rgba(244,243,239,0.92);
+    --nav-border: transparent;
+    --nav-link-hover-bg: var(--surface-soft);
+    --nav-active: var(--ink);
+}
+
+/* DARK — the former default palette, kept coherent: the black pill becomes an off-white pill. */
+html[data-theme="dark"] {
+    --brand-500: #FBBF24;
+    --brand-600: #F59E0B;
+    --brand-700: #D97706;
+    --brand-800: #B45309;
+    --brand-soft: rgba(245,158,11,0.16);
+    --brand-ink: #1a1200;
+
+    --ink: #F4F3EF;
+    --ink-hover: #FFFFFF;
+    --on-ink: #141414;
+
+    --success: #34D399;
+    --success-soft: rgba(16,185,129,0.16);
+    --warning: #fbbf6a;
+    --warning-soft: rgba(251,146,60,0.16);
+    --error: #f87171;
+    --error-soft: rgba(220,38,38,0.18);
+    --on-error: #1a0505;
+    --info: #7dd3fc;
+    --info-soft: rgba(14,165,233,0.14);
+
+    --ui-badge-ok-text:     var(--success);
+    --ui-badge-attn-text:   var(--warning);
+    --ui-badge-danger-text: var(--error);
+    --ui-badge-brand-text:  var(--brand-ink);
+    --ui-badge-info-text:   var(--info);
+
     --bg-1: #0b0e14;
     --bg-2: #080a10;
     --bg-3: #05060a;
     --surface: #121722;
-    --surface-soft: #0e131c;
+    --surface-soft: #1a2130;
     --text-main: rgba(255,255,255,0.92);
-    --text-muted: rgba(255,255,255,0.56);
+    --text-muted: rgba(255,255,255,0.58);
+    --text-faint: rgba(255,255,255,0.4);
     --text: var(--text-main);
     --muted: var(--text-muted);
-    --border: rgba(255,255,255,0.08);
-    --border-strong: rgba(255,255,255,0.14);
-    --shadow: 0 1px 2px rgba(0,0,0,0.24), 0 4px 12px rgba(0,0,0,0.32);
-    --radius-lg: 16px;
-    --radius-md: 12px;
+    --border: rgba(255,255,255,0.09);
+    --border-strong: rgba(255,255,255,0.16);
+    --shadow: 0 1px 2px rgba(0,0,0,0.24);
+    --shadow-pop: 0 20px 44px -26px rgba(0,0,0,0.7);
+    --backdrop: rgba(5,6,10,0.62);
 
     --glass-bg: var(--surface);
-    --glass-border: rgba(255,255,255,0.06);
+    --glass-border: var(--border);
     --glass-shadow: var(--shadow);
     --soft-bg: var(--surface-soft);
-    --soft-border: rgba(255,255,255,0.04);
-    --hover-border: rgba(245,158,11,0.22);
-    --hover-shadow: 0 1px 2px rgba(245,158,11,0.10), 0 4px 14px rgba(0,0,0,0.36);
-    --glow-1: rgba(245,158,11,0.13);
-    --glow-2: rgba(251,191,36,0.06);
+    --soft-border: rgba(255,255,255,0.05);
+    --hover-border: rgba(255,255,255,0.22);
+    --hover-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 14px rgba(0,0,0,0.36);
+    --glow-1: rgba(245,158,11,0.10);
+    --glow-2: rgba(251,191,36,0.05);
     --divider: var(--border);
-    --row-hover: rgba(245,158,11,0.08);
+    --row-hover: rgba(255,255,255,0.04);
+    --focus-ring: rgba(245,158,11,0.4);
 
-    /* Navbar */
-    --nav-bg: rgba(8,10,16,0.78);
+    --nav-bg: rgba(8,10,16,0.82);
     --nav-border: rgba(255,255,255,0.07);
-    --nav-link-hover-bg: rgba(245,158,11,0.10);
-    --nav-active: var(--brand-500);
-}
-
-/* LIGHT — flat white canvas, neutral hairlines, darker amber for 4.5:1 on white. */
-html[data-theme="light"] {
-    --bg-1: #ffffff;
-    --bg-2: #ffffff;
-    --bg-3: #ffffff;
-
-    --brand-500: #B45309;   /* 5.0:1 on white */
-    --brand-600: #B45309;
-    --brand-700: #92400E;
-    --brand-800: #78350F;
-    --brand-soft: rgba(180,83,9,0.10);
-    --brand-ink: #ffffff;
-
-    --success: #047857;
-    --success-soft: rgba(4,120,87,0.10);
-    --warning: #c2410c;
-    --warning-soft: rgba(194,65,12,0.10);
-    --error: #b91c1c;
-    --error-soft: rgba(185,28,28,0.09);
-    --info: #0369a1;
-    --info-soft: rgba(3,105,161,0.10);
-
-    --ui-badge-ok-text:     #047857;
-    --ui-badge-attn-text:   #9a3412;
-    --ui-badge-danger-text: #991b1b;
-    --ui-badge-brand-text:  #92400E;
-    --ui-badge-info-text:   #075985;
-
-    --text-main: #0b1220;
-    --text-muted: #46566b;
-    --text: var(--text-main);
-    --muted: var(--text-muted);
-    --border: #e5e7eb;
-    --border-strong: #d1d5db;
-    --shadow: 0 1px 2px rgba(11,18,32,0.04);
-
-    --surface: #ffffff;
-    --surface-soft: #f4f5f7;
-    --glass-bg: #ffffff;
-    --glass-border: #e5e7eb;
-    --glass-shadow: 0 1px 2px rgba(11,18,32,0.04);
-    --soft-bg: #f4f5f7;
-    --soft-border: #e5e7eb;
-    --hover-border: #d1d5db;
-    --hover-shadow: 0 1px 2px rgba(11,18,32,0.06), 0 2px 10px rgba(11,18,32,0.05);
-    --glow-1: transparent;
-    --glow-2: transparent;
-    --divider: var(--border);
-    --row-hover: rgba(180,83,9,0.05);
-
-    --nav-bg: rgba(255,255,255,0.88);
-    --nav-border: #e5e7eb;
-    --nav-link-hover-bg: rgba(180,83,9,0.07);
-    --nav-active: #B45309;
+    --nav-link-hover-bg: rgba(255,255,255,0.06);
+    --nav-active: var(--ink);
 }

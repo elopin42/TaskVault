@@ -6,6 +6,7 @@
     /fonds/      payments (public guarantee-fund page)
     /tableau-de-bord/  /profil/<addr>/   dashboard (signed-in home, public wallet profile)
     /taches/<pk>/noter-entreprise/  /profil/github/…   reputation (company ratings, GitHub proof)
+    /profil/<addr>/suivre/ … /retirer-recommandation/   network (follow / recommend JSON endpoints)
     /django-admin/  Django admin (staff only, debugging aid)
 """
 
@@ -20,6 +21,7 @@ urlpatterns = [
     path("", include("projects.urls")),
     path("", include("dashboard.urls")),
     path("", include("reputation.urls")),
+    path("", include("network.urls")),
 ]
 
 handler400 = "core.views.error_400"

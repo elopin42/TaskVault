@@ -43,7 +43,7 @@ class SeedDemoTests(CleanDemoEnvMixin, TestCase):
         self.assertIn("Demo data ready.", text)
         self.assertIn("freelancer A", text)
         self.assertEqual(Project.objects.count(), 3)
-        self.assertEqual(WalletUser.objects.count(), 4)
+        self.assertEqual(WalletUser.objects.count(), 5)
         pitch = Project.objects.get(title__startswith="Booking")
         t1, t2, t3 = list(pitch.tasks.order_by("position"))
         self.assertEqual((t1.status, t2.status, t3.status), ("paid", "open", "open"))
@@ -119,7 +119,7 @@ class SeedDemoTests(CleanDemoEnvMixin, TestCase):
     def test_seed_demo_is_repeatable_with_flush(self):
         self.seed()
         text = self.seed()
-        self.assertIn("flushed projects=3 tasks=8 applications=6 ratings=1 deliveries=4 revisions=1 disputes=1 escrows=3", text)
+        self.assertIn("flushed projects=3 tasks=8 applications=7 ratings=1 deliveries=4 revisions=1 disputes=1 escrows=3", text)
         self.assertEqual(Project.objects.count(), 3)
         self.assertEqual(Task.objects.count(), 8)
         self.assertEqual(Delivery.objects.count(), 4)

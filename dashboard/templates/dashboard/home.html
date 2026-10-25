@@ -59,6 +59,35 @@
         <p class="ui-meta">No activity yet.</p>
       {% endif %}
     </section>
+
+    <section class="ui-panel" id="network-feed" aria-labelledby="network-feed-title">
+      <div class="ui-panel-head">
+        <div><h2 class="ui-panel-title" id="network-feed-title"><i class="fa-solid fa-user-group" style="color: var(--icon-accent)" aria-hidden="true"></i> In your network</h2></div>
+      </div>
+      {% if network_feed %}
+        <ul class="ui-network-feed">
+          {% for it in network_feed %}
+            <li class="ui-network-feed-item{% if it.kind == 'recommendation' %} is-recommendation{% endif %}" data-feed-kind="{{ it.kind }}">
+              <span class="ui-network-feed-icon" aria-hidden="true"><i class="fa-solid {% if it.kind == 'recommendation' %}fa-user-group{% elif it.kind == 'follow' %}fa-user-plus{% else %}fa-diagram-project{% endif %}"></i></span>
+              <div class="ui-network-feed-body">
+                {% include "components/wallet.html" with address=it.actor.stellar_address name=it.actor.display_name %}
+                {% if it.kind == 'recommendation' %}
+                  recommends {% include "components/wallet.html" with address=it.target.stellar_address name=it.target.display_name %}
+                  {% if it.message %}<p class="ui-network-quote">{{ it.message }}</p>{% endif %}
+                {% elif it.kind == 'follow' %}
+                  started following {% include "components/wallet.html" with address=it.target.stellar_address name=it.target.display_name %}
+                {% else %}
+                  posted <a href="{{ it.href }}" class="ui-link">{{ it.project.title }}</a>
+                {% endif %}
+                <div class="ui-network-feed-time"><span data-time-ago="{{ it.when|date:'c' }}">{{ it.when|date:"M j H:i" }}</span></div>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        {% include "components/empty_state.html" with icon="fa-user-group" title="Your network is quiet" desc="Follow wallets from their profile to see them here." %}
+      {% endif %}
+    </section>
   </div>
 
   <aside class="ui-stack">

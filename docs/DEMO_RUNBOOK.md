@@ -75,11 +75,12 @@ LOWBID_PLATFORM_FEE=1
 ### 1.7 Run + demo data
 
 - [ ] Terminal 1: `make dev` → `Starting development server at http://0.0.0.0:8000/`. The navbar shows the `testnet` badge.
-- [ ] Terminal 2: `make seed` (= `python manage.py seed_demo --flush`). It prints the payment mode, the asset, the 4 wallets (company, A, B, arbiter), the project ids (ids keep counting after `--flush`) and whether `/litiges/` opens for the arbiter wallet.
+- [ ] Terminal 2: `make seed` (= `python manage.py seed_demo --flush`). It prints the payment mode, the asset, the 5 wallets (company, A, B, C, arbiter), the trust-network graph, the project ids (ids keep counting after `--flush`) and whether `/litiges/` opens for the arbiter wallet.
 
 What `seed_demo` creates (display names "Studio Nova (company)", "Yanis (freelancer A)", "Nora (freelancer B)", "TaskVault arbiter"):
 
-- Studio Nova's project "Booking platform for a yoga studio" **at the pitch state**, "Funded" (as a live direct payment leaves it): T1 "Landing page" (300 USDC) paid to A (rating 5, a direct-mode escrow row with a demo hash so the explorer links render — nothing is on chain), T2 "Freighter integration" (500 USDC) open with A (90.0, "Validated" + "Recommended") and B (20.0), T3 "Dashboard" (400 USDC) open.
+- Studio Nova's project "Booking platform for a yoga studio" **at the pitch state**, "Funded" (as a live direct payment leaves it): T1 "Landing page" (300 USDC) paid to A (rating 5, a direct-mode escrow row with a demo hash so the explorer links render — nothing is on chain), T2 "Freighter integration" (500 USDC) open with A (90.0, "Validated" + "Recommended") and B (20.0), T3 "Dashboard" (400 USDC) open with C (Chloé) applying.
+- A small trust network: the company follows A, A recommends C, A follows B. Signed in as the company: "Yanis (freelancer A) recommends" on C's row (T3), "Followed by Yanis (freelancer A)" on B's row (T2).
 - A draft project "Brand and showcase website redesign for a bakery" with three open tasks (250 / 600 / 120 USDC) and no candidate.
 - "Mobile app for a food truck" (status "Draft": the disputed escrow holds its funds, but the Menu page's direct row holds nothing until it is paid), the anti-scam showcase:
   - "Menu page" (350 USDC) chosen B: delivered with a fingerprint on `*.vercel.app` (trusted host, no warning), sent back with "Please fix the mobile layout on the menu page.", delivered again with a new fingerprint → "Delivered", "Revisions requested 1/2", review window running, the history shows 2 deliveries + 1 change request. Direct-mode row: the company can still validate and pay it live (or request one more change).

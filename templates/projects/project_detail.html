@@ -16,6 +16,7 @@ payments.services.project_funding().
     <h1 class="ui-page-title flex flex-wrap items-center gap-2">{{ project.title|underline_last }} {% include "components/status_badge.html" with obj=project live=True %} {% deposit_badge project %}</h1>
     <p class="ui-page-sub flex flex-wrap items-center gap-x-3 gap-y-1">
       {% include "components/wallet.html" with address=project.company.stellar_address name=project.company.display_name label="Company" you=viewer_is_company %}
+      {% include "components/network_badges.html" with signal=project.company_signal %}
       <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> created <span data-time-ago="{{ project.created_at|date:'c' }}">{{ project.created_at|date:"M j, Y H:i" }}</span></span>
     </p>
     {% include "components/tags.html" with tags=tag_list linked=True class="mt-2" %}

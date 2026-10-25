@@ -1,9 +1,9 @@
-"""Seed the demo dataset: 4 wallets, 3 projects.
+"""Seed the demo dataset: 5 wallets, 3 projects, a small trust network.
 
   1. "Booking platform" at the pitch state — T1 "Landing page" paid to freelance A
      (note 5, with its Escrow row: a direct payment and a demo tx hash so the explorer links render),
      T2 "Freighter integration" open with A + B applying (A is Validated + Recommended:
-     40 + 5·8 + 20·(1/2) = 90 vs B 0 + 0 + 20·(2/2) = 20), T3 "Dashboard" open, no candidate.
+     40 + 5·8 + 20·(1/2) = 90 vs B 0 + 0 + 20·(2/2) = 20), T3 "Dashboard" open with C applying.
   2. A draft project with open tasks and no application.
   3. "Mobile app for a food truck", the anti-scam showcase:
      - "Menu page" chosen freelance B, delivered with a fingerprint and a full-deliverable link, sent back
@@ -16,9 +16,14 @@
        delivery link is on an unknown domain, so the "Unknown domain" warning shows on the page.
      Nothing in this project is on chain: the hashes are deterministic demo values (explorer links
      render, stellar.expert has nothing behind them) and the disputed escrow cannot be resolved live.
+  4. The trust network (one hop, never touches a score): the company follows A, A recommends C
+     (with a message) and A follows B. Signed in as the company you therefore see
+     "Yanis (freelancer A) recommends" on C's candidate row on T3, "Followed by Yanis (freelancer A)"
+     on B's row on T2, and "Following" on A.
 
 Addresses come from LOWBID_DEMO_CLIENT / LOWBID_DEMO_FREELANCE1 / LOWBID_DEMO_FREELANCE2 /
-LOWBID_DEMO_ARBITER (so the Freighter accounts you own are the actors), else random — except the arbiter,
+LOWBID_DEMO_ARBITER / LOWBID_DEMO_FREELANCE3 (freelancer C, Chloé), so the Freighter accounts you own are
+the actors, else random — except the arbiter,
 which falls back to LOWBID_DISPUTE_RESOLVER (else LOWBID_PLATFORM_ADDRESS) before a random key: `/litiges/`
 opens only for the wallet equal to that setting. The dev DB is throwaway: `rm data/db.sqlite3` then
 `make dev` after a models change.
@@ -44,6 +49,8 @@ from stellar_sdk import Keypair
 
 from accounts.models import WalletUser
 from payments import deposits
+from network import services as network
+from network.models import Follow, Recommendation
 from payments import services as payment_services
 from payments import stellar
 from payments.models import Escrow, ProjectDeposit
@@ -73,7 +80,7 @@ def _demo_contract(label: str) -> str:
 
 class Command(BaseCommand):
     help = (
-        "Create the TaskVault demo data: 4 wallets (company, freelancers A and B, arbiter), the pitch project "
+        "Create the TaskVault demo data: 5 wallets (company, freelancers A, B and C, arbiter), the pitch project "
         "(one paid task with its escrow row, one open task with two candidates, one open task), a draft project, "
         "and a food-truck project with a delivered task after a change request and a disputed escrow task."
     )
@@ -81,7 +88,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--flush", action="store_true",
-            help="Delete every Project first (tasks, applications, ratings, deliveries, change requests, disputes, escrows).",
+            help="Delete every Project first (tasks, applications, ratings, deliveries, change requests, disputes, escrows), Follow and Recommendation.",
         )
 
     @transaction.atomic
@@ -96,9 +103,12 @@ class Command(BaseCommand):
             apps, _ = Application.objects.all().delete()
             tasks, _ = Task.objects.all().delete()
             projects, _ = Project.objects.all().delete()
+            follows, _ = Follow.objects.all().delete()
+            recommendations, _ = Recommendation.objects.all().delete()
             self.stdout.write(
                 f"flushed projects={projects} tasks={tasks} applications={apps} ratings={ratings} "
-                f"deliveries={deliveries} revisions={revisions} disputes={disputes} escrows={escrows} deposits={deposit_rows}"
+                f"deliveries={deliveries} revisions={revisions} disputes={disputes} escrows={escrows} deposits={deposit_rows} "
+                f"follows={follows} recommendations={recommendations}"
             )
 
         company = _wallet("LOWBID_DEMO_CLIENT", "Studio Nova (company)")
@@ -106,6 +116,7 @@ class Command(BaseCommand):
         b = _wallet("LOWBID_DEMO_FREELANCE2", "Nora (freelancer B)")
         resolver = payment_services.resolver_address()  # LOWBID_DISPUTE_RESOLVER, else LOWBID_PLATFORM_ADDRESS
         arbiter = _wallet("LOWBID_DEMO_ARBITER", "TaskVault arbiter", fallback=resolver)
+        c = _wallet("LOWBID_DEMO_FREELANCE3", "Chloé (freelancer C)")
         mode = stellar.payment_mode()
         with_deposits = deposits.deposits_active()
 
@@ -152,6 +163,13 @@ class Command(BaseCommand):
         payment_services.sync_project_status(t1.project)  # what confirm_direct_pay / confirm_release do live
         services.apply(t2, a, "I have already wired Freighter and Horizon into a Django back office.", ["stellar"])
         services.apply(t2, b, "Stellar/JS specialist: SEP-53, trustlines, Soroban.", ["stellar", "js"])
+        services.apply(t3, c, "Django dashboards with Chart.js and CSV exports are my daily job, 6 days.", ["django", "charts"])
+
+        # 4. The trust network (one hop): company → A, A recommends C, A → B. Scores are untouched.
+        network.follow(company, a)
+        recommendation = "Chloé shipped our analytics dashboard in a week, clean Django and sharp charts."
+        network.recommend(a, c, recommendation)
+        network.follow(a, b)
 
         # 2. A draft project with open tasks and no candidate.
         p2 = services.create_project(
@@ -187,7 +205,10 @@ class Command(BaseCommand):
         self.stdout.write(f"  freelancer A {a.stellar_address}")
         self.stdout.write(f"  freelancer B {b.stellar_address}")
         self.stdout.write(f"  arbiter      {arbiter.stellar_address}")
-        self.stdout.write(f"  projects: pitch=#{p1.pk} (T1 #{t1.pk} paid, T2 #{t2.pk} open A+B, T3 #{t3.pk} open)  draft=#{p2.pk}")
+        self.stdout.write(f"  freelancer C {c.stellar_address}")
+        self.stdout.write(f"  projects: pitch=#{p1.pk} (T1 #{t1.pk} paid, T2 #{t2.pk} open A+B, T3 #{t3.pk} open C)  draft=#{p2.pk}")
+        self.stdout.write("  network: company follows A, A recommends C, A follows B")
+        self.stdout.write("    as the company: T3 C \"Yanis (freelancer A) recommends\", T2 B \"Followed by Yanis (freelancer A)\"")
         self.stdout.write(f"  T1 payment: direct, demo hash {_demo_hash(f't1-{t1.pk}')[:12]}… → {stellar.explorer_tx_url(_demo_hash(f't1-{t1.pk}'))}")
         self.stdout.write(f"  T2 scores: {scores}")
         p3.refresh_from_db()

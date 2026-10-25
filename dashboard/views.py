@@ -10,6 +10,7 @@ from django.shortcuts import redirect, render
 from accounts.decorators import wallet_required
 from accounts.identity import get_wallet
 from accounts.models import WalletUser
+from network import services as network
 
 from . import services
 
@@ -32,6 +33,7 @@ def home(request: HttpRequest) -> HttpResponse:
             "company_stats": services.company_stats(wallet),
             "freelancer_stats": services.freelancer_stats(wallet),
             "activity": services.recent_activity(wallet),
+            "network_feed": network.network_feed(wallet),
         },
     )
 
@@ -55,5 +57,11 @@ def profile(request: HttpRequest, address: str) -> HttpResponse:
     return render(
         request,
         "dashboard/profile.html",
-        {"profile": wallet, "is_me": is_me, "stats": services.profile_stats(wallet), "max_name": MAX_DISPLAY_NAME},
+        {
+            "profile": wallet,
+            "is_me": is_me,
+            "stats": services.profile_stats(wallet),
+            "max_name": MAX_DISPLAY_NAME,
+            "net": network.profile_network(wallet, viewer),
+        },
     )

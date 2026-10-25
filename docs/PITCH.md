@@ -75,6 +75,8 @@ Yanis and Nora apply to the landing page: a short message and their skills. Nobo
 
 ## C. Judge Q&A
 
+**Personalised trust network (the angle).** Freelance platforms ask you to trust five-star reviews from strangers. Lowbid asks a better question: *do the people I trust vouch for this freelance?* Any wallet can follow and recommend another; when Studio Nova opens its candidates, Chloé's row says « Yanis recommends » because Studio Nova follows Yanis, who delivered T1 for them. The signal is **one hop only** — only the wallets you chose to follow count — so a ring of fake accounts recommending each other shows nothing to you. And it is a hint, never a verdict: it never overrides the deterministic score (A still 90 vs B 20), the « Validé » / « Recommandé » badges or the order of the list.
+
 **1. Why fixed prices instead of letting freelances compete on price?**
 Because a race to the lowest price produces rushed work and punishes the freelances who are good. The company knows what a task is worth; freelances compete on fit and track record. The score is public and explainable: 40 points if this company has already paid the freelance for at least one task, 8 points per star of average rating from this company, up to 20 points for the share of the task's skills they match. Maximum 100.
 

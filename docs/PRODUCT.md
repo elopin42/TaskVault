@@ -291,6 +291,45 @@ The site is dark only and responsive down to phone width; below 1024 px a signed
 
 Reputation additions: the profile header carries the badges "Reliable payer", "New account", "Verified GitHub" and "Rated by freelancers x/5"; a "Payer profile" panel (wallets that posted a project) lists the confirmed on-chain figures with their stellar.expert links; the owner gets a "Verified GitHub" panel (sign the proof in Freighter, paste the gist URL, unlink). On a settled task the freelance gets a "Rate the company" panel under the payment panel; the chosen candidate row shows "No history" for a wallet without a confirmed payout.
 
+## 6b. Trust network
+
+A personalised trust layer on top of the task board. It **informs** the company; it never decides anything.
+
+### Rules
+
+- Any signed-in wallet (company or freelance) can **follow** any other wallet, and **unfollow** it. Never yourself. One follow per (follower, followed) pair; following twice is a no-op.
+- Any signed-in wallet can **recommend** any other wallet, with an optional message of at most **280 characters** (trimmed). Never yourself. One recommendation per (author, subject) pair: recommending again **updates** the message (upsert). A recommendation can be **withdrawn**.
+- Follows and recommendations are **public**: a profile shows its followers / following / recommendations counts and the list of recommendations received (author, message, date).
+- Refusals: `self` (yourself), `invalid` (message over 280 characters), `not_found` (unknown address).
+
+### Signals (one hop)
+
+A viewer V looking at a target T sees a badge only through the wallets **V follows** — one hop, never more:
+
+| Signal | When | Label (exact) |
+|--------|------|---------------|
+| **recommends** (strong) | someone V follows recommends T | `Yanis recommends` · several: `Yanis and 2 others recommend` |
+| **followed_by** (weak) | someone V follows follows T | `Followed by Yanis` · several: `Followed by Yanis and 1 other` |
+| **following** | V follows T directly | `Following` |
+
+The strong badge wins over the weak one; `Following` is added next to either. An anonymous viewer, or V looking at their own wallet, sees no badge at all. A wallet is named by its display name, else its short address. A recommendation two hops away (V follows X, X follows Y, Y recommends T) shows **nothing**: strangers cannot push a freelance into your list by recommending each other.
+
+### What it does NOT touch
+
+- The selection score (`projects/scoring.py`), the « Validated » / « Recommended » badges and the **order** of the candidate list: none of them read the network.
+- The network badge is never the bare word "Recommended": it always carries a name (`Yanis recommends`).
+
+### Where the badges show
+
+- Candidate rows (task page `#candidates-panel` and the project page candidate blocks): the badge after the Validated / Recommended badges, and a light highlight on the row (`.cand-row.is-network`, `.is-network-strong` when recommended). The 5 s poll re-renders when the signal changes.
+- The kanban cards (`/taches/`) and the project list cards: the badge next to the **company** chip.
+- The public profile (`/profil/<address>/`): counters, Follow / Recommend / Withdraw buttons, "Followed by N people you follow", the received recommendations.
+- The dashboard: an "In your network" feed of what the wallets you follow did recently (recommendations, follows, projects posted).
+
+### The seed graph
+
+`make seed` adds freelancer **C (Chloé)**, who applies to T3 « Dashboard », and three edges: the company follows A (Yanis), A recommends C ("Chloé shipped our analytics dashboard in a week, clean Django and sharp charts."), A follows B (Nora). Signed in as the company: C's row on T3 shows **"Yanis (freelancer A) recommends"**, B's row on T2 shows **"Followed by Yanis (freelancer A)"**, A shows **"Following"** — and T2 still ranks A 90.0 above B 20.0.
+
 ## 7. Out of scope for the hackathon
 
 - A multisig arbiter driven by the UI: `LOWBID_DISPUTE_RESOLVER` may be a multisig account, but the site collects one Freighter signature — sequential signatures on one XDR need a validity window Trustless Work does not document (docs/STELLAR_NOTES.md §1.3). Disputes themselves are in (R37–R42).

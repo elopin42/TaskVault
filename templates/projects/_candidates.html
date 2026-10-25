@@ -7,7 +7,7 @@ viewer_is_company, task_open, can_choose. ({# #} comments are single-line in Dja
 {% if rows %}
 <div class="ui-list" data-candidates data-count="{{ rows|length }}" data-task="{{ task.pk }}">
   {% for r in rows %}
-  <div class="ui-list-row cand-row{% if r.is_chosen %} is-chosen{% elif r.is_rejected %} is-rejected{% endif %}" data-app-id="{{ r.app.pk }}" data-freelancer="{{ r.app.freelancer.stellar_address }}">
+  <div class="ui-list-row cand-row{% if r.is_chosen %} is-chosen{% elif r.is_rejected %} is-rejected{% endif %}{% if r.network_class %} {{ r.network_class }}{% endif %}" data-app-id="{{ r.app.pk }}" data-freelancer="{{ r.app.freelancer.stellar_address }}">
     <span class="ui-rank" data-rank>{{ r.rank }}</span>
     <div class="flex-1 min-w-0">
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -17,6 +17,7 @@ viewer_is_company, task_open, can_choose. ({# #} comments are single-line in Dja
         {% if r.is_chosen %}<span class="ui-badge ui-badge-brand"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Chosen</span> {% history_signal r.app.freelancer %}
         {% elif r.is_rejected %}<span class="ui-badge ui-badge-neutral">Not selected</span>
         {% elif r.recommended %}<span class="ui-badge ui-badge-brand" data-recommended title="Best score among the candidates"><i class="fa-solid fa-star" aria-hidden="true"></i> Recommended</span>{% endif %}
+        {% include "components/network_badges.html" with signal=r.network %}
       </div>
       {% if r.app.message %}<p class="mt-1 break-words text-sm">{{ r.app.message }}</p>{% endif %}
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">

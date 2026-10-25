@@ -1,0 +1,9 @@
+{% comment %}
+Trust-network badges for one target wallet, seen by the signed-in viewer (one hop: only through the wallets the viewer follows).
+  {% include "components/network_badges.html" with signal=row.network %}
+`signal` is a network.services.NetworkSignal (or None). Renders NOTHING when it is falsy (anonymous viewer, own wallet, no link).
+Shows the strong "<name> recommends" badge when someone the viewer follows recommends the target, else the weak
+"Followed by <name>" badge; adds the "Following" badge whenever the viewer follows the target directly.
+The title of each badge lists every name. Never the bare word "Recommended" (that is the score badge).
+Markup: span.ui-netbadges[data-network="strong|weak|following"] > span.ui-badge.ui-netbadge.is-strong|is-weak|is-following[data-network-badge="recommends|followed-by|following"]
+{% endcomment %}{% if signal %}<span class="ui-netbadges" data-network="{{ signal.level }}">{% if signal.recommend_label %}<span class="ui-badge ui-netbadge is-strong" data-network-badge="recommends" title="Recommended by {% for u in signal.recommenders %}{{ u }}{% if not forloop.last %}, {% endif %}{% empty %}people you follow{% endfor %}"><i class="fa-solid fa-user-group" aria-hidden="true"></i> {{ signal.recommend_label }}</span>{% elif signal.followed_by_label %}<span class="ui-badge ui-netbadge is-weak" data-network-badge="followed-by" title="Followed by {% for u in signal.followers %}{{ u }}{% if not forloop.last %}, {% endif %}{% empty %}people you follow{% endfor %}"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> {{ signal.followed_by_label }}</span>{% endif %}{% if signal.following %}<span class="ui-badge ui-netbadge is-following" data-network-badge="following" title="You follow this wallet"><i class="fa-solid fa-check" aria-hidden="true"></i> Following</span>{% endif %}</span>{% endif %}

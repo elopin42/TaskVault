@@ -223,6 +223,60 @@ Five visually hidden radios, the labels are 44px stars (`--border-strong`); hove
 - `.ui-receipt-body`: alerts `[data-platform-fallback]` (company, no platform address) and `[data-last-error]` (vendor / Horizon message, or the pending-hash info), then `[data-pay-action]` with one block depending on `next_action()`: the « paid » alert, the rating form `#validate-panel` (`#validate-form[data-validate][data-validate-url]`, `.ui-stars`, `#validate-comment`, `[data-validate-submit]` « Validate and release … » / « Validate and pay … »), the delivery form `#deliver-panel` (`#deliver-form[data-pay-form]`, `#deliver-link`, `[data-pay-step][data-deliver]`, with a `data-confirm-*` prompt in direct mode), a single step button `[data-pay-step][data-prepare-url]`, or a waiting `ui-alert-info` for the other party;
 - `[data-pay-trustline]` « Add the USDC trustline » (ghost, small) for the two parties (hidden for native XLM).
 
+### Trust network
+
+One-hop badges (see `docs/PRODUCT.md` § Trust network). Colours come from `var(--*)` only (section "Trust network" of `lowbid-components.css`).
+
+| Class | Role |
+|-------|------|
+| `.ui-netbadges` | inline wrapper, `data-network="strong\|weak\|following"` |
+| `.ui-netbadge.is-strong` | "Yanis recommends" (someone you follow recommends this wallet) |
+| `.ui-netbadge.is-weak` | "Followed by Yanis" (someone you follow follows this wallet) |
+| `.ui-netbadge.is-following` | "Following" (you follow this wallet) |
+| `.cand-row.is-network` / `.cand-row.is-network-strong` | light highlight on a candidate row (weak or following / strong). Never changes the order |
+| `.ui-network-panel` › `.ui-network-counts` › `.ui-network-count` (`-value`, `-label`), `.ui-network-known`, `.ui-network-actions`, `.ui-network-form` (`-foot`), `.ui-network-counter` (`.is-near`, `.is-over`), `.ui-network-quote` | profile block `#network-panel` |
+| `.ui-network-feed` › `.ui-network-feed-item` (`.is-recommendation`, …) › `.ui-network-feed-icon`, `.ui-network-feed-body`, `.ui-network-feed-time` | dashboard block `#network-feed` "In your network" |
+
+**Badges** → `components/network_badges.html` (the only way to render them):
+
+```html
+<span class="ui-netbadges" data-network="strong">
+  <span class="ui-badge ui-netbadge is-strong" data-network-badge="recommends" title="Recommended by Yanis"><i class="fa-solid fa-user-group" aria-hidden="true"></i> Yanis recommends</span>
+  <span class="ui-badge ui-netbadge is-following" data-network-badge="following" title="You follow this wallet"><i class="fa-solid fa-check" aria-hidden="true"></i> Following</span>
+</span>
+<!-- weak: <span class="ui-badge ui-netbadge is-weak" data-network-badge="followed-by" title="Followed by …"><i class="fa-solid fa-user-plus"></i> Followed by Yanis</span> -->
+```
+Strong when recommenders exist, else weak when followers exist; "Following" is added whenever the viewer follows the wallet. Nothing at all for an anonymous viewer or your own wallet.
+
+**Profile panel** (`dashboard/profile.html`, driven by `lowbid-network.js`, whose header is the reference; `net` = `network.services.profile_network(...)`):
+
+```html
+<section id="network-panel" class="ui-panel ui-network-panel">
+  <ul class="ui-network-counts">
+    <li class="ui-network-count"><span class="ui-network-count-value" data-followers-count>3</span><span class="ui-network-count-label">Followers</span></li>
+    <li class="ui-network-count"><span class="ui-network-count-value" data-following-count>1</span><span class="ui-network-count-label">Following</span></li>
+    <li class="ui-network-count"><span class="ui-network-count-value" data-recommendations-count>1</span><span class="ui-network-count-label">Recommendations</span></li>
+  </ul>
+  {% include "components/network_badges.html" with signal=net.signal %}
+  <p class="ui-network-known" data-known-followers>Followed by 1 people you follow: <strong>Yanis</strong></p>
+  <div class="ui-network-actions">                       <!-- only when net.can_act -->
+    <button type="button" class="ui-btn ui-btn-primary" data-follow data-follow-url="…/suivre/" data-unfollow-url="…/ne-plus-suivre/" data-following="0" data-name="Chloé" aria-pressed="false"><i class="fa-solid fa-user-plus"></i> Follow</button>
+    <button type="button" class="ui-btn" data-recommend data-recommended="0" aria-controls="recommend-form" aria-expanded="false"><i class="fa-solid fa-user-group"></i> Recommend</button>
+    <button type="button" class="ui-btn ui-btn-ghost" data-unrecommend data-unrecommend-url="…/retirer-recommandation/" data-name="Chloé" hidden>Withdraw</button>
+  </div>
+  <form id="recommend-form" class="ui-network-form" hidden>
+    <label class="ui-label" for="recommend-message">Your recommendation (optional)</label>
+    <textarea id="recommend-message" class="ui-textarea" maxlength="280" placeholder="What did they do well?"></textarea>
+    <div class="ui-network-form-foot">
+      <span class="ui-network-counter" data-recommend-counter>0 / 280</span>
+      <button type="submit" class="ui-btn ui-btn-primary" data-recommend-submit data-recommend-url="…/recommander/">Publish</button>
+    </div>
+  </form>
+  <ol id="recommendations" class="ui-timeline">…one .ui-timeline-item per recommendation (author wallet chip, .ui-network-quote, [data-time-ago])…</ol>
+</section>
+```
+The Follow button swaps to `.ui-btn.is-following` "Following" in place; recommend / withdraw update the counters, toast, then reload the page for the list.
+
 ### Timeline, "what's next"
 
 ```html
@@ -281,6 +335,7 @@ The identicon is a **mirrored 5×5 pixel grid** (one hue from the address + Sign
 | `components/next_card.html` | `tone="act\|wait\|done"` (default `wait`), `kicker`, `headline`, `body`, `href`, `cta`, `icon` | "What's next" card (primary CTA only for `act`) |
 | `components/section_head.html` | `title`, `sub`, `icon`, `link_href`, `link_label` (default « View all ») | Section title + link |
 | `components/ext_link.html` | `info` (required: `projects.services.link_info(url)` computed by the view / inclusion tag / `delivery_history` row — `{url, href, host, display, trusted}`), `label` (text before the link, e.g. "Full deliverable"), `attr` (a data attribute put on the `<a>`, e.g. `"data-delivery-link"`, `"data-source-link"`), `size="sm"` (compact: timelines, receipt rows) | Every user-supplied link (delivery link, full deliverable): `.ui-ext-link` › `a.ui-ext-anchor` (`target="_blank"`, exactly `rel="noopener noreferrer nofollow ugc"`) with the domain in `.ui-link-host` (bold, large) and the full URL in `.ui-link-url` (mono, muted, one line, ellipsis), then `.ui-link-warn[data-untrusted-host]` "Unknown domain — open with care" when `info.trusted` is false (`LOWBID_TRUSTED_LINK_HOSTS`, docs/PRODUCT.md R43–R44). No `href` (non-http(s) value) → plain text. Never write a raw `<a href="{{ task.delivery_link }}">` |
+| `components/network_badges.html` | `signal` (a `network.services.NetworkSignal` or None: `row.network`, `project.company_signal`, `net.signal`) | `.ui-netbadges` with the strong (`Yanis recommends`) or weak (`Followed by Yanis`) badge, plus `Following`; nothing when the signal is falsy |
 | `partials/page_header.html` | `title`, `subtitle`, `actions` (safe HTML) | Page header (the title goes through `\|underline_last`) |
 | `partials/navbar.html` / `partials/toasts.html` / `partials/modal.html` | — | Included once by `base.html`; `partials/tabbar.html` only when `wallet_address` |
 
@@ -337,6 +392,10 @@ Per-request values: `window.LOWBID` (`network`, `networkPassphrase`, `horizonUrl
 ### `lowbid-pay.js`
 
 Markup: `<button data-pay-step="fund" data-prepare-url="/pay/prepare/<task>/fund/" [data-send-url] [data-pay-body='{…}'] [data-loading-label] [data-no-reload] [data-confirm-title data-confirm-message data-confirm-label]>`, `<form data-pay-form>` (its fields join the body, e.g. `delivery_link`), `<p data-pay-error hidden>` (the nearest one gets the server error), `<button data-pay-trustline [data-prepare-url]>`, `<button data-fund data-pending-url="/pay/project/<pk>/pending.json">`, `<span data-usdc-balance="G…" data-watch>` (polled from Horizon: 5 s for 2 min, then 15 s up to 15 min; « — » after 3 consecutive failures). Server contract: `prepare` → `{ok, xdr, send_url, extra?}` or `{ok, redirect, message, next}`; `send` `{signed_xdr, …extra}` → `{ok, hash, contract_id?, redirect, message, next}`; refusals are `{ok:false, error, message}`. API: `Lowbid.pay.signAndSend({xdr, sendUrl, extra})`, `run({step, prepareUrl, body, sendUrl?})`, `runChain(next, {stopAfter, onStep, body})` → `{completed, last, next}` (follows `next` while it is the viewer's own plain signature: deploy → fund, approve → release, direct_pay; a failure carries `.completed` / `.pending`), `runStep(button)`, `fundProject(button)`, `ensureTrustline(button?)`, `watchBalance(el, {interval, maxMs, address, onIncrease})` → `stop()`, `fetchUsdcBalance(address)` (configured asset), `explorerTxUrl/explorerAccountUrl/explorerContractUrl`, `toastTx(message, hash, opts)`.
+
+### `lowbid-network.js`
+
+Profile `#network-panel` only: `[data-follow]` toggles follow / unfollow, `[data-recommend]` opens `#recommend-form` (`#recommend-message` + `[data-recommend-counter]`), `[data-recommend-submit]` POSTs `{message}`, `[data-unrecommend]` withdraws behind `Lowbid.confirm`. Delegated on `document`; refusals toast `res.message`. Its header documents the full DOM contract.
 
 ### `lowbid-projects.js`
 

@@ -18,6 +18,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from accounts.decorators import wallet_required
 from accounts.identity import get_wallet
+from network import services as network
 from payments import services as payments
 from payments import stellar
 from payments.views import next_json
@@ -100,15 +101,28 @@ def _tasks_with_counts(project: Project):
     )
 
 
+# Light highlight of a candidate row reached through the viewer's network (CSS in lowbid-components.css).
+NETWORK_ROW_CLASS = {"strong": "is-network-strong", "weak": "is-network", "following": "is-network"}
+
+
+def _company_signals(wallet, items, get_company_id) -> None:
+    """Attach `company_signal` (NetworkSignal or None) to each item, with ONE signals() call for the page."""
+    sigs = network.signals(wallet, {get_company_id(i) for i in items})
+    for i in items:
+        i.company_signal = sigs.get(get_company_id(i))
+
+
 def _candidate_rows(task: Task, wallet) -> list[dict]:
     """Ranked rows (score desc, oldest first) with the badges precomputed so templates stay dumb."""
     apps = list(task.applications.select_related("freelancer").order_by("-score", "created_at", "pk"))
     rec_pk = recommended_pk(apps) if task.is_open else None
     company_id = task.project.company_id
     wanted = set(task.tags or [])
+    net = network.signals(wallet, [app.freelancer_id for app in apps])  # one-hop badges only: never the order
     rows = []
     for rank, app in enumerate(apps, start=1):
         history = company_history(company_id, app.freelancer_id)
+        sig = net.get(app.freelancer_id)
         parts = score_parts(task.tags, app.tags, history)
         rows.append(
             {
@@ -129,13 +143,15 @@ def _candidate_rows(task: Task, wallet) -> list[dict]:
                 "is_chosen": app.status == Application.Status.CHOSEN,
                 "is_rejected": app.status == Application.Status.REJECTED,
                 "choose_url": reverse("projects:task_choose", kwargs={"pk": task.pk, "app_pk": app.pk}),
+                "network": sig,
+                "network_class": NETWORK_ROW_CLASS.get(sig.level if sig else "", ""),
             }
         )
     return rows
 
 
 def _fingerprint(task: Task, rows: list[dict]) -> str:
-    ids = ",".join(f"{r['app'].pk}:{r['fmt']['score']}" for r in rows)
+    ids = ",".join(f"{r['app'].pk}:{r['fmt']['score']}:{r['network'].level if r['network'] else ''}" for r in rows)
     return f"{task.status}:{len(rows)}:{task.assigned_to_id or 0}:{ids}"
 
 
@@ -167,6 +183,7 @@ def _candidate_json(row: dict) -> dict:
         "recommended": row["recommended"],
         "status": app.status,
         "created_at": app.created_at.isoformat(),
+        "network": row["network"].as_json() if row["network"] else None,
     }
 
 
@@ -209,6 +226,7 @@ def project_list(request: HttpRequest) -> HttpResponse:
         projects = [p for p in projects if tag in p.tag_list]
 
     page = Paginator(projects, LIST_PAGE_SIZE).get_page(request.GET.get("page"))
+    _company_signals(get_wallet(request), list(page.object_list), lambda p: p.company_id)
     counter = Counter(
         t for tags in Task.objects.filter(status=Task.Status.OPEN).values_list("tags", flat=True) for t in (tags or [])
     )
@@ -254,6 +272,7 @@ def project_detail(request: HttpRequest, pk: int) -> HttpResponse:
     project = get_object_or_404(Project.objects.with_totals().select_related("company"), pk=pk)
     wallet = get_wallet(request)
     is_company = project.is_company(wallet)
+    _company_signals(wallet, [project], lambda p: p.company_id)
     tasks = list(_tasks_with_counts(project))
     my_apps = {}
     if wallet is not None and not is_company:
@@ -300,6 +319,7 @@ def task_detail(request: HttpRequest, pk: int) -> HttpResponse:
     task = get_object_or_404(Task.objects.select_related("project__company", "assigned_to"), pk=pk)
     wallet = get_wallet(request)
     ctx = _candidates_context(task, wallet)
+    _company_signals(wallet, [task.project], lambda p: p.company_id)
     is_company = ctx["viewer_is_company"]
     my_app = None if is_company else task.application_for(wallet)
     try:
@@ -365,6 +385,7 @@ def board(request: HttpRequest) -> HttpResponse:
         .annotate(app_count=Count("applications"))
         .order_by("-updated_at")
     )
+    _company_signals(wallet, open_tasks + mine, lambda t: t.project.company_id)
     by_status = {key: [] for key, _, _ in BOARD_COLUMNS}
     by_status["open"] = open_tasks
     for t in mine:

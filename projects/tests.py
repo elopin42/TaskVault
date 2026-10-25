@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 from decimal import Decimal
 
@@ -1337,3 +1338,108 @@ class RequestChangesEndpointTests(BaseProjectTest):
         self.assertIn("data-revisions-exhausted", html)
         self.assertNotIn('id="request-changes-form"', html)
         self.assertIn("1/1", html)
+# --- trust-network badges on the project pages ------------------------------------------
+
+class NetworkBadgesPageTests(BaseProjectTest):
+    """One-hop network badges: shown to the right viewer, never to anonymous, never touching order or score."""
+
+    def setUp(self):
+        super().setUp()
+        from network import services as network
+
+        self.network = network
+        self.x = make_wallet("Ines")  # someone the company follows
+        services.apply(self.t2, self.a, "A", ["stellar", "js"])  # full skills match: best score
+        services.apply(self.t2, self.b, "B", ["stellar"])
+
+    def candidates(self, client):
+        return client.get(reverse("projects:task_candidates_json", kwargs={"pk": self.t2.pk})).json()
+
+    def scores_in_order(self, client) -> list[tuple[str, str]]:
+        return [(c["freelancer"], c["score"]) for c in self.candidates(client)["candidates"]]
+
+    def test_strong_badge_on_company_task_page_and_json(self):
+        login(self.client, self.company)
+        before = self.candidates(self.client)["fingerprint"]
+        self.network.follow(self.company, self.x)
+        self.network.recommend(self.x, self.a, "Great Soroban work")
+
+        html = self.client.get(reverse("projects:task_detail", kwargs={"pk": self.t2.pk})).content.decode()
+        self.assertIn('data-network-badge="recommends"', html)
+        self.assertIn("Ines recommends", html)
+        self.assertRegex(html, r'class="[^"]*cand-row[^"]*is-network-strong[^"]*"[^>]*data-freelancer="'
+                         + self.a.stellar_address)
+
+        data = self.candidates(self.client)
+        row = next(c for c in data["candidates"] if c["freelancer"] == self.a.stellar_address)
+        self.assertEqual(row["network"]["level"], "strong")
+        other = next(c for c in data["candidates"] if c["freelancer"] == self.b.stellar_address)
+        self.assertIsNone(other["network"])
+        self.assertNotEqual(data["fingerprint"], before)
+        self.assertIn('data-network-badge="recommends"', data["html"])
+
+    def test_anonymous_task_page_has_no_network_badge(self):
+        self.network.follow(self.company, self.x)
+        self.network.recommend(self.x, self.a)
+        html = self.client.get(reverse("projects:task_detail", kwargs={"pk": self.t2.pk})).content.decode()
+        self.assertNotIn("data-network-badge", html)
+        self.assertNotIn("is-network", html)
+        for c in self.candidates(self.client)["candidates"]:
+            self.assertIsNone(c["network"])
+
+    def test_order_and_scores_unchanged_by_badges(self):
+        login(self.client, self.company)
+        plain = self.scores_in_order(self.client)
+        html = self.client.get(reverse("projects:task_detail", kwargs={"pk": self.t2.pk})).content.decode()
+        plain_html = re.findall(r'data-score="([^"]+)"', html)
+        self.assertEqual([a for a, _ in plain], [self.a.stellar_address, self.b.stellar_address])
+
+        # The network pushes the LOWER-scored candidate: nothing about the ranking may move.
+        self.network.follow(self.company, self.x)
+        self.network.follow(self.company, self.b)
+        self.network.recommend(self.x, self.b, "Trust her")
+        self.assertEqual(self.scores_in_order(self.client), plain)
+        html = self.client.get(reverse("projects:task_detail", kwargs={"pk": self.t2.pk})).content.decode()
+        self.assertEqual(re.findall(r'data-score="([^"]+)"', html), plain_html)
+        self.assertIn("data-recommended", html)  # the score badge still goes to the best score (A)
+        rec_row = re.search(r'data-freelancer="([^"]+)"(?:(?!data-freelancer=).)*data-recommended', html, re.S)
+        self.assertEqual(rec_row.group(1), self.a.stellar_address)
+
+    def test_strong_badge_text_is_never_bare_recommended(self):
+        login(self.client, self.company)
+        self.network.follow(self.company, self.x)
+        self.network.recommend(self.x, self.a)
+        html = self.client.get(reverse("projects:task_detail", kwargs={"pk": self.t2.pk})).content.decode()
+        badges = re.findall(r'data-network-badge="recommends"[^>]*>(.*?)</span>', html, re.S)
+        self.assertTrue(badges)
+        for badge in badges:
+            text = re.sub(r"<[^>]+>", "", badge).strip()
+            self.assertNotEqual(text, "Recommended")
+            self.assertIn(" recommends", text)
+
+    def test_board_card_shows_followed_by_for_company(self):
+        freelance = make_wallet("Lea")
+        self.network.follow(freelance, self.x)
+        self.network.follow(self.x, self.company)
+        login(self.client, freelance)
+        html = self.client.get(reverse("projects:board")).content.decode()
+        self.assertIn('data-network-badge="followed-by"', html)
+        self.assertIn("Followed by Ines", html)
+
+    def test_project_list_following_badge_signed_in_only(self):
+        self.network.follow(self.a, self.company)
+        login(self.client, self.a)
+        html = self.client.get(reverse("projects:project_list")).content.decode()
+        self.assertIn('data-network-badge="following"', html)
+        self.client.logout()
+        html = self.client.get(reverse("projects:project_list")).content.decode()
+        self.assertNotIn("data-network-badge", html)
+
+    def test_company_chip_badge_on_project_and_task_pages(self):
+        self.network.follow(self.a, self.company)
+        login(self.client, self.a)
+        for url in (
+            reverse("projects:project_detail", kwargs={"pk": self.project.pk}),
+            reverse("projects:task_detail", kwargs={"pk": self.t1.pk}),
+        ):
+            self.assertIn('data-network-badge="following"', self.client.get(url).content.decode())

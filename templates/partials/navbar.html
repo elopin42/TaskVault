@@ -8,13 +8,14 @@
     </a>
 
     <nav class="lb-nav-links" aria-label="Navigation principale">
-      {% for link in nav_links %}
-        <a href="{{ link.href }}"{% if link.wallet and not wallet_address %} data-wallet-gate data-next="{{ link.href }}"{% endif %}
+      {# Links that need a session are only shown to a signed-in wallet. #}
+      {% for link in nav_links %}{% if wallet_address or not link.wallet %}
+        <a href="{{ link.href }}"
            class="lb-nav-link{% if link.active %} is-active{% endif %}"
            {% if link.active %}aria-current="page"{% endif %}>
           <i class="fa-solid {{ link.icon }}" aria-hidden="true"></i><span>{{ link.label }}</span>
         </a>
-      {% endfor %}
+      {% endif %}{% endfor %}
     </nav>
 
     <div class="lb-nav-actions">
@@ -65,11 +66,11 @@
   </div>
 
   <nav id="lb-mobile-nav" class="lb-mobile-nav" aria-label="Navigation mobile" hidden>
-    {% for link in nav_links %}
-      <a href="{{ link.href }}"{% if link.wallet and not wallet_address %} data-wallet-gate data-next="{{ link.href }}"{% endif %}
+    {% for link in nav_links %}{% if wallet_address or not link.wallet %}
+      <a href="{{ link.href }}"
          class="lb-nav-link{% if link.active %} is-active{% endif %}">
         <i class="fa-solid {{ link.icon }}" aria-hidden="true"></i><span>{{ link.label }}</span>
       </a>
-    {% endfor %}
+    {% endif %}{% endfor %}
   </nav>
 </header>

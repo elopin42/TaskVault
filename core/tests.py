@@ -144,6 +144,22 @@ class NavLinksTests(TestCase):
     def test_landing_has_no_active_link(self):
         self.assertEqual(self._active(reverse("core:landing")), [])
 
+    def test_signed_in_links_are_hidden_from_anonymous_visitors(self):
+        from stellar_sdk import Keypair
+
+        from accounts.models import WalletUser
+
+        # Desktop nav + mobile nav: only "Projets" for an anonymous visitor, all five once signed in.
+        html = self.client.get(reverse("core:landing")).content.decode()
+        self.assertEqual(html.count('class="lb-nav-link"') + html.count('class="lb-nav-link is-active"'), 2)
+        wallet = WalletUser.objects.create(stellar_address=Keypair.random().public_key)
+        session = self.client.session
+        session["wallet_user_id"] = wallet.pk
+        session["wallet_address"] = wallet.stellar_address
+        session.save()
+        html = self.client.get(reverse("core:landing")).content.decode()
+        self.assertEqual(html.count('class="lb-nav-link"') + html.count('class="lb-nav-link is-active"'), 10)
+
 
 class ErrorPageTests(TestCase):
     def test_custom_404_template(self):

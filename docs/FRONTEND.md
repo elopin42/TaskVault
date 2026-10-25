@@ -153,7 +153,7 @@ The global confirm modal `#lb-confirm` (`partials/modal.html`, included by `base
 | Class | Use |
 |-------|-----|
 | `.ui-list` + `.ui-list-row` + `.ui-rank` | Vertical list separated by hairlines; `.ui-rank` is a 32px rounded-square tile with the rank; `a.ui-list-row` is hoverable |
-| `.rcard` | **Mandatory wrapper around a `<table>`**; every `<td data-label="Colonne">`; `th/td.ui-col-end` right-aligns; `tr.is-attn` highlights (a project with candidates to choose or a delivery to validate). Below 640px of **container** width the table becomes stacked cards (no horizontal scroll). Used by the project's task table (`.task-row[data-task-id][data-status]`, `projects/_task_row.html`), Mes projets and the profile |
+| `.rcard` | **Mandatory wrapper around a `<table>`**; every `<td data-label="Colonne">`; `th/td.ui-col-end` right-aligns; `tr.is-attn` highlights (a project with candidates to choose or a delivery to validate). Below 720px of **container** width the table becomes stacked cards (no horizontal scroll); `td.is-stack` puts the label above a multi-block cell (title + tags + description). Used by the project's task table (`.task-row[data-task-id][data-status]`, `projects/_task_row.html`), Mes projets and the profile |
 | `.project-card` | Project card on the list and the landing (lift on hover) — `projects/_project_card.html` |
 
 ```html
@@ -348,7 +348,7 @@ Markup: `<button data-pay-step="fund" data-prepare-url="/pay/prepare/<task>/fund
 
 ## 5. Responsive & accessibility
 
-- **Container queries** rather than media queries whenever a component can live in a column: `.rcard` (640px), `.ui-sticky-actions` (640px, `.ui-form-scope` ancestor), `.kanban` (1024px / 640px). Page grids (`.ui-split`, `.ui-kpi-band`, `.lb-steps`) use media queries.
+- **Container queries** rather than media queries whenever a component can live in a column: `.rcard` (720px), `.ui-sticky-actions` (640px, `.ui-form-scope` ancestor), `.kanban` (1024px / 640px). Page grids (`.ui-split`, `.ui-kpi-band`, `.lb-steps`) use media queries.
 - Breakpoints: 480 (full-width tabs, pager numbers hidden, modal actions stacked), 640 (2-column forms, full-width toasts), 768 (4-column KPIs, tags wrap), 1024 (desktop nav links, mobile tab bar hidden, two columns).
 - No page scrolls horizontally: `body` is `overflow-x-hidden`, cells use `overflow-wrap: anywhere`, grids `min-w-0`. The e2e checks `scrollWidth <= innerWidth` at 390×844 on the landing, list, form, kanban, project, task and dashboard pages, and that every button of the candidates block is at least 32px tall on a phone.
 - Touch targets 44px (buttons, inputs, list rows, pager, stars); 40px for secondary navbar controls.

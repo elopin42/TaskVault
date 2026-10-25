@@ -226,7 +226,7 @@ a.ui-list-row:hover { background: var(--row-hover); }
 .seg-tab.is-active .seg-count { color: var(--on-ink); opacity: 0.75; }
 @media (max-width: 480px) { .seg-tabs { display: flex; width: 100%; } .seg-tab { flex: 1; justify-content: center; } }
 
-/* ====== .rcard — table that becomes stacked cards below 640px of CONTAINER width.
+/* ====== .rcard — table that becomes stacked cards below 720px of CONTAINER width.
    Always the WRAPPER DIV around a <table>; each <td> carries data-label="Colonne". ====== */
 .rcard { width: 100%; container-type: inline-size; container-name: rcard; }
 .rcard table { width: 100%; table-layout: fixed; border-collapse: collapse; }
@@ -236,13 +236,15 @@ a.ui-list-row:hover { background: var(--row-hover); }
 .rcard tbody tr:hover { background: var(--row-hover); }
 .rcard th.ui-col-end, .rcard td.ui-col-end { text-align: end; }
 .rcard th.ui-num, .rcard td.ui-num { overflow-wrap: normal; }
-@container rcard (max-width: 640px) {
+@container rcard (max-width: 720px) {
     .rcard thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     .rcard tr { display: flex; flex-direction: column; border-bottom: 1px solid var(--divider); padding: 0.35rem 0; }
     .rcard tr:last-child { border-bottom: none; }
     .rcard td { display: flex; justify-content: space-between; align-items: center; gap: 1rem; border-bottom: none; padding: 0.4rem 0.5rem; }
     .rcard td::before { content: attr(data-label); color: var(--muted); font-weight: 500; font-size: 0.75rem; flex-shrink: 0; }
     .rcard td:empty { display: none; }
+    /* .is-stack: a cell holding several blocks (title + tags + description) — label above, content below, full width. */
+    .rcard td.is-stack { flex-direction: column; align-items: flex-start; gap: 0.25rem; }
     .rcard th.ui-col-end, .rcard td.ui-col-end { text-align: end; }
 }
 
@@ -286,6 +288,7 @@ a.ui-list-row:hover { background: var(--row-hover); }
 }
 .lb-nav-inner { max-width: 72rem; margin: 0 auto; padding: 0 1rem; min-height: 64px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1rem; }
 @media (min-width: 640px) { .lb-nav-inner { padding: 0 1.5rem; } }
+@media (min-width: 1536px) { .lb-nav-inner { max-width: 80rem; } }
 @media (min-width: 1024px) { .lb-nav-inner { padding: 0 2rem; } }
 .lb-brand { display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none; color: var(--text); flex: none; }
 .lb-brand-name { font-weight: 800; font-size: 1.2rem; letter-spacing: -0.045em; line-height: 1; text-transform: lowercase; }
@@ -311,6 +314,8 @@ a.ui-list-row:hover { background: var(--row-hover); }
     border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 1rem;
 }
 .lb-icon-btn:hover { border-color: var(--border-strong); background: var(--row-hover); }
+/* Very small phones: the connected wallet button keeps its identicon, the address lives in the menu. */
+@media (max-width: 400px) { .lb-wallet-btn.is-connected > .font-mono { display: none; } }
 .lb-wallet-btn {
     display: inline-flex; align-items: center; gap: 0.5rem; min-height: 38px; padding: 0 0.95rem; border-radius: var(--radius-sm); cursor: pointer;
     border: 1px solid var(--ink); background: var(--ink); color: var(--on-ink); font-weight: 600; font-size: 0.8125rem; font-family: inherit;
@@ -392,7 +397,9 @@ a.ui-list-row:hover { background: var(--row-hover); }
 .ui-receipt-card:hover { border-color: var(--border); box-shadow: none; }
 .ui-receipt-body { padding: 1.1rem 1.25rem 1.25rem; }
 .ui-receipt-body > :first-child { margin-top: 0; }
-.lb-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); border: 1px solid var(--rule); border-radius: var(--radius-md); overflow: hidden; }
+.lb-steps { display: grid; grid-template-columns: minmax(0, 1fr); border: 1px solid var(--rule); border-radius: var(--radius-md); overflow: hidden; }
+@media (min-width: 640px) { .lb-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .lb-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .lb-step { position: relative; display: flex; flex-direction: column; padding: 1.5rem 1.35rem; min-height: 15rem; background: var(--surface); color: var(--text); box-shadow: 1px 0 0 var(--rule), 0 1px 0 var(--rule); }
 .lb-step.is-signal { background: var(--brand-500); color: var(--brand-ink); }
 .lb-step-head { display: flex; justify-content: space-between; gap: 0.5rem; font-family: var(--font-mono); font-size: var(--text-meta); }
@@ -419,6 +426,10 @@ a.ui-list-row:hover { background: var(--row-hover); }
 .cand-row.is-chosen .ui-rank { background: var(--brand-500); color: var(--brand-ink); }
 .cand-row.is-rejected { opacity: 0.55; }
 .cand-row.is-rejected:hover { opacity: 0.85; }
+/* Narrow rows: the text keeps at least 13rem and the Choose button wraps under it, pushed to the end. */
+.cand-row { flex-wrap: wrap; }
+.cand-row > .flex-1 { flex-basis: 13rem; }
+.cand-row > [data-choose] { margin-inline-start: auto; }
 .project-card { transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease; }
 .project-card:hover { transform: translateY(-1px); }
 
@@ -575,13 +586,11 @@ a.ui-wallet:hover .ui-wallet-addr { text-decoration: underline; }
 .ui-select-inline .ui-select { min-height: 38px; width: auto; padding-inline-end: 2rem; font-weight: 500; border-radius: var(--radius-sm); }
 @media (max-width: 480px) { .ui-toolbar-end { width: 100%; margin-inline-start: 0; justify-content: space-between; flex-wrap: wrap; } .ui-toolbar-end [data-result-count] { white-space: normal; } }
 
-/* Horizontal chip row (tag filters) — white bordered pills, scrolls on phones instead of wrapping into 4 lines */
-.ui-chip-row { display: flex; gap: 0.4rem; overflow-x: auto; padding-bottom: 0.25rem; scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
-.ui-chip-row::-webkit-scrollbar { display: none; }
-.ui-chip-row > * { flex: none; scroll-snap-align: start; }
+/* Chip row (tag filters) — bordered pills that wrap at every width (nothing hidden off-screen) */
+.ui-chip-row { display: flex; flex-wrap: wrap; gap: 0.4rem; padding-bottom: 0.25rem; }
+.ui-chip-row > * { flex: none; }
 .ui-chip-row .ui-tag { background: var(--surface); border-color: var(--border); min-height: 32px; padding-inline: 0.8rem; font-weight: 600; }
 .ui-chip-row .ui-tag.is-match { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
-@media (min-width: 768px) { .ui-chip-row { flex-wrap: wrap; overflow: visible; } }
 
 /* ====== Pager ====== */
 .ui-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1.25rem; padding-top: 0.75rem; border-top: 1px solid var(--divider); }

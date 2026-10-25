@@ -68,7 +68,7 @@
           <tbody>
             {% for task in stats.tasks %}
               <tr>
-                <td data-label="Task"><a href="{% url 'projects:task_detail' task.pk %}" class="ui-link font-semibold">{{ task.title }}</a><div class="ui-meta">{{ task.project.title }}{% if task.tags %} · {{ task.tags|join:", " }}{% endif %}</div></td>
+                <td data-label="Task" class="is-stack"><a href="{% url 'projects:task_detail' task.pk %}" class="ui-link font-semibold">{{ task.title }}</a><div class="ui-meta">{{ task.project.title }}{% if task.tags %} · {{ task.tags|join:", " }}{% endif %}</div></td>
                 <td data-label="Company">{% include "components/wallet.html" with address=task.project.company.stellar_address %}</td>
                 <td data-label="Price" class="ui-col-end ui-num">{% include "components/price.html" with amount=task.price %}</td>
                 <td data-label="Status">{% include "components/status_badge.html" with obj=task %}</td>

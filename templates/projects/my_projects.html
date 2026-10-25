@@ -40,7 +40,7 @@
       <tbody>
         {% for project in projects %}
         <tr{% if project.attention %} class="is-attn"{% endif %} data-project-id="{{ project.pk }}">
-          <td data-label="Project">
+          <td data-label="Project" class="is-stack">
             <a href="{% url 'projects:project_detail' project.pk %}" class="ui-link font-semibold">{{ project.title }}</a>
             <div class="ui-meta">created {{ project.created_at|date:"M j, Y" }}{% if project.to_validate %} · <strong class="text-strong">{{ project.to_validate }} deliver{{ project.to_validate|pluralize:"y,ies" }} to validate</strong>{% elif project.to_choose %} · {{ project.to_choose }} task{{ project.to_choose|pluralize }} with candidates{% endif %}</div>
           </td>

@@ -13,7 +13,7 @@
  * Declarative wiring (event delegation, survives innerHTML swaps):
  *   [data-share="URL"]           navigator.share() or copy-to-clipboard fallback
  *   [data-confirm="message"]     on a <form>: asks Lowbid.confirm before submitting (data-confirm-title, data-confirm-danger)
- *   details.ui-menu              closes on outside click / Escape
+ *   details.ui-menu              closes on outside click / Escape; flips to .is-start when it would overflow the left edge
  *   [data-search-clear]          clears the sibling input and submits its form
  *   [data-auto-submit]           a <select>/<input> that submits its form on change
  */
@@ -221,6 +221,16 @@
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "Escape") document.querySelectorAll("details.ui-menu[open]").forEach(function (d) { d.removeAttribute("open"); });
   });
+  /* An opened menu panel that would spill past a screen edge flips to the other side of its button. */
+  document.addEventListener("toggle", function (ev) {
+    var d = ev.target;
+    if (!d.matches || !d.matches("details.ui-menu") || !d.open) return;
+    var panel = d.querySelector(".ui-menu-panel");
+    if (!panel) return;
+    panel.classList.remove("is-start");
+    var r = panel.getBoundingClientRect();
+    if (r.left < 8) panel.classList.add("is-start");
+  }, true);
   document.addEventListener("change", function (ev) {
     var el = ev.target.closest("[data-auto-submit]");
     if (el && el.form) { el.form.requestSubmit ? el.form.requestSubmit() : el.form.submit(); }

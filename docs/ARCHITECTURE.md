@@ -41,8 +41,10 @@ Lowbid/
 ## Run it
 
 ```bash
+make              # = make all: venv + .env + migrate + check + e2e, then runserver — hands-off
+make verify       # the same checks, without starting the server
 make dev          # venv + pip install + .env from .env.example + migrate + runserver 0.0.0.0:8000
-make test         # manage.py check + makemigrations --check + test (222 tests)
+make test         # manage.py check + makemigrations --check + test (223 tests)
 make lint         # ruff check .
 make css          # npm ci + tailwind build  (commit static/css/tailwind.css!)
 make css-check    # rebuild and fail when the committed tailwind.css is stale (= CI tailwind-in-sync)

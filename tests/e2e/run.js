@@ -3,6 +3,7 @@
  * (fake-freighter.js) and a fake Horizon (fake-horizon.js) for the DIRECT payment mode.
  *
  *   make e2e                      # fresh SQLite, runserver (direct mode, STELLAR_HORIZON_URL = the fake), this script
+ *   E2E_SHOTS_DIR=data/e2e-shots  # screenshots elsewhere than docs/screenshots/ (what `make all` does)
  *   E2E_BASE_URL=http://127.0.0.1:8000 E2E_HORIZON_PORT=8100 node tests/e2e/run.js
  *                                 # against a server you started with LOWBID_PAYMENT_MODE=direct
  *                                 # STELLAR_HORIZON_URL=http://127.0.0.1:8100
@@ -35,7 +36,8 @@ const BASE = (process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/
 const HORIZON_PORT = Number(process.env.E2E_HORIZON_PORT || 0);
 let horizon = null; // the fake Horizon handle (fund / balanceOf / submitted)
 const PASSPHRASE = "Test SDF Network ; September 2015";
-const SHOTS = path.join(REPO, "docs", "screenshots");
+// E2E_SHOTS_DIR keeps a verification run (`make all`) from rewriting the committed pitch images.
+const SHOTS = process.env.E2E_SHOTS_DIR ? path.resolve(REPO, process.env.E2E_SHOTS_DIR) : path.join(REPO, "docs", "screenshots");
 const DESKTOP = { width: 1280, height: 800 };
 const MOBILE = { width: 390, height: 844 };
 const HEADLESS = !process.env.E2E_HEADED;

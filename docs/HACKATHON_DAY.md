@@ -8,15 +8,15 @@ One page to open in the morning and keep in sight. The demo details (accounts, t
 
 ```bash
 git pull
-cp -n .env.example .env            # then fill it: see §2
-make dev                           # venv, deps, migrate, runserver 0.0.0.0:8000
+make                               # hands-off: venv, npm + Chromium, .env, migrate, lint, 223 tests, e2e, then the server
+#   then fill .env (see §2), Ctrl-C and `make dev` (quick restart, no checks)                           # venv, deps, migrate, runserver 0.0.0.0:8000
 # new terminal
 make seed                          # 3 wallets, the pitch-state project (T1 paid, T2 with A 90 / B 20), a draft project
-make check                         # ruff + 222 tests + tailwind in sync → must be green BEFORE touching the code
+make check                         # ruff + 223 tests + tailwind in sync → must be green BEFORE touching the code
 npm run watch:css                  # (optional) if you add Tailwind classes to templates
 ```
 
-Prerequisites: Python 3.13, Node 22 (only for `make css` / `make e2e`), the **Freighter** extension on **TESTNET** with a funded account.
+Prerequisites: Python 3.13 or 3.14 (auto-detected), Node 22+ (only for `make css` / `make e2e`), the **Freighter** extension on **TESTNET** with a funded account.
 
 ## 2. Stellar accounts & `.env` (see `DEMO_RUNBOOK.md` §1.1 → §1.7)
 

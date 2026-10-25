@@ -75,18 +75,17 @@ Maximum 100, stored with one decimal and refreshed after every rating and every 
 
 ## Run it locally
 
-Prerequisites: **Python 3.13**, **Node 22** (only to rebuild the CSS or run the e2e), the **Freighter** browser extension set to **TESTNET** with a funded account.
+Prerequisites: **Python 3.13** (3.14 works too, auto-detected), **Node 22+** (only to rebuild the CSS or run the e2e), the **Freighter** browser extension set to **TESTNET** with a funded account.
 
 ```bash
-cp .env.example .env
-make dev
+make        # installs everything (venv, npm, Chromium), creates .env, runs lint + 223 tests + e2e, then starts the server
 # open http://localhost:8000
 make seed   # optional: demo data (3 wallets, a project at the pitch state, a draft project)
 ```
 
 `.env` is read once at startup: after any change (API key, `LOWBID_PAYMENT_MODE`, asset, demo wallets…) stop the server and run `make run` again. Without `TRUSTLESS_WORK_API_KEY` the app runs in direct-payment mode.
 
-Tests: `make test` (222 Django tests: rules, scoring, payment flow in both modes, network mocked) and `make e2e` (Playwright, the full task-board scenario in a real browser with a simulated Freighter and a fake Horizon, on a throwaway SQLite; screenshots land in `docs/screenshots/`). `make check` = lint + tests + Tailwind-in-sync (run it before every commit).
+Tests: `make test` (223 Django tests: rules, scoring, payment flow in both modes, network mocked) and `make e2e` (Playwright, the full task-board scenario in a real browser with a simulated Freighter and a fake Horizon, on a throwaway SQLite; screenshots land in `docs/screenshots/`). `make check` = lint + tests + Tailwind-in-sync (run it before every commit).
 
 ## Where Stellar lives in the code
 

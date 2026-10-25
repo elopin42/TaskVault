@@ -533,7 +533,7 @@ class ProjectDetailViewTests(BaseProjectTest):
         self.assertIn(reverse("projects:task_add", args=[self.project.pk]), html)
         # direct mode (no Trustless Work key): no funding button, an honest note instead
         self.assertNotIn("data-fund", html)
-        self.assertIn("Mode paiement direct", html)
+        self.assertIn("Paiement direct", html)
         with override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k"):
             html = self.client.get(self.url()).content.decode()
         self.assertIn("data-fund", html)

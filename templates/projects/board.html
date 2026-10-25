@@ -7,7 +7,6 @@
 <div class="ui-page-header">
   <div class="min-w-0">
     <h1 class="ui-page-title">{{ "Tableau des tâches"|underline_last }}</h1>
-    <p class="ui-page-sub">Les tâches ouvertes de toutes les entreprises, puis les vôtres : prises, livrées, payées.</p>
   </div>
   <div class="ui-page-actions">
     <a href="{% url 'projects:project_list' %}" class="ui-btn"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Projets</a>
@@ -15,10 +14,10 @@
 </div>
 
 <section class="ui-kpi-band mb-5" aria-label="Résumé">
-  {% include "components/kpi.html" with label="À prendre" value=counts.open hint="tâches ouvertes" icon="fa-bolt" %}
-  {% include "components/kpi.html" with label="Postulé" value=applied_count hint="candidatures en attente" icon="fa-paper-plane" %}
-  {% include "components/kpi.html" with label="En cours" value=counts.taken hint="à livrer" icon="fa-truck-fast" %}
-  {% include "components/kpi.html" with label="Encaissé" value=earned_usdc|usdc:"" unit=asset_code hint="tâches payées" icon="fa-money-bill-transfer" %}
+  {% include "components/kpi.html" with label="À prendre" value=counts.open icon="fa-bolt" %}
+  {% include "components/kpi.html" with label="Postulé" value=applied_count icon="fa-paper-plane" %}
+  {% include "components/kpi.html" with label="En cours" value=counts.taken icon="fa-truck-fast" %}
+  {% include "components/kpi.html" with label="Encaissé" value=earned_usdc|usdc:"" unit=asset_code icon="fa-money-bill-transfer" %}
 </section>
 
 <div class="kanban-wrap"><div class="kanban" data-kanban>

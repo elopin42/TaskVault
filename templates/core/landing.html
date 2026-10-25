@@ -9,7 +9,7 @@
     <section class="lb-hero">
       <p class="lb-kicker">Stellar {{ STELLAR_NETWORK }} · Soroban · Trustless Work</p>
       <h1 class="lb-hero-title">Le prix est fixé. L’argent est bloqué. Le travail est payé.</h1>
-      <p class="lb-hero-sub">L’entreprise découpe son projet en tâches à prix fixe. Chaque tâche a son propre escrow {{ asset_code }} sur Stellar : le freelance voit les fonds verrouillés avant de commencer, et reçoit sa part quelques secondes après la validation.</p>
+      <p class="lb-hero-sub">Des tâches à prix fixe, payées en {{ asset_code }} sur Stellar dès la validation.</p>
       <div class="lb-hero-cta">
         {% if wallet_address %}
           <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary ui-btn-signal ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> Nouveau projet</a>
@@ -80,31 +80,30 @@
 <section class="ui-section lb-chain" aria-labelledby="chain-title">
   <div class="lb-chain-head">
     <h2 id="chain-title" class="lb-section-title">Quatre blocs, deux signataires, zéro relance.</h2>
-    <p class="ui-page-sub">Chaque étape qui touche l’argent passe par une signature Freighter. Les autres restent hors chaîne et gratuites.</p>
   </div>
   <div class="lb-steps">
     <article class="lb-step">
       <div class="lb-step-head"><span>BLOC 01</span><span>ENTREPRISE</span></div>
       <h3 class="lb-step-title">Découper</h3>
-      <p class="lb-step-desc">Un projet, des tâches : titre, prix fixe en {{ asset_code }}, jusqu’à 3 compétences. Personne ne négocie.</p>
+      <p class="lb-step-desc">Un projet, des tâches à prix fixe.</p>
       <code class="lb-step-call">hors chaîne</code>
     </article>
     <article class="lb-step">
       <div class="lb-step-head"><span>BLOC 02</span><span>ENTREPRISE</span></div>
       <h3 class="lb-step-title">Choisir</h3>
-      <p class="lb-step-desc">Les freelances postulent sans prix. Score public : historique 40, note ×8, compétences 20. Il désigne le candidat <span class="ui-badge ui-badge-brand">Recommandé</span> ; <span class="ui-badge ui-badge-ok">Validé</span> signale qui a déjà livré pour vous.</p>
+      <p class="lb-step-desc">Les freelances postulent, l’entreprise choisit.</p>
       <code class="lb-step-call">hors chaîne</code>
     </article>
     <article class="lb-step is-signal">
       <div class="lb-step-head"><span>BLOC 03</span><span>SIGNATURE ×2</span></div>
       <h3 class="lb-step-title">Bloquer</h3>
-      <p class="lb-step-desc">Un escrow Trustless Work par tâche, financé avant le premier commit. Le freelance le vérifie lui-même.</p>
+      <p class="lb-step-desc">Un escrow par tâche, financé avant le travail.</p>
       <code class="lb-step-call">deploy · fund</code>
     </article>
     <article class="lb-step theme-coffre">
       <div class="lb-step-head"><span>BLOC 04</span><span>SIGNATURE ×3</span></div>
       <h3 class="lb-step-title">Livrer, libérer</h3>
-      <p class="lb-step-desc">Le lien de livraison devient la preuve on-chain. L’entreprise valide, note de 1 à 5, et les fonds partent vers le wallet du freelance.</p>
+      <p class="lb-step-desc">Le freelance livre, l’entreprise valide, les fonds partent.</p>
       <code class="lb-step-call">deliver · approve · release</code>
     </article>
   </div>
@@ -113,7 +112,7 @@
 {% if latest_projects %}
 <section class="ui-section" aria-label="Projets ouverts">
   {% url 'projects:project_list' as list_url %}
-  {% include "components/section_head.html" with title="Projets avec des tâches ouvertes" sub="Les plus récents." link_href=list_url link_label="Tous les projets" %}
+  {% include "components/section_head.html" with title="Projets avec des tâches ouvertes" link_href=list_url link_label="Tous les projets" %}
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
     {% for project in latest_projects %}{% include "projects/_project_card.html" with project=project %}{% endfor %}
   </div>

@@ -24,7 +24,7 @@
 
 {% if is_me %}
 <section class="ui-panel mb-6" id="edit-name" aria-labelledby="edit-name-title">
-  <div class="ui-panel-head"><div><h2 class="ui-panel-title" id="edit-name-title">Éditer mon nom</h2><p class="ui-panel-sub">Affiché à côté de votre adresse sur vos projets et vos candidatures. Vide = adresse seule.</p></div></div>
+  <div class="ui-panel-head"><div><h2 class="ui-panel-title" id="edit-name-title">Éditer mon nom</h2></div></div>
   <form method="post" class="flex flex-wrap items-end gap-3" data-submit-once>
     {% csrf_token %}
     <div class="ui-field flex-1 min-w-[200px]">
@@ -48,7 +48,7 @@
 </section>
 
 <section class="ui-section !mt-0" aria-labelledby="projects-title">
-  {% include "components/section_head.html" with title="Projets publiés" sub="Les 6 plus récents." icon="fa-diagram-project" %}
+  {% include "components/section_head.html" with title="Projets publiés" icon="fa-diagram-project" %}
   {% if stats.projects %}
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {% for project in stats.projects %}{% include "projects/_project_card.html" with project=project %}{% endfor %}
@@ -59,7 +59,7 @@
 </section>
 
 <section class="ui-section" aria-labelledby="tasks-title">
-  {% include "components/section_head.html" with title="Tâches réalisées" sub="Les tâches pour lesquelles ce wallet a été choisi." icon="fa-user-check" %}
+  {% include "components/section_head.html" with title="Tâches réalisées" icon="fa-user-check" %}
   {% if stats.tasks %}
     <div class="ui-panel">
       <div class="rcard">
@@ -85,7 +85,7 @@
 
 {% if stats.ratings %}
 <section class="ui-section" aria-labelledby="ratings-title">
-  {% include "components/section_head.html" with title="Notes reçues" sub="Attribuées par les entreprises à la validation." icon="fa-star" %}
+  {% include "components/section_head.html" with title="Notes reçues" icon="fa-star" %}
   <div class="ui-panel">
     <ol class="ui-timeline">
       {% for r in stats.ratings %}

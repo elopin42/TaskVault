@@ -13,7 +13,6 @@ class LandingTests(TestCase):
         self.assertContains(resp, "Lowbid")
         self.assertContains(resp, "data-wallet-connect")
         self.assertContains(resp, "prix fixe")
-        self.assertContains(resp, "Recommandé")
         self.assertContains(resp, "data-landing-stats")
         self.assertNotContains(resp, "enchère")
 

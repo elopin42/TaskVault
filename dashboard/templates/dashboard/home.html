@@ -24,7 +24,6 @@
       <div class="ui-panel-head">
         <div>
           <h2 class="ui-panel-title" id="todo-title"><i class="fa-solid fa-list-check" style="color: var(--icon-accent)" aria-hidden="true"></i> À faire</h2>
-          <p class="ui-panel-sub">Choisir un freelance, valider une livraison, livrer une tâche prise.</p>
         </div>
         {% if todo %}<span class="ui-badge {% if todo_act %}ui-badge-brand{% else %}ui-badge-neutral{% endif %}">{{ todo|length }}</span>{% endif %}
       </div>
@@ -42,7 +41,7 @@
 
     <section class="ui-panel" id="activity" aria-labelledby="activity-title">
       <div class="ui-panel-head">
-        <div><h2 class="ui-panel-title" id="activity-title">Activité récente</h2><p class="ui-panel-sub">Vos candidatures, vos projets, les livraisons et les paiements.</p></div>
+        <div><h2 class="ui-panel-title" id="activity-title">Activité récente</h2></div>
       </div>
       {% if activity %}
         <ol class="ui-timeline">
@@ -65,15 +64,15 @@
   <aside class="ui-stack">
     <section class="ui-panel" aria-labelledby="company-title">
       <div class="ui-panel-head">
-        <div><h2 class="ui-panel-title" id="company-title"><i class="fa-solid fa-diagram-project" style="color: var(--icon-accent)" aria-hidden="true"></i> Côté entreprise</h2><p class="ui-panel-sub">Les projets que vous avez publiés.</p></div>
+        <div><h2 class="ui-panel-title" id="company-title"><i class="fa-solid fa-diagram-project" style="color: var(--icon-accent)" aria-hidden="true"></i> Côté entreprise</h2></div>
         <a href="{% url 'projects:my_projects' %}" class="ui-link whitespace-nowrap">Mes projets <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
       </div>
       <div class="ui-kpi-band !grid-cols-2 !gap-3">
         {% url 'projects:my_projects' as my_projects_url %}
-        {% include "components/kpi.html" with label="Tâches ouvertes" value=company_stats.open hint="à pourvoir" icon="fa-bolt" href=my_projects_url %}
-        {% include "components/kpi.html" with label="À choisir" value=company_stats.to_choose hint="tâches avec candidats" icon="fa-user-check" href=my_projects_url %}
-        {% include "components/kpi.html" with label="À valider" value=company_stats.to_validate hint="livraisons déclarées" icon="fa-star" href=my_projects_url %}
-        {% include "components/kpi.html" with label="Payées" value=company_stats.paid hint="tâches validées" icon="fa-circle-check" href=my_projects_url %}
+        {% include "components/kpi.html" with label="Tâches ouvertes" value=company_stats.open icon="fa-bolt" href=my_projects_url %}
+        {% include "components/kpi.html" with label="À choisir" value=company_stats.to_choose icon="fa-user-check" href=my_projects_url %}
+        {% include "components/kpi.html" with label="À valider" value=company_stats.to_validate icon="fa-star" href=my_projects_url %}
+        {% include "components/kpi.html" with label="Payées" value=company_stats.paid icon="fa-circle-check" href=my_projects_url %}
       </div>
       <dl class="ui-facts mt-4">
         <dt>Projets publiés</dt><dd class="ui-num">{{ company_stats.projects }}</dd>
@@ -85,15 +84,15 @@
 
     <section class="ui-panel" aria-labelledby="freelance-title">
       <div class="ui-panel-head">
-        <div><h2 class="ui-panel-title" id="freelance-title"><i class="fa-solid fa-table-columns" style="color: var(--icon-accent)" aria-hidden="true"></i> Côté freelance</h2><p class="ui-panel-sub">Vos candidatures et vos tâches.</p></div>
+        <div><h2 class="ui-panel-title" id="freelance-title"><i class="fa-solid fa-table-columns" style="color: var(--icon-accent)" aria-hidden="true"></i> Côté freelance</h2></div>
         <a href="{% url 'projects:board' %}" class="ui-link whitespace-nowrap">Mon tableau <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
       </div>
       <div class="ui-kpi-band !grid-cols-2 !gap-3">
         {% url 'projects:board' as board_url %}
-        {% include "components/kpi.html" with label="En attente" value=freelancer_stats.pending hint="candidatures" icon="fa-paper-plane" href=board_url %}
-        {% include "components/kpi.html" with label="En cours" value=freelancer_stats.in_progress hint="tâches à livrer" icon="fa-truck-fast" href=board_url %}
-        {% include "components/kpi.html" with label="Payées" value=freelancer_stats.paid hint="tâches validées" icon="fa-circle-check" href=board_url %}
-        {% include "components/kpi.html" with label="Encaissé" value=freelancer_stats.earned_usdc|usdc:"" unit="USDC" hint="paiements reçus" icon="fa-money-bill-transfer" href=board_url %}
+        {% include "components/kpi.html" with label="En attente" value=freelancer_stats.pending icon="fa-paper-plane" href=board_url %}
+        {% include "components/kpi.html" with label="En cours" value=freelancer_stats.in_progress icon="fa-truck-fast" href=board_url %}
+        {% include "components/kpi.html" with label="Payées" value=freelancer_stats.paid icon="fa-circle-check" href=board_url %}
+        {% include "components/kpi.html" with label="Encaissé" value=freelancer_stats.earned_usdc|usdc:"" unit="USDC" icon="fa-money-bill-transfer" href=board_url %}
       </div>
       <dl class="ui-facts mt-4">
         <dt>Candidatures envoyées</dt><dd class="ui-num">{{ freelancer_stats.total }}</dd>

@@ -591,7 +591,7 @@ class ProjectFundingTests(BasePayTest):
         html = self.client.get(reverse("projects:project_detail", args=[self.project.pk])).content.decode()
         self.assertIn('data-fund data-pending-url="%s"' % self.pending_url(), html)
         self.assertIn('id="funding-panel"', html)
-        self.assertIn("Un escrow Trustless Work par tâche", html)
+        self.assertIn("Financement en escrow", html)
         router = TWRouter(self.unsigned)
         with patch("payments.trustless_work.requests.post", side_effect=router):
             self.run_step("deploy", self.company_kp)

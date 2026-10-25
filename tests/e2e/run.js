@@ -296,10 +296,10 @@ async function main() {
       }
       assert((await cp.locator("[data-kpi-total]").innerText()).replace(/\s+/g, " ").startsWith("1,200.00"), "KPI total = 1,200.00");
       assert(await cp.locator("[data-task-delete]").count() === 3, "every open task of a draft project can be deleted");
-      // direct payment mode (no Trustless Work key): no funding button, an honest note instead
+      // direct payment mode (no Trustless Work key): no funding button, the panel says so
       assert(await cp.locator("[data-fund]").count() === 0, "no Financer button in direct mode");
       assert(await cp.locator("#funding-panel[data-mode=direct]").count() === 1, "funding banner in direct mode");
-      assert(/Mode paiement direct/.test(await cp.locator("#funding-panel").innerText()), "direct-mode note is displayed");
+      assert(/Paiement direct/.test(await cp.locator("#funding-panel").innerText()), "direct-mode note is displayed");
       // server-side validation surfaces under the right field
       await cp.fill("#task-title", "Tâche invalide"); await cp.fill("#task-price", "10"); await cp.fill("#task-tags", "a, b, c, d");
       await cp.click("[data-task-add]");

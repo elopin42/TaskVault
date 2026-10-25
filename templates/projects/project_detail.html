@@ -61,7 +61,6 @@ payments.services.project_funding().
       <div class="ui-panel-head">
         <div>
           <h2 class="ui-panel-title">Tâches</h2>
-          <p class="ui-panel-sub">{% if viewer_is_company %}Chaque tâche a son prix fixe. Choisissez un candidat, puis validez la livraison avec une note.{% else %}Postulez à une tâche ouverte : l’entreprise choisit un freelance par tâche.{% endif %}</p>
         </div>
         {% if project.tasks_count %}<span class="ui-meta whitespace-nowrap">{{ project.paid_count }}/{{ project.tasks_count }} payée{{ project.paid_count|pluralize }}</span>{% endif %}
       </div>
@@ -97,7 +96,6 @@ payments.services.project_funding().
           <div class="ui-panel-head">
             <div>
               <h2 class="ui-panel-title">Candidats · <a href="{% url 'projects:task_detail' block.task.pk %}" class="ui-link">{{ block.task.title }}</a></h2>
-              <p class="ui-panel-sub">Classés par score (historique avec vous 40 · notes ×8 · compétences 20). « Recommandé » est une aide : cliquez sur <strong>Choisir</strong> sur n’importe quel candidat.</p>
             </div>
             {% include "components/price.html" with amount=block.task.price %}
           </div>
@@ -117,7 +115,7 @@ payments.services.project_funding().
     {% if viewer_is_company %}
       {% if to_validate %}
         <section class="ui-panel" style="border-color: var(--icon-accent)">
-          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-star" style="color: var(--icon-accent)" aria-hidden="true"></i> À valider</h2><p class="ui-panel-sub">Livraison déclarée : vérifiez le lien, notez de 1 à 5.</p></div></div>
+          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-star" style="color: var(--icon-accent)" aria-hidden="true"></i> À valider</h2></div></div>
           <div class="ui-next-list">
             {% for t in to_validate %}
               {% url 'projects:task_detail' t.pk as t_url %}
@@ -135,14 +133,14 @@ payments.services.project_funding().
       {% endif %}
     {% elif wallet %}
       <section class="ui-panel">
-        <div class="ui-panel-head"><div><h2 class="ui-panel-title">Postuler</h2><p class="ui-panel-sub">Ouvrez une tâche ouverte et envoyez votre candidature (message + compétences). Pas de prix à proposer : il est fixé.</p></div></div>
+        <div class="ui-panel-head"><div><h2 class="ui-panel-title">Postuler</h2></div></div>
         <a href="{% url 'projects:board' %}" class="ui-btn ui-btn-block"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> Mon tableau des tâches</a>
       </section>
     {% else %}
       <section class="ui-panel text-center">
         <div class="empty-state-icon"><i class="fa-solid fa-wallet" aria-hidden="true"></i></div>
         <h2 class="ui-panel-title mb-1">Postuler à une tâche</h2>
-        <p class="ui-panel-sub mb-4">Connectez votre wallet Freighter (testnet) pour postuler aux tâches ouvertes.</p>
+        <p class="ui-panel-sub mb-4">Connectez votre wallet pour postuler.</p>
         <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-wallet-connect data-next="{{ request.path }}"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Connecter mon wallet</button>
       </section>
     {% endif %}

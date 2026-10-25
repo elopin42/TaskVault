@@ -9,7 +9,7 @@
 
     <nav class="lb-nav-links" aria-label="Navigation principale">
       {% for link in nav_links %}
-        <a href="{% if link.wallet and not wallet_address %}{% url 'core:landing' %}?next={{ link.href|urlencode }}{% else %}{{ link.href }}{% endif %}"
+        <a href="{{ link.href }}"{% if link.wallet and not wallet_address %} data-wallet-gate data-next="{{ link.href }}"{% endif %}
            class="lb-nav-link{% if link.active %} is-active{% endif %}"
            {% if link.active %}aria-current="page"{% endif %}>
           <i class="fa-solid {{ link.icon }}" aria-hidden="true"></i><span>{{ link.label }}</span>
@@ -66,7 +66,7 @@
 
   <nav id="lb-mobile-nav" class="lb-mobile-nav" aria-label="Navigation mobile" hidden>
     {% for link in nav_links %}
-      <a href="{% if link.wallet and not wallet_address %}{% url 'core:landing' %}?next={{ link.href|urlencode }}{% else %}{{ link.href }}{% endif %}"
+      <a href="{{ link.href }}"{% if link.wallet and not wallet_address %} data-wallet-gate data-next="{{ link.href }}"{% endif %}
          class="lb-nav-link{% if link.active %} is-active{% endif %}">
         <i class="fa-solid {{ link.icon }}" aria-hidden="true"></i><span>{{ link.label }}</span>
       </a>

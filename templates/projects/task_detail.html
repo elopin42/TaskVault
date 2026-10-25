@@ -58,7 +58,6 @@
       <div class="ui-panel-head">
         <div>
           <h2 class="ui-panel-title">Candidats{% if rows %} classés{% endif %}</h2>
-          <p class="ui-panel-sub">{% if task_open %}Mise à jour automatique toutes les 5 s. Score sur 100 : historique avec l’entreprise 40 · note moyenne ×8 · compétences communes 20.{% if viewer_is_company %} « Recommandé » est une aide : vous choisissez qui vous voulez.{% endif %}{% else %}Classement figé au choix du freelance.{% endif %}</p>
         </div>
         <span class="ui-live whitespace-nowrap" data-live-dot hidden><span class="ui-live-dot" aria-hidden="true"></span> live</span>
       </div>
@@ -90,7 +89,7 @@
           <div class="ui-panel-head">
             <div>
               <h2 class="ui-panel-title">Postuler</h2>
-              <p class="ui-panel-sub">Prix fixe : <strong class="text-strong">{{ task.price|usdc }}</strong>. Un mot sur votre approche et vos compétences : l’entreprise choisit.</p>
+              <p class="ui-panel-sub">Prix fixe : <strong class="text-strong">{{ task.price|usdc }}</strong>. </p>
             </div>
           </div>
           <form id="apply-form" class="ui-form-grid" novalidate>
@@ -122,14 +121,14 @@
         </section>
       {% elif viewer_is_company %}
         <section class="ui-panel">
-          <div class="ui-panel-head"><div><h2 class="ui-panel-title">Votre tâche</h2><p class="ui-panel-sub">{% if rows %}Comparez les candidats et cliquez sur <strong>Choisir</strong>. Le score et le badge « Recommandé » ne sont qu’une aide.{% else %}Partagez le lien : toute personne avec un wallet peut postuler.{% endif %}</p></div></div>
+          <div class="ui-panel-head"><div><h2 class="ui-panel-title">Votre tâche</h2><p class="ui-panel-sub">{% if not rows %}Aucun candidat pour l’instant.{% endif %}</p></div></div>
           <div class="ui-alert ui-alert-info"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>« Validé » = a déjà livré pour vous avec une note moyenne ≥ 3.</span></div>
         </section>
       {% else %}
         <section class="ui-panel text-center">
           <div class="empty-state-icon"><i class="fa-solid fa-wallet" aria-hidden="true"></i></div>
           <h2 class="ui-panel-title mb-1">Postuler à cette tâche</h2>
-          <p class="ui-panel-sub mb-4">Connectez votre wallet Freighter (testnet) pour postuler. Prix fixe : {{ task.price|usdc }}.</p>
+          <p class="ui-panel-sub mb-4">Connectez votre wallet pour postuler.</p>
           <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-wallet-connect data-next="{{ request.path }}"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Connecter mon wallet</button>
         </section>
       {% endif %}

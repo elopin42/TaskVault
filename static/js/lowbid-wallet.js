@@ -185,7 +185,8 @@
   }
 
   document.addEventListener("click", function (ev) {
-    var connectBtn = ev.target.closest("[data-wallet-connect]");
+    // [data-wallet-gate]: a navbar link to a signed-in page, shown to an anonymous visitor — connect first, then go there.
+    var connectBtn = ev.target.closest("[data-wallet-connect], [data-wallet-gate]");
     if (connectBtn) {
       ev.preventDefault();
       var next = connectBtn.getAttribute("data-next") || new URLSearchParams(location.search).get("next") || "";

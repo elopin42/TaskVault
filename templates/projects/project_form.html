@@ -3,7 +3,7 @@
 {% block title %}Nouveau projet · Lowbid{% endblock %}
 
 {% block content %}
-{% include "partials/page_header.html" with title="Nouveau projet" subtitle="Décrivez le projet. À l’étape suivante vous le découperez en tâches à prix fixe (USDC) auxquelles les freelances postulent." %}
+{% include "partials/page_header.html" with title="Nouveau projet" subtitle="Ensuite, vous ajouterez les tâches à prix fixe." %}
 
 <div class="ui-split is-even ui-form-scope">
 <form method="post" class="ui-panel" novalidate id="project-form" data-submit-once>
@@ -22,7 +22,6 @@
     <div class="ui-field ui-field-wide">
       <label for="{{ form.description.id_for_label }}" class="ui-label">{{ form.description.label }}</label>
       {{ form.description }}
-      <span class="ui-help">Le contexte, les livrables attendus, les contraintes. Les prix se fixent tâche par tâche.</span>
       {% for e in form.description.errors %}<span class="ui-error">{{ e }}</span>{% endfor %}
     </div>
   </div>
@@ -37,14 +36,13 @@
 <aside class="hidden lg:block" aria-label="Comment ça marche">
   <div class="lg:sticky lg:top-20 ui-stack">
     <div class="ui-panel">
-      <div class="ui-panel-head"><div><h2 class="ui-panel-title">Ensuite</h2><p class="ui-panel-sub">Trois étapes, sans enchère ni compte à rebours.</p></div></div>
+      <div class="ui-panel-head"><div><h2 class="ui-panel-title">Ensuite</h2></div></div>
       <ol class="ui-timeline">
-        <li class="ui-timeline-item is-brand"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-list-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Découpez en tâches</p><div class="ui-timeline-time">Titre, description, prix fixe en USDC, jusqu’à 3 compétences. Une tâche se supprime tant qu’elle est ouverte ; vous pourrez en ajouter à tout moment.</div></div></li>
-        <li class="ui-timeline-item"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-user-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Choisissez un freelance par tâche</p><div class="ui-timeline-time">Les candidats sont classés (historique avec vous, notes, compétences) : le badge « Recommandé » est une aide, vous décidez.</div></div></li>
-        <li class="ui-timeline-item is-ok"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-circle-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Validez et notez</p><div class="ui-timeline-time">Le freelance livre un lien, vous validez avec une note de 1 à 5 : la part de la tâche lui est versée.</div></div></li>
+        <li class="ui-timeline-item is-brand"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-list-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Découpez en tâches</p></div></li>
+        <li class="ui-timeline-item"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-user-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Choisissez un freelance par tâche</p></div></li>
+        <li class="ui-timeline-item is-ok"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-circle-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Validez et notez</p></div></li>
       </ol>
     </div>
-    <p class="ui-help"><i class="fa-solid fa-lightbulb" aria-hidden="true"></i> Des tâches courtes et précises (1 livrable chacune) attirent plus de candidats.</p>
   </div>
 </aside>
 </div>

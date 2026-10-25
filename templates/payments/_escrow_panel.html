@@ -65,7 +65,7 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
       <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>{% if is_direct %}Paiement envoyé au freelance.{% else %}Fonds libérés vers le freelance.{% endif %} Tâche payée{% if task.paid_at %} le {{ task.paid_at|date:"d/m/Y à H:i" }}{% endif %}.</span></div>
     {% elif action and action.mine and action.step == 'validate' %}
       <div id="validate-panel" class="ui-form-scope">
-        <p class="text-sm mb-3"><i class="fa-solid fa-star" style="color: var(--icon-accent)" aria-hidden="true"></i> Vérifiez la livraison, puis notez {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} de 1 à 5. {% if is_direct %}La note enregistrée, vous signez le paiement de {{ amount|usdc:asset_code }} dans Freighter.{% else %}La note enregistrée, vous signez la validation puis la libération des {{ amount|usdc:asset_code }} (deux signatures).{% endif %}</p>
+        <p class="text-sm mb-3"><i class="fa-solid fa-star" style="color: var(--icon-accent)" aria-hidden="true"></i> Notez la livraison de 1 à 5, puis signez le paiement de {{ amount|usdc:asset_code }}.</p>
         <form id="validate-form" class="ui-form-grid" novalidate data-validate data-validate-url="{{ validate_url }}">
           <fieldset class="ui-field ui-field-wide">
             <legend class="ui-label">Note</legend>
@@ -93,7 +93,7 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
       </div>
     {% elif action and action.mine and action.evidence %}
       <div id="deliver-panel" class="ui-form-scope">
-        <p class="text-sm mb-3"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> Vous êtes choisi pour cette tâche. Déposez le lien de votre livraison (PR, démo, dépôt){% if not action.no_tx %} : il est enregistré comme preuve sur Stellar (une signature Freighter){% endif %}. L’entreprise valide, vous note, et le paiement suit.</p>
+        <p class="text-sm mb-3"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> Vous êtes choisi : déposez le lien de votre livraison.</p>
         <form id="deliver-form" class="ui-form-grid" data-pay-form novalidate onsubmit="return false">
           <div class="ui-field ui-field-wide">
             <label for="deliver-link" class="ui-label">Lien de la livraison</label>
@@ -114,7 +114,7 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
       <p class="ui-help mt-2">{{ action.hint }}{% if action.step == 'approve' %} La libération des fonds s’enchaîne juste après (deuxième signature).{% endif %}</p>
     {% elif action %}
       <div class="ui-alert ui-alert-info"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>{{ action.waiting }}</span></div>
-      {% if role == 'anonymous' %}<p class="ui-meta mt-2">Connectez votre wallet si vous êtes partie prenante de cette tâche.</p>{% endif %}
+      
     {% endif %}
   </div>
 

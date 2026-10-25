@@ -6,7 +6,6 @@
 <div class="ui-page-header">
   <div class="min-w-0">
     <h1 class="ui-page-title">{{ "Mes projets"|underline_last }}</h1>
-    <p class="ui-page-sub">Les projets que vous avez publiés : candidats à choisir, livraisons à valider.</p>
   </div>
   <div class="ui-page-actions">
     <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Nouveau projet</a>
@@ -14,10 +13,10 @@
 </div>
 
 <section class="ui-kpi-band mb-5" aria-label="Résumé">
-  {% include "components/kpi.html" with label="Brouillons" value=kpis.draft hint="tâches modifiables" icon="fa-pen-to-square" %}
-  {% include "components/kpi.html" with label="À choisir" value=kpis.to_choose hint="tâches avec candidats" icon="fa-user-check" %}
-  {% include "components/kpi.html" with label="À valider" value=kpis.to_validate hint="livraisons déclarées" icon="fa-star" %}
-  {% include "components/kpi.html" with label="Terminés" value=kpis.closed hint="toutes les tâches payées" icon="fa-circle-check" %}
+  {% include "components/kpi.html" with label="Brouillons" value=kpis.draft icon="fa-pen-to-square" %}
+  {% include "components/kpi.html" with label="À choisir" value=kpis.to_choose icon="fa-user-check" %}
+  {% include "components/kpi.html" with label="À valider" value=kpis.to_validate icon="fa-star" %}
+  {% include "components/kpi.html" with label="Terminés" value=kpis.closed icon="fa-circle-check" %}
 </section>
 
 <nav class="seg-tabs mb-4" aria-label="Filtrer mes projets">

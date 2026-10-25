@@ -68,7 +68,8 @@ class Escrow(models.Model):
     release_tx_hash = models.CharField(max_length=64, blank=True)
     payment_tx_hash = models.CharField(max_length=64, blank=True)  # direct mode
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.CREATED, db_index=True)
-    # The delivery link as sent to Trustless Work (`newEvidence`, ≤ 280 chars); Task.delivery_link keeps the full link.
+    # The milestone evidence as sent to Trustless Work (`newEvidence`, ≤ 280 chars): payments.services.build_evidence
+    # (`sha256:<hash> <link>` / `git:<hash> <link>` / `<link>`); Task keeps the full link, hash and source link.
     delivery_note = models.CharField(max_length=280, blank=True)
     last_error = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -109,7 +110,8 @@ class Escrow(models.Model):
         return STATUS_BADGES.get(self.status, "ui-badge-neutral")
 
     def explorer_links(self) -> list[dict]:
-        """Every stored on-chain reference, in flow order: [{key, label, url, value}]."""
+        """Every stored on-chain reference, in flow order: [{key, label, url, value, at}] — `at` is the
+        step's stored time (funded_at / delivered_at / released_at, None otherwise): the transaction's time."""
         links: list[dict] = []
         if self.contract_id:
             links.append(
@@ -121,15 +123,15 @@ class Escrow(models.Model):
                 }
             )
         labels = (
-            ("deploy_tx_hash", "Escrow creation"),
-            ("fund_tx_hash", "Funds locking"),
-            ("deliver_tx_hash", "Delivery declaration"),
-            ("approve_tx_hash", "Validation"),
-            ("release_tx_hash", "Funds release"),
-            ("payment_tx_hash", "Direct payment"),
+            ("deploy_tx_hash", "Escrow creation", None),
+            ("fund_tx_hash", "Funds locking", self.funded_at),
+            ("deliver_tx_hash", "Delivery declaration", self.delivered_at),
+            ("approve_tx_hash", "Validation", None),
+            ("release_tx_hash", "Funds release", self.released_at),
+            ("payment_tx_hash", "Direct payment", self.released_at),
         )
-        for field, label in labels:
+        for field, label, at in labels:
             value = getattr(self, field)
             if value:
-                links.append({"key": field, "label": label, "url": stellar.explorer_tx_url(value), "value": value})
+                links.append({"key": field, "label": label, "url": stellar.explorer_tx_url(value), "value": value, "at": at})
         return links

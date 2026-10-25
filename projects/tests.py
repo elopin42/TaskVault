@@ -17,6 +17,10 @@ from .services import ProjectError
 JSON = {"HTTP_ACCEPT": "application/json", "HTTP_X_REQUESTED_WITH": "fetch"}
 
 
+GIT_SHA = "a" * 39 + "b"  # a 40-hex git commit id
+SHA256 = "0123456789abcdef" * 4  # a 64-hex digest
+
+
 def make_wallet(name: str = "") -> WalletUser:
     return WalletUser.objects.create(stellar_address=Keypair.random().public_key, display_name=name)
 
@@ -95,6 +99,30 @@ class HelperTests(TestCase):
         self.assertEqual(services.dec_str(Decimal("500.0000000")), "500")
         self.assertEqual(services.dec_str(Decimal("400.5000000")), "400.5")
         self.assertEqual(services.dec_str("300"), "300")
+
+    def test_clean_hash(self):
+        """R30: "" allowed; else exactly 40 hex (git commit) or 64 hex (SHA-256), lowercased."""
+        git = "a" * 39 + "b"
+        sha = "0123456789abcdef" * 4
+        self.assertEqual(services.clean_hash(git), git)
+        self.assertEqual(services.clean_hash(sha), sha)
+        self.assertEqual(services.clean_hash("  " + git.upper() + " "), git, "uppercase normalised, whitespace stripped")
+        self.assertEqual(services.clean_hash(""), "")
+        self.assertEqual(services.clean_hash(None), "")
+        self.assertEqual(services.clean_hash("   "), "")
+        for bad in (git[:-1], git + "a", sha[:-1], sha + "0", "g" * 40, "0x" + git[2:], "é" * 40, git[:-1] + " "):
+            with self.assertRaises(ProjectError, msg=bad) as ctx:
+                services.clean_hash(bad)
+            self.assertEqual(ctx.exception.code, "invalid")
+
+    def test_clean_source_link(self):
+        self.assertEqual(services.clean_source_link(""), "")
+        self.assertEqual(services.clean_source_link(None), "")
+        self.assertEqual(services.clean_source_link(" https://github.com/x/y.git "), "https://github.com/x/y.git")
+        for bad in ("github.com/x", "ftp://x.y", "https://" + "x" * 500):
+            with self.assertRaises(ProjectError, msg=bad) as ctx:
+                services.clean_source_link(bad)
+            self.assertEqual(ctx.exception.code, "invalid")
 
 
 # --- company: project + tasks ---------------------------------------------------------------
@@ -311,6 +339,60 @@ class DeliverTests(BaseProjectTest):
                 services.deliver(self.t1, self.a, bad)
             self.assertEqual(ctx.exception.code, "invalid")
         self.assertEqual(Task.objects.get(pk=self.t1.pk).status, Task.Status.TAKEN)
+
+    def test_deliver_stores_the_fingerprint_and_the_source_link(self):
+        task = services.deliver(
+            self.t1, self.a, "https://demo.x.y", delivery_hash=GIT_SHA.upper(), source_link=" https://github.com/x/y "
+        )
+        self.assertEqual((task.status, task.delivery_hash, task.source_link), ("delivered", GIT_SHA, "https://github.com/x/y"))
+        fresh = Task.objects.get(pk=self.t1.pk)
+        self.assertEqual((fresh.delivery_hash, fresh.source_link), (GIT_SHA, "https://github.com/x/y"))
+
+    def test_deliver_defaults_to_no_fingerprint_and_no_source(self):
+        task = services.deliver(self.t1, self.a, "https://demo.x.y")
+        self.assertEqual((task.delivery_hash, task.source_link), ("", ""))
+
+    def test_bad_fingerprint_or_source_link_changes_nothing(self):
+        with self.assertRaises(ProjectError) as ctx:
+            services.deliver(self.t1, self.a, "https://demo.x.y", delivery_hash="abc")
+        self.assertEqual(ctx.exception.code, "invalid")
+        with self.assertRaises(ProjectError) as ctx:
+            services.deliver(self.t1, self.a, "https://demo.x.y", source_link="not-a-link")
+        self.assertEqual(ctx.exception.code, "invalid")
+        fresh = Task.objects.get(pk=self.t1.pk)
+        self.assertEqual((fresh.status, fresh.delivery_link, fresh.delivery_hash, fresh.source_link), ("taken", "", "", ""))
+
+
+class SourceVisibilityTests(BaseProjectTest):
+    """R31: the assignee always, the company only once paid, anyone else never."""
+
+    def setUp(self):
+        super().setUp()
+        services.apply(self.t1, self.a, "", ["django"])
+        services.apply(self.t1, self.b, "", [])
+        services.choose(self.t1, app_of(self.t1, self.a), self.company)
+        self.t1.refresh_from_db()
+
+    def test_before_delivery_and_after_delivery(self):
+        for task in (self.t1, services.deliver(self.t1, self.a, "https://demo.x.y", source_link="https://src.x.y")):
+            self.assertTrue(services.source_visible(task, self.a), "assignee")
+            self.assertFalse(services.source_visible(task, self.company), "company before payment")
+            self.assertFalse(services.source_visible(task, self.b), "another freelance")
+            self.assertFalse(services.source_visible(task, None), "anonymous")
+
+    def test_company_sees_it_once_paid(self):
+        services.deliver(self.t1, self.a, "https://demo.x.y", source_link="https://src.x.y")
+        services.validate(self.t1, self.company, 5)
+        self.assertFalse(services.source_visible(Task.objects.get(pk=self.t1.pk), self.company), "rated but not paid")
+        task = services.mark_paid(self.t1)
+        self.assertTrue(services.source_visible(task, self.company))
+        self.assertTrue(services.source_visible(task, self.a))
+        self.assertFalse(services.source_visible(task, self.b))
+        self.assertFalse(services.source_visible(task, None))
+
+    def test_open_task_is_visible_to_nobody_but_has_no_assignee(self):
+        self.assertFalse(services.source_visible(self.t2, self.company))
+        self.assertFalse(services.source_visible(self.t2, self.a))
 
 
 # --- company: validate + rate → payment hook → mark_paid --------------------------------------------
@@ -622,12 +704,47 @@ class TaskDetailViewTests(BaseProjectTest):
         html = self.client.get(self.url()).content.decode()
         self.assertIn('id="deliver-panel"', html)
         self.assertIn('id="deliver-link"', html)
+        self.assertIn('id="deliver-hash" name="delivery_hash"', html)
+        self.assertIn('id="deliver-source" name="source_link"', html)
         self.assertIn("data-deliver", html)
         self.assertIn("Chosen", html)
         login(self.client, self.b)
         html = self.client.get(self.url()).content.decode()
         self.assertNotIn('id="deliver-panel"', html)
         self.assertIn("A freelancer has been chosen", html)
+
+    def test_source_link_hidden_from_the_company_until_paid(self):
+        """R31 on the page: the fingerprint is public, [data-source-link] follows source_visible()."""
+        services.apply(self.t1, self.a, "", [])
+        services.choose(self.t1, app_of(self.t1, self.a), self.company)
+        services.deliver(self.t1, self.a, "https://demo.x.y", delivery_hash=GIT_SHA, source_link="https://github.com/x/y-src")
+        login(self.client, self.company)
+        html = self.client.get(self.url()).content.decode()
+        self.assertIn(f'data-delivery-hash="{GIT_SHA}"', html)
+        self.assertIn(f'data-copy="{GIT_SHA}"', html, "copy button on the fingerprint")
+        self.assertNotIn("data-source-link", html)
+        self.assertNotIn("https://github.com/x/y-src", html, "the source link is not even in the markup")
+        self.assertIn("data-source-pending", html)
+        self.assertIn("revealed once the task is paid", html)
+        login(self.client, self.b)
+        html = self.client.get(self.url()).content.decode()
+        self.assertNotIn("data-source-link", html)
+        self.assertNotIn("data-source-pending", html, "no hint for a stranger")
+        self.assertNotIn("https://github.com/x/y-src", html)
+        self.client.logout()
+        html = self.client.get(self.url()).content.decode()
+        self.assertNotIn("https://github.com/x/y-src", html, "anonymous")
+        self.assertIn(f'data-delivery-hash="{GIT_SHA}"', html, "the fingerprint is public")
+        login(self.client, self.a)
+        html = self.client.get(self.url()).content.decode()
+        self.assertIn('data-source-link>https://github.com/x/y-src', html, "the assignee always sees it")
+        services.validate(self.t1, self.company, 5)
+        services.mark_paid(self.t1)
+        login(self.client, self.company)
+        html = self.client.get(self.url()).content.decode()
+        self.assertIn("data-source-link", html)
+        self.assertIn("https://github.com/x/y-src", html)
+        self.assertNotIn("data-source-pending", html)
 
     def test_company_sees_the_rating_form_when_delivered(self):
         services.apply(self.t1, self.a, "", [])
@@ -841,6 +958,22 @@ class DeliverValidateEndpointTests(BaseProjectTest):
         self.assertEqual(r.json()["status"], "delivered")
         r = self.post_json(self.client, url, {"delivery_link": "https://github.com/x/y/pull/2"})
         self.assertEqual((r.status_code, r.json()["error"]), (409, "wrong_state"))
+
+    def test_deliver_endpoint_fingerprint_and_source(self):
+        url = reverse("projects:task_deliver", args=[self.t1.pk])
+        login(self.client, self.a)
+        r = self.post_json(self.client, url, {"delivery_link": "https://x.y", "delivery_hash": "not-a-hash"})
+        self.assertEqual((r.status_code, r.json()["error"]), (400, "invalid"))
+        self.assertIn("40-character", r.json()["message"])
+        r = self.post_json(self.client, url, {"delivery_link": "https://x.y", "source_link": "nope"})
+        self.assertEqual((r.status_code, r.json()["error"]), (400, "invalid"))
+        self.assertEqual(Task.objects.get(pk=self.t1.pk).status, Task.Status.TAKEN, "nothing written")
+        r = self.post_json(
+            self.client, url, {"delivery_link": "https://x.y", "delivery_hash": SHA256.upper(), "source_link": "https://src.x.y"}
+        )
+        self.assertEqual(r.status_code, 200, r.content)
+        task = Task.objects.get(pk=self.t1.pk)
+        self.assertEqual((task.status, task.delivery_hash, task.source_link), ("delivered", SHA256, "https://src.x.y"))
 
     def test_validate_endpoint_saves_the_rating_and_returns_the_payment_step(self):
         url = reverse("projects:task_validate", args=[self.t1.pk])

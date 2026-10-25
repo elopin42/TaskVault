@@ -47,7 +47,7 @@ TaskVault/
 make              # = make all: venv + .env + migrate + check + e2e (screenshots in data/e2e-shots/), then runserver
 make verify       # the same checks, without starting the server
 make dev          # venv + pip install + .env from .env.example + migrate + runserver 0.0.0.0:8000
-make test         # manage.py check + makemigrations --check + test (229 tests)
+make test         # manage.py check + makemigrations --check + test (245 tests)
 make lint         # ruff check .
 make css          # npm ci + tailwind build  (commit static/css/tailwind.css!)
 make css-check    # rebuild and fail when the committed tailwind.css is stale (= CI tailwind-in-sync)
@@ -220,15 +220,21 @@ choose      company    —                          open → taken         (proj
 deploy      company    (none|created) → deployed  taken                TW deployer → contract_id, deploy_tx_hash
 fund        company    deployed → funded          taken                TW fund-escrow → fund_tx_hash, funded_at;
                                                                        project draft → funded when every assigned task holds funds
-deliver     freelance  funded → delivered         taken → delivered    TW change-milestone-status (delivery link = evidence);
-                                                                       confirm calls projects.services.deliver(link)
+                                                                       (choose sends a funded project back to draft)
+deliver     freelance  funded → delivered         taken → delivered    TW change-milestone-status, newEvidence =
+                                                                       build_evidence(link, hash): "sha256:<64hex> <link>" /
+                                                                       "git:<40hex> <link>" / "<link>", ≤ 280 chars → deliver_tx_hash,
+                                                                       delivered_at, delivery_note; confirm calls
+                                                                       projects.services.deliver(link, hash, source_link)
 validate    company    —                          delivered (+Rating)  (projects) saves the Rating, answers `next` = approve
 approve     company    delivered → approved       delivered            TW approve-milestone → approve_tx_hash
 release     company    approved → released        delivered → paid     TW release-funds → release_tx_hash, released_at;
                                                                        confirm calls projects.services.mark_paid(task)
 
 DIRECT mode (fallback: one `payment` op; "funded" and "approved" do not exist)
-deliver     freelance  created → delivered        taken → delivered    NO transaction: projects.services.deliver(link)
+deliver     freelance  created → delivered        taken → delivered    NO transaction: projects.services.deliver(link, hash,
+                                                                       source_link); delivery_note = build_evidence(link, hash)
+                                                                       (database only — nothing on chain)
 validate    company    —                          delivered (+Rating)  (projects) saves the Rating, answers `next` = direct_pay
 direct_pay  company    created|delivered → paid   delivered → paid     Django builds the payment XDR, Freighter signs,
                                                                        Django checks it (source/destination/amount/asset)

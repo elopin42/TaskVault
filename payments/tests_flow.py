@@ -8,13 +8,14 @@ from unittest.mock import Mock, patch
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from stellar_sdk import Keypair, TransactionEnvelope
 
 from accounts.models import WalletUser
 from payments import stellar
 from payments import trustless_work as tw
 from payments.models import Escrow
-from payments.services import PENDING_MESSAGE, PaymentError, next_action, project_funding, stepper
+from payments.services import EVIDENCE_MAX, PENDING_MESSAGE, PaymentError, build_evidence, next_action, project_funding, stepper
 from projects import services as projects
 from projects.models import Application, Project, Rating, Task
 
@@ -24,6 +25,9 @@ PLATFORM = Keypair.random().public_key
 CONTRACT = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
 TESTNET = "Test SDF Network ; September 2015"
 LINK = "https://github.com/studio-nova/booking/pull/1"
+SOURCE = "https://github.com/studio-nova/booking/archive/v1.zip"
+GIT_SHA = "a" * 39 + "b"
+SHA256 = "0123456789abcdef" * 4
 
 
 # --- fixtures ----------------------------------------------------------------------------
@@ -253,20 +257,26 @@ class EscrowHappyPathTests(BasePayTest):
             with self.assertRaises(projects.ProjectError):  # … but a chosen task can no longer be deleted
                 projects.delete_task(self.task, self.company)
 
-            # 3. freelance delivers: TW milestone change + projects.services.deliver(link)
+            # 3. freelance delivers: TW milestone change + projects.services.deliver(link, hash, source)
             login(self.client, self.freelance)
-            _, sent = self.run_step("deliver", self.freelance_kp, {"delivery_link": LINK})
+            deliver_body = {"delivery_link": LINK, "delivery_hash": SHA256.upper(), "source_link": SOURCE}
+            prep, sent = self.run_step("deliver", self.freelance_kp, deliver_body)
             self.assertTrue(sent["ok"], sent)
+            # prepare hands the cleaned fields back so the send body carries them (lowbid-pay.js merges `extra`)
+            self.assertEqual(prep["extra"], {"delivery_link": LINK, "delivery_hash": SHA256, "source_link": SOURCE})
             esc = self.escrow()
             self.assertEqual(esc.status, Escrow.Status.DELIVERED)
-            self.assertEqual(esc.delivery_note, LINK)
+            self.assertEqual(esc.delivery_note, f"sha256:{SHA256} {LINK}")
+            self.assertEqual(esc.delivery_note, build_evidence(LINK, SHA256))
             self.assertIsNotNone(esc.delivered_at)
             task = Task.objects.get(pk=self.task.pk)
             self.assertEqual((task.status, task.delivery_link), ("delivered", LINK))
+            self.assertEqual((task.delivery_hash, task.source_link), (SHA256, SOURCE))
             self.assertIsNotNone(task.delivered_at)
             body = router.last(tw.PATH_CHANGE_MILESTONE)
             self.assertEqual(body["serviceProvider"], self.freelance.stellar_address)
-            self.assertEqual(body["newEvidence"], LINK)
+            self.assertEqual(body["newEvidence"], build_evidence(LINK, SHA256), "R32: the evidence sent on chain")
+            self.assertNotIn(SOURCE, body["newEvidence"], "the full deliverable never goes on chain")
             self.assertEqual(body["milestoneIndex"], "0")
             self.assertEqual(sent["next"]["step"], "validate")
             self.assertFalse(sent["next"]["mine"])
@@ -455,6 +465,32 @@ class EscrowGuardTests(BasePayTest):
             self.assertEqual(resp["error"], "invalid")
         self.assertEqual(router.count(tw.PATH_CHANGE_MILESTONE), 0)
         self.assertEqual(self.task_status(), "taken")
+
+    def test_deliver_with_a_bad_fingerprint_is_invalid_before_anything_is_signed(self):
+        router = TWRouter(self.unsigned)
+        with patch("payments.trustless_work.requests.post", side_effect=router):
+            login(self.client, self.company)
+            self.run_step("deploy", self.company_kp)
+            self.run_step("fund", self.company_kp)
+            login(self.client, self.freelance)
+            resp = self.prepare("deliver", {"delivery_link": LINK, "delivery_hash": "abc"}).json()
+            self.assertEqual((resp["ok"], resp["error"]), (False, "invalid"))
+            resp = self.prepare("deliver", {"delivery_link": LINK, "source_link": "ftp://x"}).json()
+            self.assertEqual((resp["ok"], resp["error"]), (False, "invalid"))
+            self.assertEqual(router.count(tw.PATH_CHANGE_MILESTONE), 0, "no XDR built for an invalid delivery")
+            # the send half validates again (the hash came back tampered in the body)
+            prep = self.prepare("deliver", {"delivery_link": LINK, "delivery_hash": GIT_SHA}).json()
+            self.assertEqual(prep["extra"]["delivery_hash"], GIT_SHA)
+            sent = self.send("deliver", sign(prep["xdr"], self.freelance_kp), {"delivery_link": LINK, "delivery_hash": "zz"}).json()
+            self.assertEqual((sent["ok"], sent["error"]), (False, "invalid"))
+            self.assertEqual(router.count(tw.PATH_SEND), 2, "deploy + fund only: nothing submitted")
+            self.assertEqual(self.task_status(), "taken")
+            # a git SHA gives a `git:` evidence
+            sent = self.send("deliver", sign(prep["xdr"], self.freelance_kp), {"delivery_link": LINK, "delivery_hash": GIT_SHA}).json()
+            self.assertTrue(sent["ok"], sent)
+            self.assertEqual(router.last(tw.PATH_CHANGE_MILESTONE)["newEvidence"], f"git:{GIT_SHA} {LINK}")
+            self.assertEqual(self.escrow().delivery_note, f"git:{GIT_SHA} {LINK}")
+            self.assertEqual(Task.objects.get(pk=self.task.pk).delivery_hash, GIT_SHA)
 
     def test_wrong_order_release_before_funded(self):
         router = TWRouter(self.unsigned)
@@ -692,6 +728,30 @@ class DirectModeTests(BasePayTest):
         self.assertEqual(resp["error"], "invalid")
         self.assertEqual(self.task_status(), "taken")
         self.assertFalse(Escrow.objects.filter(task=self.task, status=Escrow.Status.DELIVERED).exists())
+
+    def test_fingerprint_and_source_are_stored_in_the_database_only(self):
+        login(self.client, self.freelance)
+        resp = self.prepare("deliver", {"delivery_link": LINK, "delivery_hash": "nope"}).json()
+        self.assertEqual((resp["ok"], resp["error"]), (False, "invalid"))
+        self.assertEqual(self.task_status(), "taken")
+        with patch("payments.trustless_work.requests.post") as tw_post:
+            resp = self.prepare("deliver", {"delivery_link": LINK, "delivery_hash": GIT_SHA.upper(), "source_link": SOURCE}).json()
+        tw_post.assert_not_called()
+        self.assertTrue(resp["ok"], resp)
+        esc = self.escrow()
+        self.assertEqual((esc.status, esc.deliver_tx_hash), (Escrow.Status.DELIVERED, ""))
+        self.assertEqual(esc.delivery_note, build_evidence(LINK, GIT_SHA))
+        task = Task.objects.get(pk=self.task.pk)
+        self.assertEqual((task.delivery_hash, task.source_link), (GIT_SHA, SOURCE))
+        # the panel: fingerprint shown as database-only, the source hidden from the company until paid
+        login(self.client, self.company)
+        html = self.detail().content.decode()
+        self.assertIn(f'data-delivery-hash="{GIT_SHA}"', html)
+        self.assertIn("data-hash-db-only", html)
+        self.assertIn("direct mode: no transaction", html)
+        self.assertNotIn("data-source-link", html)
+        self.assertNotIn(SOURCE, html)
+        self.assertIn("data-source-pending", html)
 
     def test_direct_pay_needs_delivery_and_rating(self):
         login(self.client, self.company)
@@ -959,6 +1019,26 @@ class TrustlineTests(BasePayTest):
 # =============================== panel / pages / dashboard ==================================
 
 
+class BuildEvidenceTests(TestCase):
+    """R32: `sha256:<64hex> <link>` / `git:<40hex> <link>` / `<link>`, cut at EVIDENCE_MAX."""
+
+    def test_formats(self):
+        self.assertEqual(build_evidence(LINK, ""), LINK)
+        self.assertEqual(build_evidence(LINK), LINK)
+        self.assertEqual(build_evidence(LINK, None), LINK)
+        self.assertEqual(build_evidence(LINK, GIT_SHA), f"git:{GIT_SHA} {LINK}")
+        self.assertEqual(build_evidence(LINK, SHA256), f"sha256:{SHA256} {LINK}")
+        self.assertEqual(build_evidence(LINK, SHA256.upper()), f"sha256:{SHA256} {LINK}", "lowercased")
+
+    def test_truncation_keeps_the_fingerprint(self):
+        long_link = "https://x.y/" + "p" * 400
+        evidence = build_evidence(long_link, SHA256)
+        self.assertEqual(len(evidence), EVIDENCE_MAX)
+        self.assertTrue(evidence.startswith(f"sha256:{SHA256} https://x.y/"))
+        self.assertEqual(len(build_evidence(long_link, "")), EVIDENCE_MAX)
+        self.assertEqual(build_evidence(long_link, ""), long_link[:EVIDENCE_MAX])
+
+
 @override_settings(**ESCROW_SETTINGS)
 class PanelTests(BasePayTest):
     def test_anonymous_panel_is_read_only(self):
@@ -1003,6 +1083,46 @@ class PanelTests(BasePayTest):
         html = self.detail().content.decode()
         self.assertIn("Waiting for the freelancer", html)
         self.assertNotIn('data-pay-step="deliver"', html)
+
+    def test_delivery_proof_rows_in_escrow_mode(self):
+        """The fingerprint, its on-chain record (deliver tx + time) and the two-step source link."""
+        with patch("payments.trustless_work.requests.post", side_effect=TWRouter(self.unsigned)):
+            login(self.client, self.company)
+            self.run_step("deploy", self.company_kp)
+            self.run_step("fund", self.company_kp)
+            login(self.client, self.freelance)
+            self.run_step("deliver", self.freelance_kp, {"delivery_link": LINK, "delivery_hash": SHA256, "source_link": SOURCE})
+        esc = self.escrow()
+        html = self.detail().content.decode()  # the freelance: sees everything
+        self.assertIn("data-delivery-proof", html)
+        self.assertIn(f'data-delivery-hash="{SHA256}" title="SHA-256"', html)
+        self.assertIn(f'data-copy="{SHA256}"', html)
+        self.assertIn(f"/tx/{esc.deliver_tx_hash}", html)
+        self.assertIn("in the delivery declaration", html)
+        self.assertIn(timezone.localtime(esc.delivered_at).strftime("%b %-d, %Y %H:%M"), html, "the date is the transaction's time")
+        self.assertIn(f'data-source-link>{SOURCE[:45]}', html)
+        self.assertNotIn("data-hash-db-only", html)
+        login(self.client, self.company)
+        html = self.detail().content.decode()
+        self.assertIn(f'data-delivery-hash="{SHA256}"', html)
+        self.assertNotIn("data-source-link", html)
+        self.assertNotIn(SOURCE, html)
+        self.assertIn("data-source-pending", html)
+        self.client.logout()
+        html = self.detail().content.decode()
+        self.assertNotIn(SOURCE, html)
+        self.assertNotIn("data-source-pending", html)
+        self.assertIn(">private<", html)
+
+    def test_panel_without_fingerprint_says_so(self):
+        login(self.client, self.freelance)
+        with override_settings(**DIRECT_SETTINGS):
+            self.prepare("deliver", {"delivery_link": LINK})
+            html = self.detail().content.decode()
+        self.assertIn("data-delivery-proof", html)
+        self.assertIn("none declared", html)
+        self.assertNotIn("data-delivery-hash", html)
+        self.assertNotIn("Full deliverable", html)
 
     def test_company_sees_the_rating_form_then_the_resume_button(self):
         with patch("payments.trustless_work.requests.post", side_effect=TWRouter(self.unsigned)):

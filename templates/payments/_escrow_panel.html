@@ -3,11 +3,13 @@
 Rendered by the `escrow_panel` inclusion tag (payments/templatetags/payments_extras.py), used as
 {% escrow_panel task wallet %} in projects/task_detail.html for every non-open task. Context: task, project,
 escrow (may be None), mode, is_direct, status, steps, action (next_action(): a payment step or "validate"),
-role (company|freelance|other|anonymous), is_party, rated, amount, payee, payer, links, last_error,
-pending_hash, asset_code, asset_native, validate_url, trustline_url.
+role (company|freelance|other|anonymous), is_party, rated, amount, payee, payer, links (each with its `at` time),
+last_error, pending_hash, asset_code, asset_native, validate_url, trustline_url, and the two-step delivery:
+delivery_hash, hash_kind, deliver_tx_hash, deliver_tx_url, delivered_at, source_visible (this viewer may see
+task.source_link), source_pending (the company, before payment).
 DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-url] · [data-pay-error] ·
-#deliver-panel #deliver-link [data-deliver] · #validate-panel form[data-validate] [data-rate] [data-validate-submit] ·
-[data-pay-trustline] · [data-usdc-balance].
+#deliver-panel #deliver-link #deliver-hash #deliver-source [data-deliver] · [data-delivery-hash] · [data-source-link] ·
+#validate-panel form[data-validate] [data-rate] [data-validate-submit] · [data-pay-trustline] · [data-usdc-balance].
 {% endcomment %}
 <section class="glass-card ui-receipt-card" id="escrow-panel" data-task="{{ task.pk }}" data-status="{{ task.status }}" data-escrow-status="{{ status }}" data-mode="{{ mode }}">
   <a id="paiement" class="block -mt-20 pt-20 pointer-events-none" aria-hidden="true"></a>
@@ -39,9 +41,46 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
       <dd><span class="ui-num ui-balance" data-usdc-balance="{{ payee }}" data-watch title="Read from Horizon every 5 s">…</span></dd>
       {% for l in links %}
         <dt>{{ l.label }}</dt>
-        <dd><a href="{{ l.url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ l.value }}">{{ l.value|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a></dd>
+        <dd><a href="{{ l.url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ l.value }}">{{ l.value|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% if l.at %} <span class="ui-meta whitespace-nowrap" title="Time of the transaction">{{ l.at|date:"M j, Y H:i" }}</span>{% endif %}</dd>
       {% endfor %}
     </dl>
+
+    {% if task.delivery_link %}
+    {# Delivery proof: the fingerprint (on chain inside the milestone evidence in escrow mode) and the two-step link #}
+    <dl class="ui-receipt-rows" data-delivery-proof>
+      <dt>Fingerprint</dt>
+      <dd class="flex items-center justify-end gap-1.5 min-w-0">
+        {% if delivery_hash %}
+          <code class="font-mono text-xs break-all" data-delivery-hash="{{ delivery_hash }}" title="{{ hash_kind }}">{{ delivery_hash }}</code>
+          <button type="button" class="ui-copy-btn shrink-0" data-copy="{{ delivery_hash }}" title="Copy the fingerprint" aria-label="Copy the delivery fingerprint"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
+        {% else %}
+          <span class="ui-meta">none declared</span>
+        {% endif %}
+      </dd>
+      {% if delivery_hash %}
+        <dt>Recorded</dt>
+        <dd>
+          {% if deliver_tx_hash %}
+            <a href="{{ deliver_tx_url }}" target="_blank" rel="noopener" class="ui-link" title="{{ deliver_tx_hash }}">on Stellar, in the delivery declaration <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% if delivered_at %} <span class="ui-meta whitespace-nowrap">{{ delivered_at|date:"M j, Y H:i" }}</span>{% endif %}
+          {% else %}
+            <span class="ui-meta" data-hash-db-only>{{ hash_kind }} · database only{% if is_direct %} (direct mode: no transaction){% endif %}</span>
+          {% endif %}
+        </dd>
+      {% endif %}
+      {% if task.source_link %}
+        <dt>Full deliverable</dt>
+        <dd>
+          {% if source_visible %}
+            <a href="{{ task.source_link }}" target="_blank" rel="noopener noreferrer" class="ui-link break-all" data-source-link>{{ task.source_link|truncatechars:48 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>
+          {% elif source_pending %}
+            <span class="ui-meta" data-source-pending><i class="fa-solid fa-lock text-[10px]" aria-hidden="true"></i> revealed once the task is paid</span>
+          {% else %}
+            <span class="ui-meta">private</span>
+          {% endif %}
+        </dd>
+      {% endif %}
+    </dl>
+    {% endif %}
   </div>
 
   <div class="ui-receipt-body">
@@ -96,9 +135,19 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
         <p class="text-sm mb-3"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> You've been chosen: submit the link to your delivery.</p>
         <form id="deliver-form" class="ui-form-grid" data-pay-form novalidate onsubmit="return false">
           <div class="ui-field ui-field-wide">
-            <label for="deliver-link" class="ui-label">Delivery link</label>
+            <label for="deliver-link" class="ui-label">Delivery link <span class="normal-case font-normal">(demo, preview, PR)</span></label>
             <input id="deliver-link" name="delivery_link" class="ui-input" type="url" inputmode="url" maxlength="500" required placeholder="https://github.com/…/pull/42" autocomplete="off">
             <span class="ui-help">{{ action.hint }}</span>
+          </div>
+          <div class="ui-field ui-field-wide">
+            <label for="deliver-hash" class="ui-label">Fingerprint <span class="normal-case font-normal">(optional)</span></label>
+            <input id="deliver-hash" name="delivery_hash" class="ui-input font-mono" type="text" inputmode="text" maxlength="64" pattern="[0-9a-fA-F]{40}|[0-9a-fA-F]{64}" placeholder="40-char git SHA or 64-char SHA-256" autocomplete="off" spellcheck="false">
+            <span class="ui-help">{% if is_direct %}Recorded with the delivery (database only in direct mode){% else %}Recorded on Stellar inside the milestone evidence{% endif %} — the company can check later that the revealed work is the one you declared.</span>
+          </div>
+          <div class="ui-field ui-field-wide">
+            <label for="deliver-source" class="ui-label">Full deliverable <span class="normal-case font-normal">(optional)</span></label>
+            <input id="deliver-source" name="source_link" class="ui-input" type="url" inputmode="url" maxlength="500" placeholder="https://github.com/…/archive/v1.zip" autocomplete="off">
+            <span class="ui-help">Repository, archive… — revealed to the company once the task is paid.</span>
           </div>
           <div class="ui-field-wide">
             <p class="ui-error" data-pay-error hidden></p>

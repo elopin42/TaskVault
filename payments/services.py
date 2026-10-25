@@ -20,15 +20,20 @@ State table — Escrow.status (payments) and Task.status (projects):
     fund        company    deployed → funded          taken                TW fund-escrow → fund_tx_hash, funded_at;
                                                                            project draft → funded when every assigned task holds funds
                                                                            (choose sends a funded project back to draft)
-    deliver     freelance  funded → delivered         taken → delivered    TW change-milestone-status (delivery link = evidence);
-                                                                           confirm calls projects.services.deliver(link)
+    deliver     freelance  funded → delivered         taken → delivered    TW change-milestone-status, newEvidence =
+                                                                           build_evidence(link, hash): "sha256:<64hex> <link>" /
+                                                                           "git:<40hex> <link>" / "<link>", ≤ 280 chars → deliver_tx_hash,
+                                                                           delivered_at, delivery_note; confirm calls
+                                                                           projects.services.deliver(link, hash, source_link)
     validate    company    —                          delivered (+Rating)  (projects) saves the Rating, answers `next` = approve
     approve     company    delivered → approved       delivered            TW approve-milestone → approve_tx_hash
     release     company    approved → released        delivered → paid     TW release-funds → release_tx_hash, released_at;
                                                                            confirm calls projects.services.mark_paid(task)
 
     DIRECT mode (fallback: one `payment` op; "funded" and "approved" do not exist)
-    deliver     freelance  created → delivered        taken → delivered    NO transaction: projects.services.deliver(link)
+    deliver     freelance  created → delivered        taken → delivered    NO transaction: projects.services.deliver(link, hash,
+                                                                           source_link); delivery_note = build_evidence(link, hash)
+                                                                           (database only — nothing on chain)
     validate    company    —                          delivered (+Rating)  (projects) saves the Rating, answers `next` = direct_pay
     direct_pay  company    created|delivered → paid   delivered → paid     Django builds the payment XDR, Freighter signs,
                                                                            Django checks it (source/destination/amount/asset)
@@ -525,6 +530,33 @@ def _delivery_link(data: dict | None) -> str:
     return str((data or {}).get("delivery_link") or (data or {}).get("evidence") or "").strip()
 
 
+def _delivery_fields(data: dict | None) -> tuple[str, str, str]:
+    """(delivery_link, delivery_hash, source_link) from a prepare / send body, cleaned by the projects
+    helpers (ProjectError → PaymentError with the same code)."""
+    data = data or {}
+    try:
+        link = projects.clean_link(_delivery_link(data))
+        fingerprint = projects.clean_hash(data.get("delivery_hash"))
+        source = projects.clean_source_link(data.get("source_link"))
+    except projects.ProjectError as exc:
+        raise _project_error(exc) from None
+    return link, fingerprint, source
+
+
+def build_evidence(link: str, delivery_hash: str = "") -> str:
+    """The milestone evidence sent to Trustless Work (and kept in Escrow.delivery_note):
+    `sha256:<64hex> <link>` or `git:<40hex> <link>` when a fingerprint was given, else `<link>`;
+    cut at EVIDENCE_MAX. The fingerprint comes first so a truncation never eats it."""
+    fingerprint = (delivery_hash or "").strip().lower()
+    if len(fingerprint) == 64:
+        evidence = f"sha256:{fingerprint} {link}"
+    elif len(fingerprint) == 40:
+        evidence = f"git:{fingerprint} {link}"
+    else:
+        evidence = link or ""
+    return evidence[:EVIDENCE_MAX]
+
+
 def _project_error(exc: projects.ProjectError) -> PaymentError:
     return PaymentError(exc.code, exc.message)
 
@@ -542,29 +574,30 @@ def check_db_deliver(task: Task) -> None:
 
 
 def prepare_deliver(task: Task, wallet, data: dict | None = None) -> dict:
-    """Escrow mode: TW change-milestone-status XDR (freelance signs), the delivery link as evidence.
-    Direct mode: no transaction — projects.services.deliver records the link right here."""
-    link = _delivery_link(data)
+    """Escrow mode: TW change-milestone-status XDR (freelance signs), `build_evidence(link, hash)`
+    as evidence; the cleaned fields come back in `extra` so the send body carries them.
+    Direct mode: no transaction — projects.services.deliver records everything right here."""
     with transaction.atomic():
         escrow, entry = _gate(task, wallet, "deliver")
-        try:
-            if entry.get("no_tx"):
-                projects.deliver(task, wallet, link)
-                escrow.status = S.DELIVERED
-                escrow.delivered_at = timezone.now()
-                escrow.delivery_note = link[:EVIDENCE_MAX]
-                escrow.last_error = ""
-                escrow.save(update_fields=["status", "delivered_at", "delivery_note", "last_error", "updated_at"])
-                _log_confirm(task, "deliver", wallet, None, " (direct, no tx)")
-                return _prepared(None, message="Delivery declared. The company validates, rates and pays.")
-            link = projects.clean_link(link)
-        except projects.ProjectError as exc:
-            raise _project_error(exc) from None
-    env = tw.change_milestone_status(
-        contract_id=escrow.contract_id, evidence=link[:EVIDENCE_MAX], service_provider=escrow.payee_address
-    )
+        link, fingerprint, source = _delivery_fields(data)
+        evidence = build_evidence(link, fingerprint)
+        if entry.get("no_tx"):
+            try:
+                projects.deliver(task, wallet, link, delivery_hash=fingerprint, source_link=source)
+            except projects.ProjectError as exc:
+                raise _project_error(exc) from None
+            escrow.status = S.DELIVERED
+            escrow.delivered_at = timezone.now()
+            escrow.delivery_note = evidence
+            escrow.last_error = ""
+            escrow.save(update_fields=["status", "delivered_at", "delivery_note", "last_error", "updated_at"])
+            _log_confirm(task, "deliver", wallet, None, " (direct, no tx)")
+            return _prepared(None, message="Delivery declared. The company validates, rates and pays.")
+    env = tw.change_milestone_status(contract_id=escrow.contract_id, evidence=evidence, service_provider=escrow.payee_address)
     try:
-        return _prepared(_unsigned_xdr(env), extra={"delivery_link": link})
+        return _prepared(
+            _unsigned_xdr(env), extra={"delivery_link": link, "delivery_hash": fingerprint, "source_link": source}
+        )
     except PaymentError as exc:
         _record_error(escrow, exc.message)
         raise
@@ -576,19 +609,16 @@ def confirm_deliver(task: Task, wallet, signed_xdr: str, data: dict | None = Non
         escrow, tx_hash, done = _begin(task, wallet, "deliver", signed_xdr)
         if done:
             return done
-        try:
-            link = projects.clean_link(_delivery_link(data))
-        except projects.ProjectError as exc:
-            raise _project_error(exc) from None
+        link, fingerprint, source = _delivery_fields(data)
         tx_hash, _ = _tw_send(task, escrow, "deliver", signed_xdr)
         try:
-            projects.deliver(task, wallet, link, on_chain=True)
+            projects.deliver(task, wallet, link, delivery_hash=fingerprint, source_link=source, on_chain=True)
         except projects.ProjectError as exc:
             raise _project_error(exc) from None
         escrow.deliver_tx_hash = tx_hash
         escrow.status = S.DELIVERED
         escrow.delivered_at = timezone.now()
-        escrow.delivery_note = link[:EVIDENCE_MAX]
+        escrow.delivery_note = build_evidence(link, fingerprint)
         escrow.last_error = ""
         escrow.save(update_fields=["deliver_tx_hash", "status", "delivered_at", "delivery_note", "last_error", "updated_at"])
     _log_confirm(task, "deliver", wallet, tx_hash)

@@ -131,7 +131,7 @@
     var copy = ev.target.closest("[data-copy]");
     if (copy && navigator.clipboard) {
       navigator.clipboard.writeText(copy.getAttribute("data-copy")).then(function () {
-        Lowbid.toast("Address copied to the clipboard.", "success");
+        Lowbid.toast("Copied to the clipboard.", "success");
       }, function () {
         Lowbid.toast("Could not copy.", "error");
       });

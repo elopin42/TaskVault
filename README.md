@@ -78,14 +78,14 @@ Maximum 100, stored with one decimal and refreshed after every rating and every 
 Prerequisites: **Python 3.13** (3.14 works too, auto-detected), **Node 22+** (Tailwind build and the Playwright e2e, both run by a bare `make`; `make dev` needs Python only), the **Freighter** browser extension set to **TESTNET** with a funded account.
 
 ```bash
-make        # installs everything (venv, npm, Chromium), creates .env, migrates, runs lint + 229 tests + Tailwind-in-sync + e2e, then starts the server
+make        # installs everything (venv, npm, Chromium), creates .env, migrates, runs lint + 245 tests + Tailwind-in-sync + e2e, then starts the server
 # open http://localhost:8000
 make seed   # optional: demo data (3 wallets, a project at the pitch state, a draft project)
 ```
 
 `.env` is read once at startup: after any change (API key, `LOWBID_PAYMENT_MODE`, asset, demo wallets…) stop the server and run `make run` again. Without `TRUSTLESS_WORK_API_KEY` the app runs in direct-payment mode.
 
-Tests: `make test` (229 Django tests: rules, scoring, payment flow in both modes, network mocked) and `make e2e` (Playwright, the full task-board scenario in a real browser with a simulated Freighter and a fake Horizon, on a throwaway SQLite; screenshots land in `docs/screenshots/`; the e2e run by a bare `make` / `make verify` writes them to `data/e2e-shots/` instead). `make check` = lint + tests + Tailwind-in-sync (run it before every commit).
+Tests: `make test` (245 Django tests: rules, scoring, payment flow in both modes, network mocked) and `make e2e` (Playwright, the full task-board scenario in a real browser with a simulated Freighter and a fake Horizon, on a throwaway SQLite; screenshots land in `docs/screenshots/`; the e2e run by a bare `make` / `make verify` writes them to `data/e2e-shots/` instead). `make check` = lint + tests + Tailwind-in-sync (run it before every commit).
 
 ## Where Stellar lives in the code
 

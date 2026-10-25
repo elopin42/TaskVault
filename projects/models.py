@@ -127,7 +127,14 @@ class Task(models.Model):
     assigned_to = models.ForeignKey(
         "accounts.WalletUser", on_delete=models.PROTECT, null=True, blank=True, related_name="assigned_tasks"
     )
+    # The demo / preview link (required at delivery); shown to everyone once delivered.
     delivery_link = models.CharField(max_length=500, blank=True)
+    # Fingerprint of the deliverable: "" or lowercase hex, 40 chars (git commit) or 64 chars (SHA-256).
+    # In escrow mode it goes on chain inside the milestone evidence (payments.services.build_evidence).
+    delivery_hash = models.CharField(max_length=64, blank=True, default="")
+    # The full deliverable (repository, archive…): the assignee always sees it, the company only once paid
+    # (projects.services.source_visible).
+    source_link = models.CharField(max_length=500, blank=True, default="")
     delivered_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
     position = models.PositiveSmallIntegerField(default=0)

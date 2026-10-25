@@ -298,6 +298,7 @@ def task_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "my_application": my_app,
             "can_apply": wallet is not None and not is_company and task.is_open and my_app is None,
             "is_assignee": task.is_assignee(wallet),
+            "source_visible": services.source_visible(task, wallet),
             "rating": rating,
             "pay_action": payments.next_action(task, wallet),
             "pay_mode": payments.effective_mode(payments.get_escrow(task)),
@@ -494,7 +495,13 @@ def task_deliver(request: HttpRequest, pk: int) -> JsonResponse:
     task = get_object_or_404(Task.objects.select_related("project"), pk=pk)
     data = _json_body(request)
     try:
-        task = services.deliver(task, get_wallet(request), delivery_link=data.get("delivery_link"))
+        task = services.deliver(
+            task,
+            get_wallet(request),
+            delivery_link=data.get("delivery_link"),
+            delivery_hash=data.get("delivery_hash") or "",
+            source_link=data.get("source_link") or "",
+        )
     except ProjectError as e:
         return _error_response(e)
     return JsonResponse({"ok": True, "status": task.status, "message": "Delivery submitted. The company validates and rates."})

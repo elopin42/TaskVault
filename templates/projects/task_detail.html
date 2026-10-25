@@ -48,6 +48,16 @@
     <section class="ui-panel" id="delivery-panel" style="border-color: var(--icon-accent)">
       <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> Delivery</h2><p class="ui-panel-sub">declared {% if task.delivered_at %}on {{ task.delivered_at|date:"M j, Y H:i" }}{% endif %} by {{ task.assigned_to.display_name|default:task.assigned_to.short_address }}</p></div></div>
       <a href="{{ task.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-delivery-link><i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i> {{ task.delivery_link }}</a>
+      {% if task.delivery_hash %}
+        <p class="ui-meta mt-3 flex flex-wrap items-center gap-1.5"><i class="fa-solid fa-fingerprint text-[10px]" aria-hidden="true"></i> Fingerprint <code class="font-mono text-xs break-all" data-delivery-hash="{{ task.delivery_hash }}">{{ task.delivery_hash }}</code> <button type="button" class="ui-copy-btn shrink-0" data-copy="{{ task.delivery_hash }}" title="Copy the fingerprint" aria-label="Copy the delivery fingerprint"><i class="fa-regular fa-copy" aria-hidden="true"></i></button></p>
+      {% endif %}
+      {% if task.source_link %}
+        {% if source_visible %}
+          <p class="mt-3 text-sm"><i class="fa-solid fa-box-archive text-[10px]" style="color: var(--icon-accent)" aria-hidden="true"></i> Full deliverable: <a href="{{ task.source_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-source-link>{{ task.source_link }}</a></p>
+        {% elif viewer_is_company %}
+          <div class="ui-alert ui-alert-info mt-3" data-source-pending><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Full deliverable revealed once the task is paid{% if task.delivery_hash %} — the fingerprint above lets you check it is the same work{% endif %}.</span></div>
+        {% endif %}
+      {% endif %}
       {% if rating %}
         <div class="ui-alert ui-alert-ok mt-4" data-rating="{{ rating.note }}"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Validated and rated <strong class="text-strong">{{ rating.note }}/5</strong>{% if rating.comment %} — "{{ rating.comment }}"{% endif %}{% if task.status == 'paid' %} · {{ task.price|usdc:asset_code }} paid out to the freelancer.{% endif %}</span></div>
       {% endif %}

@@ -33,6 +33,8 @@ const { installFakeFreighter } = require("./fake-freighter");
 const { startFakeHorizon } = require("./fake-horizon");
 
 const BASE = (process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
+const DELIVERY_HASH = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"; // a 40-hex git commit id (Phase 1 fingerprint)
+const SOURCE_LINK = "https://github.com/studio-nova/booking/archive/v1.zip";
 const HORIZON_PORT = Number(process.env.E2E_HORIZON_PORT || 0);
 let horizon = null; // the fake Horizon handle (fund / balanceOf / submitted)
 const PASSPHRASE = "Test SDF Network ; September 2015";
@@ -400,11 +402,21 @@ async function main() {
       await err.waitFor();
       assert(/http/.test(await err.innerText()), `link validation message mentions http, got "${await err.innerText()}"`);
       assert(!(await pa.locator("[data-deliver]").isDisabled()), "deliver button re-enabled after a refusal");
+      // Phase 1 (anti-scam): a wrong fingerprint is refused server-side and shown in the panel
       await pa.fill("#deliver-link", "https://github.com/studio-nova/booking/pull/1");
+      await pa.fill("#deliver-hash", "not-a-hash");
+      await pa.click("[data-deliver]");
+      await acceptConfirm(pa, "deliver (bad hash)");
+      await pa.locator("#deliver-panel [data-pay-error]:not([hidden])", { hasText: /40-character/ }).waitFor();
+      assert(!(await pa.locator("[data-deliver]").isDisabled()), "deliver button re-enabled after a hash refusal");
+      await pa.fill("#deliver-hash", DELIVERY_HASH.toUpperCase());
+      await pa.fill("#deliver-source", SOURCE_LINK);
       await pa.click("[data-deliver]");
       await acceptConfirm(pa, "deliver");
       await pa.locator("[data-status-badge]", { hasText: "Delivered" }).waitFor({ timeout: 15000 });
       assert(await pa.locator("[data-delivery-link]").count() === 1, "delivery link displayed");
+      assert((await pa.locator("[data-delivery-hash]").first().getAttribute("data-delivery-hash")) === DELIVERY_HASH, "fingerprint displayed, lowercased");
+      assert(await pa.locator("[data-source-link]").count() >= 1, "the assignee sees the full deliverable");
       assert(await pa.locator("#deliver-panel").count() === 0, "deliver form is gone");
       assert((await pa.locator("#escrow-panel").getAttribute("data-escrow-status")) === "delivered", "escrow row is delivered");
       await shot(pa, "05-tache-livree-freelance");
@@ -418,6 +430,11 @@ async function main() {
       await cp.goto(`/taches/${taskIds[0]}/`);
       await cp.locator("#validate-panel").waitFor();
       assert(await cp.locator("[data-validate] [data-rate]").count() === 5, "5 star radios");
+      // two-step delivery: the company sees the fingerprint, not the full deliverable, before payment
+      assert(await cp.locator("[data-delivery-hash]").count() >= 1, "company sees the fingerprint");
+      assert(await cp.locator("[data-source-link]").count() === 0, "company does NOT see the full deliverable before payment");
+      assert(!(await cp.content()).includes(SOURCE_LINK), "the source link is not in the company's markup");
+      assert(await cp.locator("[data-source-pending]").count() >= 1, "hint: revealed once paid");
       const refused = await api(pa, `/taches/${taskIds[0]}/valider/`, { note: 5 });
       assert(refused.status === 403 && refused.json.error === "forbidden", `freelance cannot validate (got ${refused.status})`);
       const bad = await api(cp, `/taches/${taskIds[0]}/valider/`, { note: 7 });
@@ -476,6 +493,10 @@ async function main() {
       assert(horizon.balanceOf(fa.address) === 300 && horizon.balanceOf(company.address) === 700, "ledger moved 300 USDC");
       assert(await cp.locator('[data-rating="5"]').count() === 1, "rating 5 displayed");
       assert(/Task paid/i.test(await cp.locator("main").innerText()), "Task paid panel");
+      const sources = cp.locator("[data-source-link]");
+      assert(await sources.count() >= 1, "the company sees the full deliverable once paid");
+      assert((await sources.first().getAttribute("href")) === SOURCE_LINK, "full deliverable link points to the source");
+      assert(await cp.locator("[data-source-pending]").count() === 0, "no more 'revealed once paid' hint");
       const link = cp.locator(`#escrow-panel [data-explorer-links] a[href*="stellar.expert/explorer/testnet/tx/${payment.hash}"]`);
       assert(await link.count() === 1, "the payment hash links to stellar.expert");
       assert(await cp.locator("#escrow-panel [data-last-error]").count() === 0, "last_error cleared");

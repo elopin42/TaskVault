@@ -9,6 +9,12 @@ Payment hooks (wired to the payments app, imported lazily to avoid an import cyc
     Freighter signatures (approve → release, or direct_pay);
   - `_before_deliver(task)` a DB-only delivery is refused in escrow mode (the freelance signs the
     milestone change instead; payments calls `deliver(..., on_chain=True)` after that).
+
+Two-step delivery: `Task.delivery_link` (demo / preview, required) is public once delivered;
+`Task.source_link` (the full deliverable, optional) is revealed to the company only once the task is
+`paid` (`source_visible`); `Task.delivery_hash` (git commit SHA or SHA-256, optional) is the
+fingerprint that lets the company check later that the revealed work is the one declared — in
+escrow mode payments puts it on chain inside the milestone evidence.
 """
 
 import logging
@@ -28,6 +34,7 @@ MAX_TAGS = 3
 MAX_TAG_LENGTH = 24
 MAX_MESSAGE = 280
 MAX_LINK = 500
+HASH_LENGTHS = (40, 64)  # git commit SHA-1 / SHA-256, lowercase hex
 USDC_PLACES = 7
 TITLE_MIN = 3
 TITLE_MAX = 120
@@ -37,7 +44,9 @@ __all__ = [
     "add_task",
     "apply",
     "choose",
+    "clean_hash",
     "clean_link",
+    "clean_source_link",
     "clean_tags",
     "company_history",
     "create_project",
@@ -48,6 +57,7 @@ __all__ = [
     "parse_note",
     "parse_price",
     "rescore",
+    "source_visible",
     "validate",
 ]
 
@@ -127,16 +137,42 @@ def _clean_title(raw, label: str) -> str:
     return title
 
 
+def _check_url(link: str, label: str) -> str:
+    if len(link) > MAX_LINK:
+        raise ProjectError("invalid", f"The {label} is at most {MAX_LINK} characters.")
+    if not re.match(r"^https?://", link, re.IGNORECASE):
+        raise ProjectError("invalid", f"The {label} must start with http:// or https://.")
+    return link
+
+
 def clean_link(raw) -> str:
     """The delivery link: required, ≤500 chars, http(s)://. Raises ProjectError('invalid')."""
     link = str(raw or "").strip()
     if not link:
         raise ProjectError("invalid", "Enter the delivery link (PR, demo, repository…).")
-    if len(link) > MAX_LINK:
-        raise ProjectError("invalid", f"The link is at most {MAX_LINK} characters.")
-    if not re.match(r"^https?://", link, re.IGNORECASE):
-        raise ProjectError("invalid", "The link must start with http:// or https://.")
-    return link
+    return _check_url(link, "link")
+
+
+def clean_source_link(raw) -> str:
+    """The full deliverable link: optional ("" allowed), else the same rules as `clean_link`."""
+    link = str(raw or "").strip()
+    if not link:
+        return ""
+    return _check_url(link, "full deliverable link")
+
+
+def clean_hash(raw) -> str:
+    """The delivery fingerprint: "" allowed; else a git commit SHA (40 hex) or a SHA-256 (64 hex),
+    normalised to lowercase. Raises ProjectError('invalid') otherwise."""
+    value = str(raw or "").strip().lower()
+    if not value:
+        return ""
+    if len(value) not in HASH_LENGTHS or not re.fullmatch(r"[0-9a-f]+", value):
+        raise ProjectError(
+            "invalid",
+            "The fingerprint must be a 40-character git commit SHA or a 64-character SHA-256 (hex).",
+        )
+    return value
 
 
 def _require_company(project: Project, wallet) -> None:
@@ -240,11 +276,23 @@ def choose(task: Task, application: Application, company) -> Task:
     return locked
 
 
-def deliver(task: Task, freelancer, delivery_link, *, on_chain: bool = False) -> Task:
-    """Only the assignee, only a `taken` task; the link must be http(s), ≤500 chars.
-    `on_chain=True` is payments confirming the Trustless Work milestone change; otherwise the
-    `_before_deliver` hook refuses a DB-only delivery in escrow mode."""
+def deliver(
+    task: Task,
+    freelancer,
+    delivery_link,
+    *,
+    delivery_hash="",
+    source_link="",
+    on_chain: bool = False,
+) -> Task:
+    """Only the assignee, only a `taken` task; the link must be http(s), ≤500 chars. The optional
+    `delivery_hash` (git SHA / SHA-256, see `clean_hash`) and `source_link` (full deliverable, see
+    `clean_source_link`) are stored with it. `on_chain=True` is payments confirming the Trustless
+    Work milestone change; otherwise the `_before_deliver` hook refuses a DB-only delivery in
+    escrow mode."""
     link = clean_link(delivery_link)
+    fingerprint = clean_hash(delivery_hash)
+    source = clean_source_link(source_link)
     with transaction.atomic():
         locked = _locked_task(task)
         if freelancer is None or locked.assigned_to_id != freelancer.pk:
@@ -255,10 +303,29 @@ def deliver(task: Task, freelancer, delivery_link, *, on_chain: bool = False) ->
             _before_deliver(locked)
         locked.status = Task.Status.DELIVERED
         locked.delivery_link = link
+        locked.delivery_hash = fingerprint
+        locked.source_link = source
         locked.delivered_at = timezone.now()
-        locked.save(update_fields=["status", "delivery_link", "delivered_at", "updated_at"])
-    logger.info("task delivered task=%s freelancer=%s", locked.pk, freelancer.pk)
+        locked.save(
+            update_fields=["status", "delivery_link", "delivery_hash", "source_link", "delivered_at", "updated_at"]
+        )
+    logger.info(
+        "task delivered task=%s freelancer=%s hash=%s source=%s",
+        locked.pk, freelancer.pk, fingerprint or "-", "yes" if source else "no",
+    )
     return locked
+
+
+def source_visible(task: Task, wallet) -> bool:
+    """Who may see `Task.source_link` (the full deliverable): the assignee always, the company only
+    once the task is `paid`, anyone else never. Views pass the result to the templates."""
+    if wallet is None:
+        return False
+    if task.assigned_to_id is not None and task.assigned_to_id == wallet.pk:
+        return True
+    if task.project.company_id == wallet.pk:
+        return task.status == Task.Status.PAID
+    return False
 
 
 # --- company: validate + rate → payment hook ----------------------------------------------------

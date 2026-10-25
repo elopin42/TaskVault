@@ -85,9 +85,23 @@ REFUND_EVIDENCE = "deposit refund"
 # --- configuration -----------------------------------------------------------------------------
 
 
-def deposits_active() -> bool:
-    """Deposits apply only when enabled AND payments run through Trustless Work escrows."""
+def deposits_enabled() -> bool:
+    """`LOWBID_DEPOSIT_ENABLED` and payments run through Trustless Work escrows (keys not checked)."""
     return bool(getattr(settings, "LOWBID_DEPOSIT_ENABLED", False)) and stellar.payment_mode() == "escrow"
+
+
+def keys_configured() -> bool:
+    """The three server-side settings the deposit needs are set (validity is payments/checks.py's job)."""
+    return all(
+        (getattr(settings, name, "") or "").strip()
+        for name in ("LOWBID_PLATFORM_SECRET", "LOWBID_DEPOSIT_RESOLVER_SECRET", "LOWBID_GUARANTEE_FUND_ADDRESS")
+    )
+
+
+def deposits_active() -> bool:
+    """Deposits apply only when enabled, in escrow mode AND with the server keys configured: an escrow
+    setup without the keys simply has no deposit (payments/checks.py warns about it at startup)."""
+    return deposits_enabled() and keys_configured()
 
 
 def _setting_decimal(name: str, default: str) -> Decimal:

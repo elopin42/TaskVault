@@ -7,7 +7,7 @@ from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.core.checks import Error
+from django.core.checks import CheckMessage, Error
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -503,23 +503,23 @@ class ForfeitChainTests(DepositBase):
         post_patch, get_patch = self.patched()
         with post_patch, get_patch, patch("payments.stellar.has_trustline", return_value=True):
             row = deposits.forfeit(self.row)
-        self.assertEqual(self.tw.built(), [tw.PATH_DISPUTE, tw.PATH_RESOLVE_DISPUTE])
+        self.assertEqual(self.tw.built(), [tw.PATH_DISPUTE, tw.PATH_RESOLVE])
         dispute = self.tw.calls[0][1]
         self.assertEqual(dispute, {"contractId": CONTRACT, "signer": PLATFORM_KP.public_key})
         balance_read = next(params for p, params in self.tw.calls if p == tw.PATH_GET_ESCROW)
         self.assertEqual(balance_read.get("validateOnChain"), "true")
-        resolve = next(body for p, body in self.tw.calls if p == tw.PATH_RESOLVE_DISPUTE)
+        resolve = next(body for p, body in self.tw.calls if p == tw.PATH_RESOLVE)
         self.assertEqual(resolve["disputeResolver"], RESOLVER_KP.public_key)
         self.assertEqual(resolve["distributions"], [{"address": FUND, "amount": 4.985}])
         self.assertTrue(signed_by(self.tw.signed_for(tw.PATH_DISPUTE), PLATFORM_KP))
         self.assertFalse(signed_by(self.tw.signed_for(tw.PATH_DISPUTE), RESOLVER_KP))
-        self.assertTrue(signed_by(self.tw.signed_for(tw.PATH_RESOLVE_DISPUTE), RESOLVER_KP))
-        self.assertFalse(signed_by(self.tw.signed_for(tw.PATH_RESOLVE_DISPUTE), PLATFORM_KP))
+        self.assertTrue(signed_by(self.tw.signed_for(tw.PATH_RESOLVE), RESOLVER_KP))
+        self.assertFalse(signed_by(self.tw.signed_for(tw.PATH_RESOLVE), PLATFORM_KP))
         self.assertEqual(row.status, "forfeited")
         self.assertTrue(row.dispute_tx_hash and row.resolve_tx_hash)
 
     def test_resolve_failure_keeps_the_dispute_hash(self):
-        self.tw.fail.add(tw.PATH_RESOLVE_DISPUTE)
+        self.tw.fail.add(tw.PATH_RESOLVE)
         post_patch, get_patch = self.patched()
         with post_patch, get_patch, patch("payments.stellar.has_trustline", return_value=True):
             row = deposits.forfeit(self.row)
@@ -763,7 +763,7 @@ class SystemCheckTests(TestCase):
         with override_settings(**{**DEPOSIT_SETTINGS, **overrides}):
             errors = check_deposit_keys()
         for e in errors:
-            self.assertIsInstance(e, Error)
+            self.assertIsInstance(e, CheckMessage)
             for secret in SECRETS:
                 self.assertNotIn(secret, e.msg)
         return [e.id for e in errors]
@@ -776,16 +776,16 @@ class SystemCheckTests(TestCase):
         self.assertEqual(self.ids(LOWBID_PAYMENT_MODE="direct", LOWBID_PLATFORM_SECRET=""), [])
 
     def test_platform_secret_errors(self):
-        self.assertEqual(self.ids(LOWBID_PLATFORM_SECRET=""), ["payments.E001"])
+        self.assertEqual(self.ids(LOWBID_PLATFORM_SECRET=""), ["payments.W001"])
         self.assertEqual(self.ids(LOWBID_PLATFORM_SECRET="Sbogus"), ["payments.E002"])
         self.assertEqual(self.ids(LOWBID_PLATFORM_ADDRESS=Keypair.random().public_key), ["payments.E003"])
 
     def test_resolver_secret_errors(self):
-        self.assertEqual(self.ids(LOWBID_DEPOSIT_RESOLVER_SECRET=""), ["payments.E004"])
+        self.assertEqual(self.ids(LOWBID_DEPOSIT_RESOLVER_SECRET=""), ["payments.W004"])
         self.assertEqual(self.ids(LOWBID_DEPOSIT_RESOLVER_SECRET="Sbogus"), ["payments.E005"])
         self.assertEqual(self.ids(LOWBID_DEPOSIT_RESOLVER_SECRET=PLATFORM_KP.secret), ["payments.E006"])
 
     def test_fund_address_errors(self):
-        self.assertEqual(self.ids(LOWBID_GUARANTEE_FUND_ADDRESS=""), ["payments.E007"])
+        self.assertEqual(self.ids(LOWBID_GUARANTEE_FUND_ADDRESS=""), ["payments.W007"])
         self.assertEqual(self.ids(LOWBID_GUARANTEE_FUND_ADDRESS="GBOGUS"), ["payments.E008"])
         self.assertEqual(self.ids(LOWBID_GUARANTEE_FUND_ADDRESS=PLATFORM_KP.public_key), ["payments.E009"])

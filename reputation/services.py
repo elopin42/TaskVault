@@ -39,7 +39,7 @@ from django.utils.dateparse import parse_datetime
 
 from accounts.signing import decode_signature, verify_signature
 from payments import stellar
-from payments.models import Escrow
+from payments.models import Escrow, ProjectDeposit
 from projects.models import Project, Task
 from projects.services import ProjectError, parse_note
 
@@ -167,9 +167,24 @@ def _disputes_lost(wallet) -> dict:
 
 
 def _deposits_forfeited(wallet) -> dict:
-    """Project deposits this company forfeited, with their on-chain links."""
-    # merge hook (step 4): will read payments.ProjectDeposit rows in status `forfeited`.
-    return {"count": 0, "links": []}
+    """Publication deposits this company forfeited to the guarantee fund (`payments.ProjectDeposit`
+    in status `forfeited`, resolve-dispute tx confirmed). Links point at the resolution tx."""
+    rows = (
+        ProjectDeposit.objects.filter(project__company=wallet, status=ProjectDeposit.Status.FORFEITED)
+        .exclude(resolve_tx_hash="")
+        .select_related("project")
+        .order_by("settled_at", "pk")
+    )
+    links = [
+        {
+            "label": f"project #{d.project_id} · {d.amount.normalize():f} forfeited",
+            "url": stellar.explorer_tx_url(d.resolve_tx_hash),
+            "tx": d.resolve_tx_hash,
+            "project_id": d.project_id,
+        }
+        for d in rows
+    ]
+    return {"count": len(links), "links": links}
 
 
 def payer_profile(wallet) -> dict:

@@ -16,7 +16,7 @@ from django.utils import timezone
 from stellar_sdk import Keypair
 
 from accounts.models import WalletUser
-from payments.models import Escrow
+from payments.models import Escrow, ProjectDeposit
 from projects import services as projects
 from projects.models import Application, Dispute, Task
 
@@ -197,6 +197,25 @@ class PayerProfileTests(TestCase):
         self.assertEqual(profile["disputes_lost"]["count"], 1)
         self.assertEqual(profile["disputes_lost"]["links"][0]["task_id"], lost.pk)
         self.assertIn("/tx/", profile["disputes_lost"]["links"][0]["url"])
+        self.assertFalse(profile["reliable_payer"])
+
+    def test_deposits_forfeited_from_resolved_deposits(self):
+        lost = make_task(self.company, self.f1)
+        common = dict(
+            amount=Decimal("5"), covered_budget=Decimal("100"), payer_address=self.company.stellar_address,
+            platform_address="G" + "A" * 55, resolver_address="G" + "B" * 55, fund_address="G" + "C" * 55,
+        )
+        ProjectDeposit.objects.create(
+            project=lost.project, status=ProjectDeposit.Status.FORFEITED, resolve_tx_hash=_tx_hash(),
+            dispute_tx_hash=_tx_hash(), settled_at=timezone.now(), **common,
+        )
+        other = make_task(self.company, self.f2)
+        ProjectDeposit.objects.create(project=other.project, status=ProjectDeposit.Status.FUNDED, **common)
+        for _ in range(3):
+            paid_task(self.company, self.f3)
+        profile = services.payer_profile(self.company)
+        self.assertEqual(profile["deposits_forfeited"]["count"], 1)
+        self.assertEqual(profile["deposits_forfeited"]["links"][0]["project_id"], lost.project_id)
         self.assertFalse(profile["reliable_payer"])
 
     def test_distinct_partners(self):

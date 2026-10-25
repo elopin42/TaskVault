@@ -339,7 +339,7 @@ Roles at deploy: signer + receiver = company; approver = serviceProvider = relea
 key (`LOWBID_PLATFORM_SECRET`, whose public key must be `LOWBID_PLATFORM_ADDRESS`); disputeResolver = the deposit resolver
 key (`LOWBID_DEPOSIT_RESOLVER_SECRET`) — a second key because the contract refuses a dispute opened by the resolver.
 `payments/signer.py` builds the keypairs on demand and signs (`TransactionEnvelope.from_xdr(...).sign(kp)`); only public
-addresses are logged. `payments/checks.py` (Tags.security) fails `manage.py check` on a missing / invalid / overlapping key
+addresses are logged. `payments/checks.py` (Tags.security) warns on a missing key (deposits then stay off) and fails `manage.py check` on an invalid / overlapping key
 or fund address while deposits are active.
 
 Verdict (`deposit_verdict(project, now)`, pure, PRODUCT R65): closed → refund; cancelled without application → refund;

@@ -6,7 +6,7 @@ failing at the first settlement. The messages name the setting, never its value.
 """
 
 from django.conf import settings
-from django.core.checks import Error, Tags, register
+from django.core.checks import CheckMessage, Error, Tags, Warning, register
 from stellar_sdk import Keypair, StrKey
 
 
@@ -25,12 +25,15 @@ def _valid_address(address: str) -> bool:
 
 
 @register(Tags.security)
-def check_deposit_keys(app_configs=None, **kwargs) -> list[Error]:
-    from payments.deposits import deposits_active  # lazy: the app registry must be ready
+def check_deposit_keys(app_configs=None, **kwargs) -> list[CheckMessage]:
+    """Publication deposits enabled in escrow mode: a MISSING key is a Warning (deposits stay off,
+    `deposits_active()` is False), an invalid / mismatched / overlapping key is an Error. Messages never
+    carry a secret."""
+    from payments.deposits import deposits_enabled  # lazy: the app registry must be ready
 
-    if not deposits_active():
+    if not deposits_enabled():
         return []
-    errors: list[Error] = []
+    errors: list[CheckMessage] = []
     platform_address = (getattr(settings, "LOWBID_PLATFORM_ADDRESS", "") or "").strip()
     platform_secret = (getattr(settings, "LOWBID_PLATFORM_SECRET", "") or "").strip()
     resolver_secret = (getattr(settings, "LOWBID_DEPOSIT_RESOLVER_SECRET", "") or "").strip()
@@ -38,7 +41,7 @@ def check_deposit_keys(app_configs=None, **kwargs) -> list[Error]:
 
     platform_public = _public_key(platform_secret) if platform_secret else None
     if not platform_secret:
-        errors.append(Error("LOWBID_PLATFORM_SECRET is not set while publication deposits are active.", id="payments.E001"))
+        errors.append(Warning("LOWBID_PLATFORM_SECRET is not set: publication deposits stay disabled.", id="payments.W001"))
     elif platform_public is None:
         errors.append(Error("LOWBID_PLATFORM_SECRET is not a valid Stellar secret key.", id="payments.E002"))
     elif platform_public != platform_address:
@@ -49,7 +52,7 @@ def check_deposit_keys(app_configs=None, **kwargs) -> list[Error]:
     resolver_public = _public_key(resolver_secret) if resolver_secret else None
     if not resolver_secret:
         errors.append(
-            Error("LOWBID_DEPOSIT_RESOLVER_SECRET is not set while publication deposits are active.", id="payments.E004")
+            Warning("LOWBID_DEPOSIT_RESOLVER_SECRET is not set: publication deposits stay disabled.", id="payments.W004")
         )
     elif resolver_public is None:
         errors.append(Error("LOWBID_DEPOSIT_RESOLVER_SECRET is not a valid Stellar secret key.", id="payments.E005"))
@@ -63,7 +66,7 @@ def check_deposit_keys(app_configs=None, **kwargs) -> list[Error]:
         )
 
     if not fund_address:
-        errors.append(Error("LOWBID_GUARANTEE_FUND_ADDRESS is not set while publication deposits are active.", id="payments.E007"))
+        errors.append(Warning("LOWBID_GUARANTEE_FUND_ADDRESS is not set: publication deposits stay disabled.", id="payments.W007"))
     elif not _valid_address(fund_address):
         errors.append(Error("LOWBID_GUARANTEE_FUND_ADDRESS is not a valid Stellar public key (G…).", id="payments.E008"))
     elif fund_address in (platform_address, platform_public):

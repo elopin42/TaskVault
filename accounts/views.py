@@ -1,6 +1,6 @@
 """Wallet login: challenge -> Freighter signMessage -> verify.
 
-POST /auth/challenge/  -> {"ok": true, "message": "Lowbid login <nonce> <ts>"}
+POST /auth/challenge/  -> {"ok": true, "message": "TaskVault login <nonce> <ts>"}
 POST /auth/verify/     <- {"address": "G…", "signature": "<base64>", "next": "/…"}
                        -> {"ok": true, "address": "G…", "next": "/…"}
 POST /auth/logout/     -> redirect to landing (JSON {"ok": true} for fetch callers)
@@ -46,7 +46,7 @@ def _error(message: str, status: int = 400) -> JsonResponse:
 def auth_challenge(request: HttpRequest) -> JsonResponse:
     nonce = secrets.token_hex(16)
     issued = int(time.time())
-    message = f"Lowbid login {nonce} {issued}"
+    message = f"TaskVault login {nonce} {issued}"
     request.session[SESSION_CHALLENGE_KEY] = {"nonce": nonce, "message": message, "ts": issued}
     return JsonResponse({"ok": True, "message": message, "expires_in": settings.WALLET_CHALLENGE_TTL_SECONDS})
 
@@ -57,12 +57,12 @@ def auth_verify(request: HttpRequest) -> JsonResponse:
     address = str(data.get("address", "")).strip().upper()
     signature_raw = str(data.get("signature", "")).strip()
 
-    challenge = request.session.get(SESSION_CHALLENGE_KEY) or {}
+    # Single use: any verify attempt consumes the challenge (the wallet JS asks a fresh one per login).
+    challenge = request.session.pop(SESSION_CHALLENGE_KEY, None) or {}
     message = challenge.get("message")
     if not message:
         return _error("no_challenge")
     if time.time() - int(challenge.get("ts", 0)) > settings.WALLET_CHALLENGE_TTL_SECONDS:
-        request.session.pop(SESSION_CHALLENGE_KEY, None)
         return _error("challenge_expired")
 
     if len(address) != 56 or not address.startswith("G"):

@@ -1,4 +1,4 @@
-# Lowbid — hackathon toolchain. A bare `make` (= `make all`) does everything hands-off: venv + deps,
+# TaskVault — hackathon toolchain. A bare `make` (= `make all`) does everything hands-off: venv + deps,
 # .env, migrations, lint, tests, tailwind in sync, Playwright e2e, THEN the dev server on :8000.
 # `make verify` is the same without the server (CI-like); `make dev` starts the server without the
 # checks; `make check` (lint + tests + tailwind in sync) is the pre-commit gate; `make seed` loads
@@ -76,7 +76,7 @@ verify: E2E_SHOTS_DIR := data/e2e-shots
 verify: venv env migrate check e2e
 	@echo ""
 	@echo "============================================================"
-	@echo " Lowbid: everything is green."
+	@echo " TaskVault: everything is green."
 	@echo "   python      : $(PY)"
 	@echo "   lint + tests: make check      (ok)"
 	@echo "   e2e         : make e2e        (ok, screenshots in $(E2E_SHOTS_DIR)/)"

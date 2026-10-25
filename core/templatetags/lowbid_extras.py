@@ -9,7 +9,7 @@ register = template.Library()
 
 @register.filter
 def underline_last(value) -> str:
-    """Wrap the LAST word of a title in <span class="ui-underline"> (the short amber underline of the
+    """Wrap the LAST word of a title in <span class="ui-underline"> (the short brand underline of the
     coutrio look): `{{ "My projects"|underline_last }}` → `My <span class="ui-underline">projects</span>`.
     The input is escaped first; an empty value stays empty."""
     s = escape(str(value or "").strip())

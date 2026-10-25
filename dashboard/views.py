@@ -15,7 +15,7 @@ from . import services
 
 logger = logging.getLogger(__name__)
 
-MAX_DISPLAY_NAME = 80
+MAX_DISPLAY_NAME = services.MAX_DISPLAY_NAME
 
 
 @wallet_required
@@ -45,11 +45,9 @@ def profile(request: HttpRequest, address: str) -> HttpResponse:
     is_me = viewer is not None and viewer.pk == wallet.pk
 
     if request.method == "POST":
-        if not is_me:
+        name = services.set_display_name(wallet, viewer, request.POST.get("display_name"))
+        if name is None:
             return HttpResponseForbidden("Only the wallet owner can edit this profile.")
-        name = (request.POST.get("display_name") or "").strip()[:MAX_DISPLAY_NAME]
-        wallet.display_name = name
-        wallet.save(update_fields=["display_name"])
         logger.info("profile renamed wallet=%s", wallet.pk)
         messages.success(request, "Display name updated." if name else "Display name cleared.")
         return redirect("dashboard:profile", address=wallet.stellar_address)

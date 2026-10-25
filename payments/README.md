@@ -7,9 +7,13 @@ validation (direct mode) for a `projects.Task`.
 - `services.py` — the flow: `prepare_<step>` / `confirm_<step>` per step, role + state gates,
   `next_action()`, `project_funding()`, the `on_task_validated` hook. **The state table for both
   modes is in its module docstring.**
-- `views.py` / `urls.py` — JSON endpoints under `/pay/` driven by `static/js/lowbid-pay.js`.
-- `trustless_work.py` — Trustless Work v1 REST client. `stellar.py` — asset, XDR builders / parser / Horizon.
+- `views.py` / `urls.py` — JSON endpoints under `/pay/` driven by `static/js/lowbid-pay.js`: `prepare/<task>/<step>/`,
+  `send/<task>/<step>/`, `trustline/prepare/` + `trustline/send/`, `project/<pk>/pending.json`; `/pay/<task>/` redirects
+  to the task page.
+- `trustless_work.py` — Trustless Work v1 REST client. `stellar.py` — asset, `payment_mode()`, XDR builders / parser,
+  Horizon (balances, trustlines, submit), stellar.expert links.
 - `templatetags/payments_extras.py` — `{% escrow_panel task wallet %}` → `templates/payments/_escrow_panel.html`.
 - Tests: `tests.py` (clients, offline) and `tests_flow.py` (HTTP flow, both modes, mocked network).
 
-Switch to the fallback: `LOWBID_PAYMENT_MODE=direct`. Full write-up: `docs/ARCHITECTURE.md` → Payments.
+Switch to the fallback: `LOWBID_PAYMENT_MODE=direct` + restart (empty = escrow when `TRUSTLESS_WORK_API_KEY` is set,
+else direct; a native-XLM asset always forces direct). Full write-up: `docs/ARCHITECTURE.md` → Payments.

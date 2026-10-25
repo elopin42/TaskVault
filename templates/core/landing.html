@@ -1,21 +1,25 @@
 {% extends "base.html" %}
 {% load static lowbid_extras %}
-{% block title %}Lowbid — the freelancer task board, paid in USDC on Stellar{% endblock %}
+{% block title %}TaskVault — the freelancer task board, paid in {{ asset_code }} on Stellar{% endblock %}
+{% block meta_description %}TaskVault — projects split into fixed-price tasks for freelancers, paid in {{ asset_code }} on Stellar.{% endblock %}
 
 {% block content %}
 {% comment %}
   The hero band is ONE scroll track (data-story): on the left the hero copy, then the four steps; on the
   right the CSS 3D « project cube », pinned, scrubbed by anime.js in lowbid-landing.js — closed in the
-  hero, it splits into tasks as the hero scrolls away (01), takes three offers per task and keeps the
-  chosen one (02), locks every task in Signal (03) and turns to its RELEASED face (04). The cube content
-  is a worked example (core.views.STORY_TASKS), not database rows.
+  hero, it splits into tasks as the hero scrolls away (01), takes three applications per task and keeps the
+  chosen one (02), locks every task in the Signal mint (03) and turns to its RELEASED face (04). The cube content
+  is a worked example (core.views.STORY_TASKS), not database rows. The on-chain copy follows
+  `payment_mode` (core.context_processors.site): escrow = Trustless Work deploy · fund, then deliver ·
+  approve · release; direct = one payment signed by the company at validation, no escrow.
 {% endcomment %}
+{% with escrow=payment_mode|default:"escrow" %}
 <div class="lb-hero-band theme-coffre lb-story" data-story>
   <div class="lb-story-grid" data-story-grid>
     <section class="lb-hero" data-story-hero>
-      <p class="lb-kicker">Stellar {{ STELLAR_NETWORK }} · Soroban · Trustless Work</p>
-      <h1 class="lb-hero-title">The price is fixed. The money is locked. The work gets paid.</h1>
-      <p class="lb-hero-sub">Fixed-price tasks, paid in {{ asset_code }} on Stellar as soon as they are validated.</p>
+      <p class="lb-kicker">Stellar {{ STELLAR_NETWORK }}{% if escrow == "escrow" %} · Soroban · Trustless Work{% else %} · direct payment{% endif %}</p>
+      <h1 class="lb-hero-title">{% if escrow == "escrow" %}The price is fixed. <span class="lb-hero-accent">The money is vaulted.</span> The work gets paid.{% else %}The price is fixed. <span class="lb-hero-accent">The delivery is validated.</span> The work gets paid.{% endif %}</h1>
+      <p class="lb-hero-sub">Fixed-price tasks, paid in {{ asset_code }} on Stellar once the company validates the delivery.</p>
       <div class="lb-hero-cta">
         {% if wallet_address %}
           <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary ui-btn-signal ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> New project</a>
@@ -40,32 +44,46 @@
     <div class="lb-story-flow">
       <div class="lb-story-intro">
         <h2 id="story-title" class="lb-section-title">One project. Everyone takes the part they want.</h2>
-        <p class="lb-story-sub">A company posts a project cut into fixed-price tasks. Freelancers pick the part they want and make their best offer. The one chosen for each task is paid in {{ asset_code }}, from funds locked before the work starts.</p>
+        <p class="lb-story-sub">A company posts a project cut into fixed-price tasks. Freelancers apply to the part they want with a message and their skills: the price is set by the company, nobody quotes one. The one chosen for each task is paid in {{ asset_code }}{% if escrow == "escrow" %}, from an escrow the company funds before the delivery{% else %}, straight from the company's wallet at validation{% endif %}.</p>
       </div>
       <ol class="lb-story-steps">
       <li class="lb-step" data-story-step>
         <div class="lb-step-head"><span>BLOCK 01</span><span>COMPANY</span></div>
         <h3 class="lb-step-title">Split</h3>
-        <p class="lb-step-desc">One project, cut into fixed-price tasks. Each task is a part anyone can take.</p>
+        <p class="lb-step-desc">One project, cut into fixed-price tasks. Any freelancer can apply to any open task.</p>
         <code class="lb-step-call">off-chain</code>
       </li>
       <li class="lb-step" data-story-step>
         <div class="lb-step-head"><span>BLOCK 02</span><span>FREELANCERS · COMPANY</span></div>
-        <h3 class="lb-step-title">Bid</h3>
-        <p class="lb-step-desc">Freelancers pick the part they want and make their offer: skills, pitch, track record. A score ranks them; the company chooses one per task.</p>
+        <h3 class="lb-step-title">Apply</h3>
+        <p class="lb-step-desc">Freelancers apply with a message and their skills, no price. A score out of 100 (paid history and ratings with this company, matching skills) is a hint; the company chooses one per task.</p>
         <code class="lb-step-call">off-chain</code>
       </li>
       <li class="lb-step is-signal" data-story-step>
-        <div class="lb-step-head"><span>BLOCK 03</span><span>SIGNATURE ×2</span></div>
+        {% if escrow == "escrow" %}
+        <div class="lb-step-head"><span>BLOCK 03</span><span>COMPANY · SIGNATURE ×2</span></div>
         <h3 class="lb-step-title">Lock</h3>
-        <p class="lb-step-desc">One escrow per task, funded before the work starts. The freelancer sees the money is there.</p>
+        <p class="lb-step-desc">Once a freelancer is chosen, the company deploys and funds one escrow for that task. Delivery opens only when the money is there, and the freelancer can see it.</p>
         <code class="lb-step-call">deploy · fund</code>
+        {% else %}
+        <div class="lb-step-head"><span>BLOCK 03</span><span>FREELANCER</span></div>
+        <h3 class="lb-step-title">Work</h3>
+        <p class="lb-step-desc">The chosen freelancer does the work at the fixed price. In direct mode no escrow is deployed: nothing moves on chain yet.</p>
+        <code class="lb-step-call">off-chain</code>
+        {% endif %}
       </li>
-      <li class="lb-step theme-coffre" data-story-step>
+      <li class="lb-step" data-story-step>
+        {% if escrow == "escrow" %}
         <div class="lb-step-head"><span>BLOCK 04</span><span>SIGNATURE ×3</span></div>
         <h3 class="lb-step-title">Deliver, release</h3>
-        <p class="lb-step-desc">The freelancer delivers, the company validates and rates, the funds go out. No invoice, no chasing.</p>
+        <p class="lb-step-desc">The freelancer signs the delivery link into the escrow, the company validates, rates it 1 to 5, then signs approve and release. No invoice, no chasing.</p>
         <code class="lb-step-call">deliver · approve · release</code>
+        {% else %}
+        <div class="lb-step-head"><span>BLOCK 04</span><span>COMPANY · SIGNATURE ×1</span></div>
+        <h3 class="lb-step-title">Deliver, pay</h3>
+        <p class="lb-step-desc">The freelancer posts the delivery link, the company validates, rates it 1 to 5 and signs one {{ asset_code }} payment. No invoice, no chasing.</p>
+        <code class="lb-step-call">payment</code>
+        {% endif %}
       </li>
     </ol>
     </div>
@@ -83,10 +101,10 @@
               <span class="lb-face-glow" data-face-glow></span>
             </div>
             <div class="lb-face is-right">
-              <span class="lb-face-release" data-face-release><i class="fa-solid fa-check" aria-hidden="true"></i> RELEASED · {{ t.price }} {{ asset_code }}</span>
-              <span class="lb-face-release-sub" data-face-release>deliver · approve · release</span>
+              <span class="lb-face-release" data-face-release><i class="fa-solid fa-check" aria-hidden="true"></i> {% if escrow == "escrow" %}RELEASED{% else %}PAID{% endif %} · {{ t.price }} {{ asset_code }}</span>
+              <span class="lb-face-release-sub" data-face-release>{% if escrow == "escrow" %}deliver · approve · release{% else %}validate · pay{% endif %}</span>
             </div>
-            <div class="lb-face is-back"><span class="lb-face-no">ESCROW · TRUSTLESS WORK</span></div>
+            <div class="lb-face is-back"><span class="lb-face-no">{% if escrow == "escrow" %}ESCROW · TRUSTLESS WORK{% else %}DIRECT · STELLAR{% endif %}</span></div>
             <div class="lb-face is-left"><span class="lb-face-no">0{{ forloop.counter }}</span></div>
             <div class="lb-face is-top"></div>
             <div class="lb-face is-bottom"></div>
@@ -105,6 +123,7 @@
     </div>
   </div>
 </div>
+{% endwith %}
 
 {% if tape %}
 {# Ledger tape: the latest real on-chain events, looped (the second copy is decorative) #}
@@ -132,7 +151,7 @@
 {% endif %}
 
 <section class="ui-kpi-band mt-12" aria-label="Key facts">
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Network fee</span><span class="ui-kpi-value">≈ 0.00001 XLM</span><span class="ui-kpi-hint ui-meta">per transaction</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Network fee</span><span class="ui-kpi-value">from 0.00001 XLM</span><span class="ui-kpi-hint ui-meta">base fee per operation, Soroban calls add a resource fee</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Finality</span><span class="ui-kpi-value">~5 s</span><span class="ui-kpi-hint ui-meta">one Stellar ledger</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Settlement</span><span class="ui-kpi-value">{{ asset_code }}</span><span class="ui-kpi-hint ui-meta">Stellar {{ STELLAR_NETWORK }}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Identity</span><span class="ui-kpi-value">SEP-53</span><span class="ui-kpi-hint ui-meta">Freighter signature, zero passwords</span></div>

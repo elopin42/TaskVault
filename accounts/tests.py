@@ -18,7 +18,7 @@ def b64(raw: bytes) -> str:
 class SigningHelperTests(TestCase):
     def setUp(self):
         self.kp = Keypair.random()
-        self.msg = "Lowbid login abc 123"
+        self.msg = "TaskVault login abc 123"
 
     def test_sep53_scheme(self):
         sig = self.kp.sign_message(self.msg)
@@ -55,7 +55,7 @@ class WalletAuthFlowTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertTrue(data["ok"])
-        self.assertTrue(data["message"].startswith("Lowbid login "))
+        self.assertTrue(data["message"].startswith("TaskVault login "))
         return data["message"]
 
     def _verify(self, address, signature, **extra):
@@ -106,6 +106,13 @@ class WalletAuthFlowTests(TestCase):
         self.assertNotIn("wallet_address", self.client.session)
         self.assertEqual(WalletUser.objects.count(), 0)
 
+    def test_challenge_is_single_use_even_after_a_failure(self):
+        message = self._challenge()
+        self._verify(self.kp.public_key, b64(Keypair.random().sign_message(message)))
+        resp = self._verify(self.kp.public_key, b64(self.kp.sign_message(message)))
+        self.assertEqual(resp.json()["error"], "no_challenge", "a rejected attempt burns the challenge")
+        self.assertEqual(WalletUser.objects.count(), 0)
+
     def test_garbage_signature_is_400(self):
         self._challenge()
         resp = self._verify(self.kp.public_key, "zzz")
@@ -119,7 +126,7 @@ class WalletAuthFlowTests(TestCase):
         self.assertEqual(resp.json()["error"], "invalid_address")
 
     def test_verify_without_challenge_is_400(self):
-        resp = self._verify(self.kp.public_key, b64(self.kp.sign_message("Lowbid login x 1")))
+        resp = self._verify(self.kp.public_key, b64(self.kp.sign_message("TaskVault login x 1")))
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.json()["error"], "no_challenge")
 

@@ -1,4 +1,4 @@
-/* Lowbid UI runtime (v2 component layer) — loaded on every page right after lowbid-base.js.
+/* TaskVault UI runtime (v2 component layer) — loaded on every page right after lowbid-base.js.
  *
  *   Lowbid.confirm({title, message, confirmLabel, cancelLabel, danger, icon}) -> Promise<boolean>
  *       Accessible replacement for window.confirm(), backed by <dialog id="lb-confirm"> (partials/modal.html).
@@ -86,7 +86,7 @@
     });
   };
 
-  /* ---------- identicon: a mirrored 5×5 pixel grid (blockies-like), Signal yellow + one hue from the address ---------- */
+  /* ---------- identicon: a mirrored 5×5 pixel grid (blockies-like), Signal mint + one hue from the address ---------- */
   Lowbid.identicon = function (address) {
     var s = String(address || ""), h = 2166136261;
     for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }

@@ -1,23 +1,26 @@
-# Lowbid — Architecture
+# TaskVault — Architecture
 
 Task board for freelancers on Stellar (Hack Meridian). Django 5.2 server-rendered pages, SQLite by default,
-a wallet (Freighter) as the only identity, USDC on testnet, one Trustless Work escrow per task.
+a wallet (Freighter) as the only identity, USDC on testnet (asset configurable), one Trustless Work escrow per task.
+The product is branded **TaskVault**; the code keeps the `lowbid` names (Django project `lowbid/`, `LOWBID_*` settings,
+`lowbid-*.css/js`, `window.Lowbid`).
 Deliberately hackathon-sized: no DRF, no Redis, no SPA, no background worker.
 
 ## Tree
 
 ```
-Lowbid/
+TaskVault/
 ├── manage.py
 ├── lowbid/                 # project: settings.py (env-driven), urls.py, wsgi.py
-├── core/                   # landing, /healthz/, error handlers, context processors, templatetags/lowbid_extras.py
+├── core/                   # landing (stats, ledger tape, 3D cube story), /healthz/, error handlers, context processors,
+│                           # templatetags/lowbid_extras.py
 ├── accounts/               # WalletUser + Freighter login (challenge / verify / logout), wallet_required, get_wallet
 ├── projects/               # Project / Task / Application / Rating, services (rules + payment hooks), scoring,
 │                           # forms, pages + JSON endpoints, management/commands/seed_demo.py         mounted at /
 ├── payments/               # Escrow (1-1 Task), services (prepare/confirm per step, both modes), trustless_work.py,
 │                           # stellar.py, JSON endpoints, templatetags/payments_extras.py              mounted at /pay/
 ├── dashboard/              # no models: signed-in home (/tableau-de-bord/) + public wallet profile (/profil/<addr>/),
-│                           # templates in dashboard/templates/dashboard/
+│                           # services.py (view-models + `set_display_name`), templates in dashboard/templates/dashboard/
 ├── templates/              # base.html, partials/{navbar,tabbar,toasts,modal,page_header}.html, core/landing.html,
 │   │                       # 400/403/404/500.html, payments/_escrow_panel.html
 │   ├── components/         # wallet, status_badge, tags, kpi, price, empty_state, pager, next_card, section_head
@@ -25,13 +28,13 @@ Lowbid/
 │                           # + _project_card, _task_row, _task_form, _candidates, _funding_panel, _board_card
 ├── static/
 │   ├── css/  lowbid-tokens.css  lowbid-components.css  tailwind.src.css  tailwind.css (BUILT, committed)
-│   ├── js/   lowbid-base.js  lowbid-ui.js  lowbid-wallet.js  lowbid-pay.js  lowbid-projects.js
+│   ├── js/   lowbid-base.js  lowbid-ui.js  lowbid-wallet.js  lowbid-pay.js  lowbid-projects.js  lowbid-landing.js
 │   ├── vendor/  fontawesome/  freighter-api.js (→ window.freighterApi)  stellar-sdk.min.js (→ window.StellarSdk)  anime.umd.min.js (→ window.anime, landing only)
 │   └── img/favicon.svg
 ├── tests/e2e/              # run.js (Playwright scenario), fake-freighter.js, fake-horizon.js
-├── data/                   # db.sqlite3 (gitignored), e2e.sqlite3 + e2e-server.log during make e2e
+├── data/                   # gitignored: db.sqlite3; e2e.sqlite3 + e2e-server.log (make e2e); e2e-shots/ (make / make verify)
 ├── docs/                   # PRODUCT, PITCH, STELLAR_NOTES, FRONTEND, HACKATHON_DAY, DEMO_RUNBOOK, this file, screenshots/
-├── CLAUDE.md               # project instructions for an AI assistant
+├── README.md  CLAUDE.md    # overview for the judges · project instructions for an AI assistant
 ├── requirements.txt  requirements-dev.txt  ruff.toml  Makefile  .env.example
 ├── package.json  tailwind.config.js        # npm run build:css / npm run vendor
 ├── Dockerfile  compose.yml                 # optional: django + postgres
@@ -41,17 +44,17 @@ Lowbid/
 ## Run it
 
 ```bash
-make              # = make all: venv + .env + migrate + check + e2e, then runserver — hands-off
+make              # = make all: venv + .env + migrate + check + e2e (screenshots in data/e2e-shots/), then runserver
 make verify       # the same checks, without starting the server
 make dev          # venv + pip install + .env from .env.example + migrate + runserver 0.0.0.0:8000
-make test         # manage.py check + makemigrations --check + test (223 tests)
+make test         # manage.py check + makemigrations --check + test (229 tests)
 make lint         # ruff check .
 make css          # npm ci + tailwind build  (commit static/css/tailwind.css!)
 make css-check    # rebuild and fail when the committed tailwind.css is stale (= CI tailwind-in-sync)
 make check        # lint + test + css-check — the pre-commit gate
 make seed         # python manage.py seed_demo --flush (3 wallets, the pitch-state project, a draft project)
 make vendor       # re-copy Font Awesome / freighter-api / stellar-sdk / anime.js from node_modules
-make e2e          # Playwright end-to-end (see E2E below); `make shots` is an alias
+make e2e          # Playwright end-to-end (see E2E below); `make shots` = the e2e writing to docs/screenshots/
 ```
 
 Settings come from `.env` (python-dotenv, read once at boot). `DJANGO_DEBUG=0` **requires** `DJANGO_SECRET_KEY`.
@@ -60,7 +63,7 @@ Set `DJANGO_DB_HOST` to switch from SQLite to PostgreSQL (`DJANGO_DB_NAME/USER/P
 
 ## E2E
 
-`make e2e` picks two free ports, boots `runserver` against a fresh `data/e2e.sqlite3` in **direct** payment mode
+`make e2e` picks two free ports, migrates and boots `runserver` against a fresh `data/e2e.sqlite3` in **direct** payment mode
 with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `run.js`), runs `node tests/e2e/run.js`
 (plain `playwright` library, Chromium) and kills the server.
 
@@ -69,15 +72,18 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
   signatures run end to end.
 - `fake-horizon.js` is a toy ledger: accounts exist once "friendbotted", `change_trust` adds a trustline, a `payment`
   needs a funded source, a trustline on the destination and enough balance; rejections use Horizon's real
-  `extras.result_codes`, so `payments.stellar` produces its usual French messages.
-- The scenario: the company creates the project and three tasks inline → A and B apply to T1 (a third freelance applies
-  through the API while the company's page polls) → the company chooses A → A delivers a link → the company validates
-  with 5 stars → the chained payment fails gracefully (company unknown on Horizon, French message, `last_error`
-  persisted) → the wallets are funded, A adds the USDC trustline from the panel, the company resumes « Payer le
-  freelance » → T1 « Payé » with its stellar.expert link and A's balance at 300 → A and B apply to T2 → A ranks first
-  with « Validé » + « Recommandé » (90.0 vs 20.0). Plus role refusals, the kanban, list filters, Mes projets,
-  dashboard, profile, mobile at 390×844 (no horizontal scroll, tap targets), theme toggle, logout and 404s.
-- Screenshots land in `docs/screenshots/` (`01-landing.png` … `15-financement-projet.png`, `mobile-*.png`). Any uncaught
+  `extras.result_codes`, so `payments.stellar` produces its usual (English) messages.
+- The scenario: login + `?next=` round trip → the company creates the project and three tasks inline (plus a second
+  project through the API) → A and B apply to T1 (a third freelance C applies through the API while the company's page
+  polls) → the company chooses A → A delivers a link (direct mode: no transaction) → the company validates with
+  5 stars → the chained payment fails gracefully (company unknown on Horizon: `stellar` error, `last_error` persisted)
+  → the wallets are funded, A adds the USDC trustline from the panel, the company resumes "Pay the freelancer" → T1
+  "Paid" with its stellar.expert link, A's balance at 300, the project "Funded" → A and B apply to T2 → A ranks first
+  with "Validated" + "Recommended" (90.0 vs 20.0). Plus role refusals, the kanban, list filters, My projects,
+  dashboard, profile, mobile at 390×844 (no horizontal scroll, tap targets), the dark-only theme (no toggle), logout
+  and 404s.
+- Screenshots land in `docs/screenshots/` (`01-landing.png` … `15-financement-projet.png`, `mobile-*.png`), or in
+  `E2E_SHOTS_DIR` (`make` / `make verify` use `data/e2e-shots/`). Any uncaught
   page error or unexpected `console.error` fails the run. The escrow steps are covered by `payments/tests_flow.py`
   (Trustless Work mocked), not by the e2e.
 
@@ -85,11 +91,11 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 
 | App | Owns | URLs |
 |-----|------|------|
-| `core` | landing (`core:landing`, live stats + latest projects), `GET /healthz/` (`core:healthz`), error handlers, context processors `site` (asset version, Stellar config, `asset_code` / `asset_issuer` / `asset_native` / `payment_mode`) and `nav_links`, template filters (`{% load lowbid_extras %}`) | `/`, `/healthz/` |
+| `core` | landing (`core:landing`: live stats, the 3 latest projects with an open task, a ledger tape of the latest stored tx hashes, the decorative 3D project cube story), `GET /healthz/` (`core:healthz`), error handlers, context processors `site` (asset version, Stellar config, `asset_code` / `asset_issuer` / `asset_native` / `payment_mode`) and `nav_links`, template filters (`{% load lowbid_extras %}`) | `/`, `/healthz/` |
 | `accounts` | `WalletUser(stellar_address, display_name, created_at, last_login_at)`, wallet auth, `wallet_required`, `get_wallet()`; context processor `wallet` (`wallet_address`, `wallet_user`) | `/auth/challenge/`, `/auth/verify/`, `/auth/logout/` |
 | `projects` | the task board: models, `services.py` (every rule + the payment hooks), `scoring.py`, pages + JSON endpoints, `seed_demo` | `/projets/…`, `/taches/…`, `/mes-projets/` |
 | `payments` | `Escrow` (1-1 `Task`), `services.py`, `trustless_work.py`, `stellar.py`, `{% escrow_panel task wallet %}` | `/pay/…` |
-| `dashboard` | no models. `home` (`@wallet_required`): to-do list built from `payments.services.next_action()` and the projects data, KPIs as company and as freelance, recent activity. `profile` (public): identicon, display name (POST by its owner), projects posted, tasks paid, ratings received | `/tableau-de-bord/`, `/profil/<address>/` |
+| `dashboard` | no models; `services.py` holds the view-models and `set_display_name` (the profile rename). `home` (`@wallet_required`): to-do list (`todo_items`, built from `payments.services.next_action()` and the projects data, `act` items first), KPIs as company and as freelance, recent activity. `profile` (public, 404 for an unknown wallet): identicon, display name (≤80, POST by its owner only, else 403), projects posted, tasks paid, earned, average rating, latest projects and tasks, ratings received | `/tableau-de-bord/`, `/profil/<address>/` |
 
 ### Routes
 
@@ -102,23 +108,25 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 | `GET /taches/<pk>/` | `task_detail` | `projects:task_detail` | public |
 | `GET /mes-projets/` | `my_projects` | `projects:my_projects` | wallet |
 | `POST /projets/<pk>/taches/ajouter/` | `task_add` → 201 `{ok, task, count, total, message}` | `projects:task_add` | wallet |
-| `POST /taches/<pk>/supprimer/` | `task_delete` | `projects:task_delete` | wallet |
+| `POST /taches/<pk>/supprimer/` | `task_delete` → `{ok, message, redirect}` | `projects:task_delete` | wallet |
 | `POST /taches/<pk>/postuler/` | `apply_create` → 201 `{ok, application{id, score, tags}, message}` | `projects:apply_create` | wallet |
-| `POST /taches/<pk>/choisir/<app_pk>/` | `task_choose` | `projects:task_choose` | wallet |
-| `POST /taches/<pk>/livrer/` | `task_deliver` (DB-only delivery, refused in escrow mode) | `projects:task_deliver` | wallet |
+| `POST /taches/<pk>/choisir/<app_pk>/` | `task_choose` → `{ok, status, assigned_to, message}` | `projects:task_choose` | wallet |
+| `POST /taches/<pk>/livrer/` | `task_deliver` → `{ok, status, message}` (DB-only delivery, refused in escrow mode) | `projects:task_deliver` | wallet |
 | `POST /taches/<pk>/valider/` | `task_validate` → `{ok, status, project_status, next, message}` | `projects:task_validate` | wallet |
-| `GET /taches/<pk>/candidats.json` | `task_candidates_json` → `{ok, status, count, fingerprint, candidates[], html}` | `projects:task_candidates_json` | public |
+| `GET /taches/<pk>/candidats.json` | `task_candidates_json` → `{ok, task, status, count, fingerprint, candidates[], html}` | `projects:task_candidates_json` | public |
 | `POST /pay/prepare/<task_pk>/<step>/` | `payments.views.prepare` | `payments:prepare` | wallet |
 | `POST /pay/send/<task_pk>/<step>/` | `payments.views.send` | `payments:send` | wallet |
 | `POST /pay/trustline/prepare/`, `POST /pay/trustline/send/` | trustline of the session wallet | `payments:trustline_prepare` / `_send` | wallet |
-| `GET /pay/project/<pk>/pending.json` | `project_pending` → the tasks « Financer le projet » chains | `payments:project_pending` | wallet (company) |
+| `GET /pay/project/<pk>/pending.json` | `project_pending` → `{ok, project, mode, total, funded, can_fund, hint, tasks[]}`: the tasks "Fund the project" chains | `payments:project_pending` | wallet (company) |
 | `GET /pay/<task_pk>/` | `task_pay` → 302 to the task page `#paiement` | `payments:task_pay` | public |
 | `GET /tableau-de-bord/`, `GET/POST /profil/<address>/` | `dashboard.views.home` / `profile` | `dashboard:home` / `dashboard:profile` | wallet / public |
 
 Projects refusals are 4xx `{ok:false, error, message}` (`ERROR_STATUS` in `projects/views.py`: 403 `forbidden`
-`own_task` `not_assigned`, 409 `wrong_state` `duplicate`, 400 `invalid` `bad_tags`). Payments refusals are HTTP 200
-`{ok:false, error, message}` so `Lowbid.api` resolves and the panel shows `message`. A `fetch` caller without a session
-gets 401 `{ok:false, error:"wallet_required"}`; a browser gets a 302 to `/?next=…`.
+`own_task` `not_assigned`, 409 `wrong_state` `duplicate`, 400 `invalid` `bad_tags`, any other code 400; an unknown
+project / task / application is a 404). Payments refusals are HTTP 200
+`{ok:false, error, message}` so `Lowbid.api` resolves and the panel shows `message`. A caller without a session that sends
+`X-Requested-With: fetch` or `Accept: application/json` gets 401 `{ok:false, error:"wallet_required"}`; a browser gets a
+302 to `/?next=…`.
 
 ## Data model
 
@@ -131,28 +139,32 @@ WalletUser ─┬─< Project (company, PROTECT) ──< Task (CASCADE) ──< 
 
 | Model | Fields that matter |
 |-------|--------------------|
-| `projects.Project` | `company` (FK WalletUser), `title` (≤120), `description`, `status` `draft`/`funded`/`closed`. `Project.objects.with_totals()` annotates `total` (Σ task prices), `tasks_total`, `paid_total`, `open_total` in one query; `progress_pct` = paid / tasks |
-| `projects.Task` | `project`, `title`, `description`, `price` `Decimal(18,7)`, `tags` (JSON list, ≤3), `status` `open`/`taken`/`delivered`/`paid`, `assigned_to`, `delivery_link` (≤500), `delivered_at`, `paid_at`, `position` (order in the project) |
-| `projects.Application` | `task`, `freelancer`, `message` (≤280), `tags`, `score` `Decimal(5,1)` (stored, refreshed by `services.rescore`), `status` `pending`/`chosen`/`rejected`; unique (`task`, `freelancer`); default ordering `-score, created_at` |
+| `accounts.WalletUser` | `stellar_address` (unique, 56), `display_name` (≤80), `created_at`, `last_login_at` |
+| `projects.Project` | `company` (FK WalletUser), `title` (≤120), `description`, `status` `draft`/`funded`/`closed`; default ordering `-created_at`. `Project.objects.with_totals()` annotates `total` (Σ task prices), `tasks_total`, `paid_total`, `open_total` in one query; `progress_pct` = paid / tasks |
+| `projects.Task` | `project`, `title`, `description`, `price` `Decimal(18,7)`, `tags` (JSON list, ≤3 enforced by `services.clean_tags`), `status` `open`/`taken`/`delivered`/`paid`, `assigned_to`, `delivery_link` (≤500), `delivered_at`, `paid_at`, `position` (1-based order in the project) |
+| `projects.Application` | `task`, `freelancer`, `message` (≤280), `tags`, `score` `Decimal(5,1)` (stored, refreshed by `services.rescore`), `status` `pending`/`chosen`/`rejected`; unique (`task`, `freelancer`); default ordering `-score, created_at, pk` |
 | `projects.Rating` | `task` (1-1), `company`, `freelancer`, `note` 1–5, `comment` (≤280) |
-| `payments.Escrow` | `task` (1-1, `related_name="escrow"`), `mode` `escrow`/`direct` (frozen at the first prepare), `amount` (= task price), `payer_address` (company), `payee_address` (freelance), `platform_address`, `contract_id`, `engagement_id` (`lowbid-task-<pk>`), `deploy/fund/deliver/approve/release/payment_tx_hash`, `status`, `delivery_note` (the evidence sent on chain, ≤280), `last_error`, `funded_at`, `delivered_at`, `released_at` |
+| `payments.Escrow` | `task` (1-1, `related_name="escrow"`), `mode` `escrow`/`direct` (frozen when the row is created), `amount` (= task price), `payer_address` (company), `payee_address` (freelance), `platform_address`, `contract_id`, `engagement_id` (`taskvault-task-<pk>`), `deploy/fund/deliver/approve/release/payment_tx_hash`, `status` `created`/`deployed`/`funded`/`delivered`/`approved`/`released`/`paid`/`failed` (`failed` is never set), `delivery_note` (the evidence sent on chain, ≤280), `last_error`, `funded_at`, `delivered_at`, `released_at` |
 
 Nothing Stellar-related is stored on the projects models: the escrow row is the only on-chain record.
 
 ## How auth works (wallet = identity)
 
 1. Browser: `Lowbid.wallet.connect(next)` → `freighterApi.isConnected()` → `getNetwork()` (must match
-   `STELLAR_NETWORK_PASSPHRASE`, else a French toast) → `requestAccess()` → address.
+   `STELLAR_NETWORK_PASSPHRASE`, else an error toast asking to switch network) → `requestAccess()` → address.
 2. `POST /auth/challenge/` → the server stores `{"nonce","message","ts"}` in the session and returns
-   `message = "Lowbid login <nonce> <unix ts>"` (TTL `WALLET_CHALLENGE_TTL_SECONDS`, 300 s).
-3. Browser: `freighterApi.signMessage(message, {address})` → `{signedMessage, signerAddress}`.
+   `{ok, message, expires_in}` with `message = "TaskVault login <32-hex nonce> <unix ts>"` (TTL
+   `WALLET_CHALLENGE_TTL_SECONDS`, 300 s).
+3. Browser: `freighterApi.signMessage(message, {address, networkPassphrase})` → `{signedMessage, signerAddress}`.
    **Freighter ≥ 5.34 signs per SEP-53**: Ed25519 over `sha256("Stellar Signed Message:\n" + message)`,
    returned as a **base64 string** (API v4+; the older API returned a Buffer — `lowbid-wallet.js` normalises both).
-4. `POST /auth/verify/ {address, signature, next}` → `accounts/signing.py::verify_signature` tries, in
-   order, `sep53` → `raw` (UTF-8 bytes, pre-5.34 Freighter) → `sha256(message)`, and logs the scheme that
-   matched. Success: `get_or_create(WalletUser)`, `session.cycle_key()`, session keys `wallet_address` +
-   `wallet_user_id`, challenge consumed. Failure: 400 `{"ok": false, "error": "bad_signature" | "challenge_expired" |
-   "no_challenge" | "invalid_address" | "invalid_signature_encoding"}`.
+4. `POST /auth/verify/ {address, signature, next}` → checks, in order: a challenge in the session (`no_challenge`),
+   its age (`challenge_expired`, the challenge is dropped), the address shape (`invalid_address`), the signature
+   decoding (base64, or hex, 64 bytes: `invalid_signature_encoding`); then `accounts/signing.py::verify_signature`
+   tries `sep53` → `raw` (UTF-8 bytes, pre-5.34 Freighter) → `sha256(message)` and the view logs the scheme that
+   matched (`bad_signature` otherwise). Success: `get_or_create(WalletUser)`, `last_login_at`, `session.cycle_key()`,
+   session keys `wallet_address` + `wallet_user_id`, challenge consumed by every verify attempt (success or failure), `{ok, address, created, next}` (`next`
+   sanitised by `core.views.safe_next`). Failures are 400 `{"ok": false, "error": <code>}`.
 5. `POST /auth/logout/` flushes the session (302 to the landing, or `{"ok": true}` for fetch callers).
 
 ```python
@@ -180,11 +192,11 @@ def my_projects(request):
 `[data-choose]` → `Lowbid.confirm` → `/taches/<pk>/choisir/<app_pk>/` → `services.choose` (row lock, others `rejected`, task `taken`, `assigned_to`). Nothing touches the chain.
 
 ### Company: fund (escrow mode)
-`[data-fund]` (« Financer le projet », project page header) → `Lowbid.pay.fundProject` → `GET /pay/project/<pk>/pending.json` (`payments.services.project_funding`: every `taken` task whose escrow is still `created`/`deployed`, with the company's `next` step) → for each task `Lowbid.pay.runChain(next, {stopAfter: ["fund"]})`: `prepare deploy` → Freighter → `send deploy` (stores `contract_id`) → `prepare fund` → Freighter → `send fund`. `confirm_fund` calls `sync_project_status`, which moves the project to `funded` once every assigned task holds its money. The same steps are available one by one on the task's payment panel (« Créer l’escrow », « Bloquer les fonds »).
+`[data-fund]` ("Fund the project", project page header) → `Lowbid.pay.fundProject` → `GET /pay/project/<pk>/pending.json` (`payments.services.project_funding`: every `taken` task whose escrow is still `created`/`deployed`, with the company's `next` step) → for each task `Lowbid.pay.runChain(next, {stopAfter: ["fund"]})`: `prepare deploy` → Freighter → `send deploy` (stores `contract_id`) → `prepare fund` → Freighter → `send fund`. `confirm_fund` calls `sync_project_status`, which moves the project to `funded` once every assigned task holds its money. The button is rendered in escrow mode only, and enabled only when `can_fund`. The same steps are available one by one on the task's payment panel ("Create the escrow", "Lock the funds").
 
 ### Freelance: deliver
-- Escrow mode: `#deliver-form` + `[data-pay-step="deliver"]` → `POST /pay/prepare/<task>/deliver/ {delivery_link}` (link validated by `projects.services.clean_link`) → Trustless Work `change-milestone-status` XDR with the link as `newEvidence` → Freighter (freelance) → `POST /pay/send/<task>/deliver/ {signed_xdr, delivery_link}` → `confirm_deliver` sends it, then calls `projects.services.deliver(task, wallet, link, on_chain=True)`.
-- Direct mode: the same button; `prepare_deliver` sees a `no_tx` step and calls `projects.services.deliver` directly — nothing to sign.
+- Escrow mode (once the escrow is `funded`): `#deliver-form` + `[data-pay-step="deliver"]` → `POST /pay/prepare/<task>/deliver/ {delivery_link}` (link validated by `projects.services.clean_link`) → Trustless Work `change-milestone-status` XDR with the link as `newEvidence` → Freighter (freelance) → `POST /pay/send/<task>/deliver/ {signed_xdr, delivery_link}` → `confirm_deliver` sends it, then calls `projects.services.deliver(task, wallet, link, on_chain=True)`.
+- Direct mode: the same button (behind a `Lowbid.confirm`); `prepare_deliver` sees a `no_tx` step, calls `projects.services.deliver(task, wallet, link)` (its `_before_deliver` check passes in direct mode) and marks the escrow row `delivered` — nothing to sign.
 - `POST /taches/<pk>/livrer/` is the DB-only path; `_before_deliver` → `payments.services.check_db_deliver` refuses it in escrow mode.
 
 ### Company: validate, rate, pay
@@ -226,19 +238,21 @@ trustline   anyone     —                          —                    chang
 ```
 
 The validate view saves the Rating **first** (database), then the page chains the signatures (approve → release, or
-direct_pay) from the `next` it gets back. Stopping half-way is fine: the panel shows the remaining step (« Libérer les
-fonds »).
+direct_pay) from the `next` it gets back. Stopping half-way is fine: the panel shows the remaining step ("Release the
+funds").
 
 ### Modes
 
-- `payments.stellar.payment_mode()` is **the** switch: `LOWBID_PAYMENT_MODE=escrow` | `direct` | empty = auto (`escrow`
-  when `TRUSTLESS_WORK_API_KEY` is set, else `direct`). A native-XLM asset (`STELLAR_ASSET_CODE=XLM`, empty issuer) is
+- `payments.stellar.payment_mode()` is **the** switch: `LOWBID_PAYMENT_MODE=escrow` | `direct` | empty (or any other
+  value) = auto (`escrow` when `TRUSTLESS_WORK_API_KEY` is set, else `direct`). A native-XLM asset (`STELLAR_ASSET_CODE=XLM`, empty issuer) is
   forced to `direct` (warning logged once per process), because Trustless Work v1 needs an issuer.
-- The mode is **frozen on the Escrow row** at its first prepare (`ensure_escrow`). While the row is still `created`
+- The mode is **frozen on the Escrow row** when `ensure_escrow` creates it: at the task's first prepare, or in
+  `on_task_validated`. While the row is still `created`
   (nothing on chain) it is re-frozen to the configured mode, so `LOWBID_PAYMENT_MODE=direct` + restart after a failed
   deploy just works. A task whose escrow is deployed stays in escrow mode.
 - `effective_mode(escrow)` = the row's mode, or the configured one while nothing is on chain; `display_status()` makes a
-  direct-mode task delivered through the DB endpoint read as `delivered`, and a paid task always terminal.
+  direct-mode task delivered through the DB endpoint read as `delivered`, and a paid task always terminal (`paid` in
+  direct mode, `released` in escrow mode). `project_funding` and "Fund the project" follow the **configured** mode.
 - Escrow mode roles (Trustless Work): company = deploy signer, `approver`, `releaseSigner`, funder; chosen freelance =
   `serviceProvider` + `receiver`; `LOWBID_PLATFORM_ADDRESS` = `disputeResolver` + `platformAddress` (fee
   `LOWBID_PLATFORM_FEE`). When `LOWBID_PLATFORM_ADDRESS` is empty the company wallet takes both platform roles (warning
@@ -252,8 +266,8 @@ fonds »).
 | `projects.services._after_validate(task)` | projects | `projects.services.validate`, inside its transaction, after the Rating | lazily imports `payments.services` and calls `on_task_validated(task)` |
 | `payments.services.on_task_validated(task)` | payments | `_after_validate` | `ensure_escrow(task)` and logs the next step (approve → release, or direct_pay). Pays nothing |
 | `projects.services._before_deliver(task)` | projects | `projects.services.deliver` when `on_chain=False` | calls `payments.services.check_db_deliver(task)`, which refuses a DB-only delivery in escrow mode |
-| `projects.services.deliver(..., on_chain=True)` | projects | `payments.services.confirm_deliver` (escrow) / `prepare_deliver` (direct, `no_tx`) | records the delivery once the milestone change is confirmed |
-| `payments.services.sync_project_status(project)` | payments | `confirm_fund`, `confirm_release`, `_finalize_direct_pay` | project `draft → funded` (escrow: every assigned task holds funds; direct: first payment) |
+| `projects.services.deliver(...)` | projects | `payments.services.confirm_deliver` (escrow, `on_chain=True`), `prepare_deliver` (direct `no_tx`, `on_chain=False`), the `task_deliver` view | records the delivery (link, `delivered_at`, task `delivered`) |
+| `payments.services.sync_project_status(project)` | payments | `confirm_fund`, `confirm_release`, `_finalize_direct_pay` (and `seed_demo`) | project `draft → funded` (escrow: every assigned task holds funds; direct: first payment) |
 
 `payments.services` imports `projects.services` at module level; the projects hooks import `payments.services` lazily to
 avoid the cycle.
@@ -267,7 +281,7 @@ whole escrow, so freelances could not sign their own delivery; receivers must be
 `update-escrow` signed by the platform; and its balance is pooled across milestones. Details and sources:
 `docs/STELLAR_NOTES.md` §8. So each task gets its own **single-release** escrow (one milestone), deployed and funded by
 the company once its freelance is chosen: amount = task price, payer = project company, payee = `task.assigned_to`.
-« Financer le projet » simply chains those steps task after task. Cost: two company signatures per task instead of two
+"Fund the project" simply chains those steps task after task. Cost: two company signatures per task instead of two
 per project.
 
 ### Endpoints and response shapes (`payments/views.py`)
@@ -278,6 +292,8 @@ per project.
   contract_id, explorer_url, message, pending, next}`.
 - `next` = the viewer's following step (`{step, label, prepare_url, mine, who, evidence, no_tx, hint, task}` or `null`):
   `lowbid-pay.js` chains it while it is the viewer's own signature.
+- `POST /pay/trustline/prepare/` → `{ok, message}` when there is nothing to sign, else `{ok, xdr, send_url, extra}`;
+  `POST /pay/trustline/send/ {signed_xdr}` → `{ok, tx_hash, hash, explorer_url, message, pending}`.
 - Refusals: HTTP 200 `{ok:false, error, message}`, codes `not_chosen · forbidden · wrong_state · wrong_mode ·
   unknown_step · tampered · provider · stellar · invalid · not_assigned`.
 
@@ -286,10 +302,13 @@ per project.
 - Role and state gates run in **both** halves (prepare and confirm), pinned to the session wallet; every role field in a
   Trustless Work body or a payment XDR comes from the `Escrow` row, never from the request.
 - `confirm_direct_pay` parses the signed XDR (`stellar.parse_payment_xdr`) and refuses anything but one payment
-  payer → payee of `amount` in the configured asset (`tampered`).
-- Idempotency: a replayed send for a step already recorded with the same hash answers « Étape déjà confirmée. ».
-- A provider failure never flips a status; the message is stored in `Escrow.last_error` after the transaction rolled back
-  (`_records_errors`). A Horizon 504 on a direct payment stores the locally computed hash as pending; the next
+  payer → payee of `amount` in the configured asset (`tampered`); the payment Django builds carries the memo
+  `taskvault:task:<pk>`. `confirm_trustline` likewise requires one `change_trust` from the session wallet for the asset code and issuer of the
+  configured issuer.
+- Idempotency: a replayed send for a step already recorded with the same hash answers "Step already confirmed." (checked
+  before the state gate, so it is not a `wrong_state`).
+- A provider failure never flips a status; the message is stored in `Escrow.last_error` (directly when a prepare fails,
+  after the transaction rolled back when a send fails: `_records_errors`); every successful confirm clears it. A Horizon 504 on a direct payment stores the locally computed hash as pending; the next
   `prepare_direct_pay` reconciles it with `stellar.transaction_status(hash)` without a second signature.
 - View-models: `next_action(task, wallet)` (the panel and the dashboard agree on the pending step), `stepper(mode,
   status)`, `project_funding(project)` (banner: total, funded, paid, pending tasks, per-task rows and explorer links,
@@ -301,12 +320,13 @@ per project.
   `STELLAR_SOROBAN_RPC_URL`, `STELLAR_ASSET_CODE` / `STELLAR_ASSET_ISSUER` (defaults to the legacy `STELLAR_USDC_CODE` /
   `STELLAR_USDC_ISSUER`, i.e. Circle testnet USDC), `TRUSTLESS_WORK_API_URL`, `TRUSTLESS_WORK_API_KEY`,
   `LOWBID_PAYMENT_MODE`, `LOWBID_PLATFORM_ADDRESS`, `LOWBID_PLATFORM_FEE`.
-- Python: `stellar-sdk` (login verification, XDR building and parsing); `requests` for Horizon and Trustless Work, both
-  wrapped in a never-raising `{ok, status, data, error}` envelope.
+- Python: `stellar-sdk` (login verification, XDR building and parsing); `requests` for Horizon and Trustless Work, never
+  raising: Trustless Work calls return `{ok, status, data, error}`, `stellar.submit_xdr` the same plus `hash`, and the
+  Horizon reads return `None` when Horizon is unreachable.
 - Browser: `window.LOWBID` = `{network, networkPassphrase, horizonUrl, sorobanRpcUrl, asset:{code, issuer, native},
   paymentMode, walletAddress, urls:{challenge, verify, logout, landing, dashboard, trustlinePrepare, trustlineSend}}`;
   `window.StellarSdk` (vendored, `defer`); `window.freighterApi`; `Lowbid.signTransaction(xdr, {networkPassphrase?,
-  address?})`.
+  address?})`. The panel's live balance reads Horizon `/accounts/<addr>` straight from the browser.
 
 ## Adding code
 
@@ -321,7 +341,8 @@ codes to HTTP, templates that extend `base.html` and compose `templates/componen
 - Broad `except Exception` only with `logger.exception(...)` — never a silent `except: pass`. No `print()`.
 - Config via `.env` / environment only (`_csv` / `_bool` helpers); never hardcode hosts or secrets.
 - Structured `level=… logger=… msg=…` logs on stdout, level from `DJANGO_LOG_LEVEL`.
-- Session cookie 8 h, `SameSite=Lax`, secure when `DJANGO_FORCE_HTTPS=1`.
+- Session cookie `lowbid_sessionid`, 8 h, not refreshed per request, `SameSite=Lax`, secure when `DJANGO_FORCE_HTTPS=1`.
 - Frontend assets are build artifacts that get **committed**; CI `tailwind-in-sync` fails on a stale
   `static/css/tailwind.css`. Nothing loads from a CDN (fonts = system stack, icons = vendored Font Awesome).
-- Tokens → components → Tailwind load order; colours only via `var(--*)` so light mode is free.
+- Tokens → components → Tailwind load order; colours only via `var(--*)`. The site renders dark only
+  (`<html data-theme="dark">`, no toggle).

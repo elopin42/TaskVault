@@ -1,9 +1,11 @@
 {% load static lowbid_extras %}
 <header class="lb-nav" role="banner">
   <div class="lb-nav-inner">
-    <a href="{% url 'core:landing' %}" class="lb-brand" aria-label="Lowbid — home">
-      <span class="lb-brand-mark" aria-hidden="true"></span>
-      <span class="lb-brand-name">lowbid</span>
+    <a href="{% url 'core:landing' %}" class="lb-brand" aria-label="TaskVault — home">
+      <span class="lb-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 9.5V6M12 14.5V18M9.5 12H6M14.5 12H18"/></svg>
+      </span>
+      <span class="lb-brand-name">Task<span class="lb-brand-accent">Vault</span></span>
       <span class="ui-badge ui-badge-neutral font-mono hidden sm:inline-flex">{{ STELLAR_NETWORK }}</span>
     </a>
 

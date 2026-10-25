@@ -1,4 +1,4 @@
-"""Business rules of the task board in one place (SPEC §3). Views only translate
+"""Business rules of the task board in one place. Views only translate
 ProjectError codes into HTTP; templates never decide a rule.
 
 Payment hooks (wired to the payments app, imported lazily to avoid an import cycle):
@@ -235,6 +235,7 @@ def choose(task: Task, application: Application, company) -> Task:
         locked.status = Task.Status.TAKEN
         locked.assigned_to = fresh.freelancer
         locked.save(update_fields=["status", "assigned_to", "updated_at"])
+        _after_choose(locked)
     logger.info("task taken task=%s application=%s freelancer=%s", locked.pk, fresh.pk, fresh.freelancer_id)
     return locked
 
@@ -279,6 +280,13 @@ def validate(task: Task, company, note, comment: str = "") -> Task:
         _after_validate(locked)
     locked.refresh_from_db()
     return locked
+
+
+def _after_choose(task: Task) -> None:
+    """Payment hook: the new assignee has no locked funds yet, payments re-syncs the project status."""
+    from payments import services as payments  # lazy: payments.services imports this module
+
+    payments.on_task_chosen(task)
 
 
 def _after_validate(task: Task) -> None:

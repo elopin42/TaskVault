@@ -1,4 +1,4 @@
-/* Lowbid shared runtime: toasts, CSRF-aware fetch, small DOM helpers.
+/* TaskVault shared runtime: toasts, CSRF-aware fetch, small DOM helpers.
    Loaded on every page BEFORE the vendor bundles and lowbid-wallet.js. No template
    tags here — per-request values arrive through window.LOWBID (set in base.html). */
 (function () {

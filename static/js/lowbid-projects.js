@@ -1,4 +1,4 @@
-/* Lowbid task board: shared helpers (tags, submit-once) + the project page (inline add-task,
+/* TaskVault task board: shared helpers (tags, submit-once) + the project page (inline add-task,
    delete) + the task page (apply, candidates polling through Lowbid.poll, choose behind
    Lowbid.confirm, validate + rate → payment chain). Depends on lowbid-base.js + lowbid-ui.js and,
    for the payment chain, lowbid-pay.js (Lowbid.pay.runChain). Server-side values arrive through
@@ -6,7 +6,7 @@
 
    Delegated actions (survive innerHTML swaps):
      [data-choose="<app_pk>"][data-choose-url]   company picks a candidate (project or task page)
-     [data-task-delete="<task_pk>"]              company deletes an open task of a draft project
+     [data-task-delete="<task_pk>"]              company deletes an open task (any project status)
      [data-add-tag="x"][data-target="input-id"]  adds a suggested tag to the target input
    Forms: #task-form [data-task-add] · #apply-form [data-apply-submit] ·
           #validate-form[data-validate] [data-rate] radios + [data-validate-submit] (escrow panel).

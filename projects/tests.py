@@ -395,7 +395,7 @@ class ValidateTests(BaseProjectTest):
         self.assertEqual(len(Rating.objects.get(task=self.t1).comment), 280)
 
 
-# --- scoring (SPEC §4 / §8) -------------------------------------------------------------------------
+# --- scoring (docs/PRODUCT.md) -------------------------------------------------------------------------
 
 class ScoringTests(BaseProjectTest):
     def test_section_8_numbers_a_90_b_20(self):

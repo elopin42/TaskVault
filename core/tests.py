@@ -10,7 +10,7 @@ class LandingTests(TestCase):
     def test_landing_renders(self):
         resp = self.client.get(reverse("core:landing"))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "Lowbid")
+        self.assertContains(resp, "TaskVault")
         self.assertContains(resp, "data-wallet-connect")
         self.assertRegex(resp.content.decode(), r"(?i)fixed[- ]price")
         self.assertContains(resp, "data-landing-stats")

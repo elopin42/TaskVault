@@ -36,10 +36,17 @@ TAPE_EVENTS = (
     ("deploy_tx_hash", "ESCROW CREATED", "created_at"),
     ("fund_tx_hash", "FUNDS LOCKED", "funded_at"),
     ("deliver_tx_hash", "DELIVERY", "delivered_at"),
-    ("approve_tx_hash", "DELIVERY VALIDATED", "released_at"),
+    ("approve_tx_hash", "DELIVERY VALIDATED", "rating"),  # the Rating is stored right before the approve
     ("release_tx_hash", "FUNDS RELEASED", "released_at"),
     ("payment_tx_hash", "DIRECT PAYMENT", "released_at"),
 )
+
+
+def _event_time(escrow, time_field: str):
+    if time_field == "rating":
+        rating = getattr(escrow.task, "rating", None)
+        return rating.created_at if rating is not None else escrow.updated_at
+    return getattr(escrow, time_field) or escrow.updated_at
 
 
 def ledger_tape(limit: int = 10) -> list[dict]:
@@ -47,7 +54,7 @@ def ledger_tape(limit: int = 10) -> list[dict]:
     from payments.models import Escrow
 
     events: list[dict] = []
-    for escrow in Escrow.objects.select_related("task").order_by("-updated_at")[:limit]:
+    for escrow in Escrow.objects.select_related("task", "task__rating").order_by("-updated_at")[:limit]:
         for hash_field, label, time_field in TAPE_EVENTS:
             tx = getattr(escrow, hash_field)
             if tx:
@@ -57,7 +64,7 @@ def ledger_tape(limit: int = 10) -> list[dict]:
                         "title": escrow.task.title,
                         "amount": escrow.amount,
                         "tx": tx,
-                        "at": getattr(escrow, time_field) or escrow.updated_at,
+                        "at": _event_time(escrow, time_field),
                     }
                 )
     events.sort(key=lambda e: e["at"], reverse=True)
@@ -75,13 +82,15 @@ def tape_loop(events: list[dict], minimum: int = 8) -> list[dict]:
 
 
 # Decorative content of the landing's scroll story (the 3D "project cube" in core/landing.html): one
-# project split into four fixed-price tasks, three bids per task, the chosen one first. Not read from
-# the database: the figures are a worked example, the live numbers live in landing_stats().
+# project split into four fixed-price tasks, three applications per task, the chosen one first. Not read
+# from the database: the figures are a worked example, the live numbers live in landing_stats(). Every
+# score is reachable with projects.scoring (40 · paid history + 8 · avg note + 20 · tag ratio): e.g.
+# 92 = 40 + 8 × 4.5 + 20 × 0.8, and 20 / 15 / 10 / 5 are newcomers scored on matching skills only.
 STORY_TASKS = (
-    {"title": "Brand & logo", "price": "350", "bids": ({"name": "Freelancer A", "score": 92}, {"name": "Freelancer B", "score": 64}, {"name": "Freelancer C", "score": 48})},
-    {"title": "Landing page", "price": "450", "bids": ({"name": "Freelancer D", "score": 88}, {"name": "Freelancer E", "score": 71}, {"name": "Freelancer F", "score": 55})},
-    {"title": "Soroban contract", "price": "900", "bids": ({"name": "Freelancer G", "score": 96}, {"name": "Freelancer H", "score": 60}, {"name": "Freelancer I", "score": 44})},
-    {"title": "QA & launch", "price": "300", "bids": ({"name": "Freelancer J", "score": 80}, {"name": "Freelancer K", "score": 68}, {"name": "Freelancer L", "score": 52})},
+    {"title": "Brand & logo", "price": "350", "bids": ({"name": "Freelancer A", "score": 92}, {"name": "Freelancer B", "score": 64}, {"name": "Freelancer C", "score": 20})},
+    {"title": "Landing page", "price": "450", "bids": ({"name": "Freelancer D", "score": 88}, {"name": "Freelancer E", "score": 15}, {"name": "Freelancer F", "score": 10})},
+    {"title": "Soroban contract", "price": "900", "bids": ({"name": "Freelancer G", "score": 96}, {"name": "Freelancer H", "score": 76}, {"name": "Freelancer I", "score": 20})},
+    {"title": "QA & launch", "price": "300", "bids": ({"name": "Freelancer J", "score": 80}, {"name": "Freelancer K", "score": 20}, {"name": "Freelancer L", "score": 5})},
 )
 
 

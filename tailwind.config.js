@@ -1,5 +1,5 @@
 /**
- * Tailwind CSS v3 config for Lowbid — self-hosted build, committed output.
+ * Tailwind CSS v3 config for TaskVault — self-hosted build, committed output.
  *
  *   npm run build:css   # -> static/css/tailwind.css (CI job tailwind-in-sync diffs it)
  *
@@ -32,7 +32,7 @@ module.exports = {
       maxWidth: { "6xl": "72rem" },
     },
   },
-  // Classes assembled at runtime in JS (toasts, badges) that the scanner cannot see.
+  // Safety net for classes assembled at runtime (none today: toasts and badges use ui- classes).
   safelist: [
     { pattern: /(bg|text|border)-(brand|red|green|amber|blue|slate)-(100|200|300|400|500|600|700|800|900)/ },
     { pattern: /(grid-cols|col-span)-(1|2|3|4|6|12)/, variants: ["sm", "md", "lg"] },

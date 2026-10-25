@@ -1,8 +1,8 @@
-# Lowbid — Stellar / Trustless Work / Freighter integration notes
+# TaskVault — Stellar / Trustless Work / Freighter integration notes
 
 Research spike, 2026-10-24, updated for the task board (one escrow per task). Target: **Stellar testnet only**. Stack: Django builds/proxies, vanilla JS + Freighter signs in the browser.
 
-In Lowbid terms: the **company** owns a project and its fixed-price tasks; the **freelance** is the one the company chose for a task. Each task with a chosen freelance gets its own single-release escrow (§1.2, §8).
+In TaskVault terms: the **company** owns a project and its fixed-price tasks; the **freelance** is the one the company chose for a task. Each task with a chosen freelance gets its own single-release escrow (§1.2, §8).
 
 > **How this was verified.** The research sandbox could not open HTTPS to `horizon-testnet.stellar.org`, `friendbot.stellar.org`, `*.trustlesswork.com` or `docs.freighter.app` (egress policy 403), so nothing below is "curl-verified against the live API". Instead every claim was checked against **primary source code**: the npm tarballs of `@stellar/freighter-api@6.0.1`, `@stellar/stellar-sdk@17.3.0`, `@trustless-work/escrow@3.0.5` (latest tag), the PyPI wheel `stellar-sdk==16.1.1`, a clone of `Trustless-Work/trustlesswork-skill` (commit `80e2467`, 2026-09-26 — the vendor's own REST reference), and a clone of `stellar/freighter` (extension source, `b1e795c`). The Confidence table after §6 says which is which. **First thing to do on a real network: run the smoke test in §6.**
 
@@ -47,19 +47,19 @@ Amounts are **JSON numbers in USDC units** (`25`, not `"25"` and not stroops). `
 
 **Rate limit:** 50 requests / 60 s per client (HTTP 429). **Fees:** none to fund up front. At release the contract deducts your `platformFee` (→ `platformAddress`) and the Trustless Work protocol fee (0.3 % on mainnet; on the testnet contract lineage the fee address is a call parameter, so expect ~0.3 % or 0 — observe it). Stellar network fee on each signed tx: 100 stroops/op baseline, paid in XLM by the signer.
 
-### 1.2 Escrow type and role mapping for Lowbid
+### 1.2 Escrow type and role mapping for TaskVault
 
 Use **single-release** with **one milestone** (one payout to one `receiver` after all milestones are approved), **one escrow per task**, deployed once the company has chosen the task's freelance: the `receiver` is fixed at deploy. §8 explains why one multi-release escrow per project was rejected.
 
-| TW role | Lowbid | Notes |
+| TW role | TaskVault | Notes |
 |---|---|---|
 | `signer` (deploy) | company wallet | pays the deploy tx fee; gains no role |
 | `approver` | company | approves the milestone |
 | `serviceProvider` | the task's chosen freelance | marks milestone done (the delivery link is the evidence) |
 | `receiver` | the task's chosen freelance | receives the payout — **needs USDC trustline** |
-| `releaseSigner` | company (simplest demo) or Lowbid platform wallet | signs release-funds |
-| `disputeResolver` | Lowbid platform wallet (admin Freighter) | **cannot** be a party that raises disputes; contract rejects a resolver disputing |
-| `platformAddress` | Lowbid platform wallet | receives `platformFee`; **needs USDC trustline if fee > 0** |
+| `releaseSigner` | company (simplest demo) or TaskVault platform wallet | signs release-funds |
+| `disputeResolver` | TaskVault platform wallet (admin Freighter) | **cannot** be a party that raises disputes; contract rejects a resolver disputing |
+| `platformAddress` | TaskVault platform wallet | receives `platformFee`; **needs USDC trustline if fee > 0** |
 
 v1 allows the same address in several roles (company = approver = releaseSigner is fine). Keep `disputeResolver` distinct from company/freelancer.
 
@@ -71,9 +71,9 @@ Every write below returns `{"status":"SUCCESS","unsignedTransaction":"AAAAAg..."
 ```json
 {
   "signer": "G<COMPANY>",
-  "engagementId": "lowbid-task-42",
+  "engagementId": "taskvault-task-42",
   "title": "Landing page redesign",
-  "description": "Lowbid task #42 Landing page, fixed price 25 USDC",
+  "description": "TaskVault task #42 Landing page, fixed price 25 USDC",
   "roles": {
     "approver": "G<COMPANY>", "serviceProvider": "G<FREELANCER>", "receiver": "G<FREELANCER>",
     "releaseSigner": "G<COMPANY>", "disputeResolver": "G<PLATFORM>", "platformAddress": "G<PLATFORM>"
@@ -155,7 +155,7 @@ Same key header, host `https://beta.api.trustlesswork.com`, paths `POST /escrow/
 
 ### 1.7 Django proxy skeleton (v1)
 
-Research-time sketch, kept for the payload shape. The shipped company is `payments/trustless_work.py` (§7.2): same calls, but it returns an `{ok, status, data, error}` envelope instead of raising, and reads the real settings `TRUSTLESS_WORK_API_URL`, `TRUSTLESS_WORK_API_KEY`, `LOWBID_PLATFORM_ADDRESS`, `LOWBID_PLATFORM_FEE` (§7.1).
+Research-time sketch, kept for the payload shape. The shipped module is `payments/trustless_work.py` (§7.2): same calls, but it returns an `{ok, status, data, error}` envelope instead of raising, and reads the real settings `TRUSTLESS_WORK_API_URL`, `TRUSTLESS_WORK_API_KEY`, `LOWBID_PLATFORM_ADDRESS`, `LOWBID_PLATFORM_FEE` (§7.1).
 
 ```python
 # sketch — the real module is payments/trustless_work.py
@@ -175,7 +175,7 @@ def tw_post(path: str, body: dict, timeout: float = 20.0) -> dict:
 
 def build_deploy(task, company_addr, freelancer_addr):
     return tw_post("/deployer/single-release", {
-        "signer": company_addr, "engagementId": f"lowbid-task-{task.id}",
+        "signer": company_addr, "engagementId": f"taskvault-task-{task.id}",
         "title": task.title[:100], "description": task.description[:500],
         "roles": {"approver": company_addr, "serviceProvider": freelancer_addr, "receiver": freelancer_addr,
                   "releaseSigner": company_addr, "disputeResolver": settings.LOWBID_PLATFORM_ADDRESS,
@@ -200,8 +200,9 @@ Assets: **USDC testnet** = code `USDC`, issuer `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY
 ```
 npm pack @stellar/stellar-sdk@17.3.0   → package/dist/stellar-sdk.min.js   (827 KB, UMD global `StellarSdk`)
 npm pack @stellar/freighter-api@6.0.1  → package/build/index.min.js        (11 KB, UMD global `freighterApi`)
-<script src="/static/vendor/stellar-sdk.min.js"></script>
-<script src="/static/vendor/freighter-api.min.js"></script>
+<!-- as shipped (npm run vendor; templates/base.html): -->
+<script src="/static/vendor/freighter-api.js"></script>          <!-- = build/index.min.js -->
+<script src="/static/vendor/stellar-sdk.min.js" defer></script>
 ```
 (`stellar-sdk-axios.min.js` is an alternative build using axios instead of fetch; not needed.)
 
@@ -318,7 +319,7 @@ Freighter computes `sha256( "Stellar Signed Message:\n" ‖ utf8(message) )` and
 import base64, secrets
 from stellar_sdk import Keypair
 from stellar_sdk.exceptions import BadSignatureError
-# login: nonce = secrets.token_hex(16); message = f"Lowbid login\naddress: {addr}\nnonce: {nonce}\nts: {iso}"
+# login (as shipped, accounts/views.py): nonce = secrets.token_hex(16); message = f"TaskVault login {nonce} {issued}"
 # browser: const {signedMessage, signerAddress, error} = await freighterApi.signMessage(message, {address, networkPassphrase})
 def verify_login(address: str, message: str, signed_message_b64: str) -> bool:
     try:
@@ -327,7 +328,7 @@ def verify_login(address: str, message: str, signed_message_b64: str) -> bool:
     except (BadSignatureError, ValueError):
         return False
 ```
-Store nonces single-use with a 5-minute TTL; bind the message to the address you got from `requestAccess()` and check `signerAddress == address`. Fallback if verification fails on an old Freighter (pre-SEP-53 builds signed the raw bytes): try `kp.verify(message.encode(), sig)` once and log it.
+Store nonces single-use with a 5-minute TTL; bind the message to the address you got from `requestAccess()` and check `signerAddress == address`. As shipped: the challenge lives in the session for `WALLET_CHALLENGE_TTL_SECONDS` (300), and `accounts/signing.py` tries SEP-53, then the raw message bytes (pre-SEP-53 Freighter), then sha256(message), logging the matching `scheme=`.
 
 Other notes: Freighter asks for the password at most once per 5 min; `signTransaction` opens a popup, so call it from a click handler; Freighter works on `http://localhost`. The `opts.network` name mentioned in old docs is not in the 6.x type — use `networkPassphrase`.
 
@@ -347,7 +348,7 @@ If Trustless Work is unusable, the nearest audited-ish starting point is `stella
 4. **USDC**: Circle faucet → `company` (≥ the price of the task you fund live; ask twice over two days or fund a second address and consolidate). Freelances start at 0.
 5. **Trustless Work**: key from `dapp.trustlesswork.com` (Testnet) in `TRUSTLESS_WORK_API_KEY`; keep `LOWBID_PLATFORM_FEE=1`; set `LOWBID_PLATFORM_ADDRESS` to the `platform` account; run §6 smoke test once and keep the resulting `contractId` as a backup screenshot. `.env` is read at startup only: restart the server after any change.
 6. **Where to look during the demo**: company Freighter balance (USDC drops at fund), `https://stellar.expert/explorer/testnet/contract/C<ESCROW>` (escrow holds the USDC), `https://stellar.expert/explorer/testnet/tx/<hash>` after release (shows the payout to the freelancer and the fee), freelancer Freighter balance (USDC appears), `https://stellar.expert/explorer/testnet/account/G<FREELANCER>`, asset page `https://stellar.expert/explorer/testnet/asset/USDC-GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`.
-7. **Kill switch**: `LOWBID_PAYMENT_MODE=escrow|direct` (empty = auto: `escrow` when `TRUSTLESS_WORK_API_KEY` is set, else `direct`), then restart. `direct` = §2 payment from the same task page: the panel title becomes « Paiement direct USDC » with a « sans escrow » badge, the delivery is a declaration without a transaction, and after « Valider + noter » the company signs one « Payer le freelance » payment, with the same stellar.expert link. A task whose escrow is already deployed keeps escrow mode.
+7. **Kill switch**: `LOWBID_PAYMENT_MODE=escrow|direct` (empty = auto: `escrow` when `TRUSTLESS_WORK_API_KEY` is set, else `direct`), then restart. `direct` = §2 payment from the same task page: the panel title becomes "Direct payment USDC" with a "no escrow" badge, the delivery is a declaration without a transaction, and after "Validate + rate" the company signs one "Pay the freelancer" payment, with the same stellar.expert link. A task whose escrow is already deployed keeps escrow mode.
 
 ## 6. First-run smoke test (do this before building UI)
 
@@ -393,7 +394,7 @@ Shipped and offline-tested: `payments/trustless_work.py`, `payments/stellar.py`,
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `TRUSTLESS_WORK_API_URL` / `TRUSTLESS_WORK_API_KEY` | `https://dev.api.trustlesswork.com` / `""` | v1 host + `x-api-key`. Empty key ⇒ every TW call short-circuits to `{"ok": False, "status": 0, "error": "…clé API…"}` without HTTP. |
+| `TRUSTLESS_WORK_API_URL` / `TRUSTLESS_WORK_API_KEY` | `https://dev.api.trustlesswork.com` / `""` | v1 host + `x-api-key`. Empty key ⇒ every TW call short-circuits to `{"ok": False, "status": 0, "error": "The escrow service is not configured (Trustless Work API key missing)."}` without HTTP. |
 | `LOWBID_PAYMENT_MODE` | `""` | **THE switch**: `escrow` \| `direct` \| empty = auto (`escrow` when the key is set, else `direct`). Read through `payments.stellar.payment_mode()`, never directly. A native-XLM asset forces `direct` (§9). |
 | `LOWBID_PLATFORM_ADDRESS` | `""` | Platform wallet (G…) = `disputeResolver` + `platformAddress`. Must hold the asset trustline when the fee > 0. Empty ⇒ the company wallet takes both roles (warning logged, alert in the panel; TW may refuse it). |
 | `LOWBID_PLATFORM_FEE` | `Decimal("1")` | v1 `platformFee` JSON number. Unit unverified (bps vs %); keep `1` until `get_escrow()` reads it back. |
@@ -402,7 +403,7 @@ Shipped and offline-tested: `payments/trustless_work.py`, `payments/stellar.py`,
 ### 7.2 Python API
 
 Every network function returns the same envelope and **never raises** on HTTP/transport errors:
-`{"ok": bool, "status": int, "data": dict, "error": str | None}` (`status == 0` ⇒ the request never left: transport error or missing key). Errors are French, user-facing; the API key is never logged.
+`{"ok": bool, "status": int, "data": dict, "error": str | None}` (`status == 0` ⇒ the request never left: transport error or missing key). Errors are English, user-facing; the API key is never logged.
 
 `payments.trustless_work` (v1, all keyword-only; paths in the `PATH_*` constants):
 
@@ -424,22 +425,22 @@ The unsigned XDR of every build is `env["data"]["unsignedTransaction"]`.
 
 - `payment_mode() -> "escrow" | "direct"` — the switch (above, §9).
 - `asset_code()`, `asset_issuer()`, `is_native()`, `asset() -> Asset` (§9); `network_passphrase()`; `horizon_url()`.
-- `build_payment_xdr(*, source, destination, amount: Decimal, memo=None, sequence=None, base_fee=None) -> str` — one `payment` op of the configured asset, text memo trimmed to 28 UTF-8 bytes (`lowbid:task:<pk>`), timeout 300 s. `sequence=None` loads the account (and `/fee_stats`) from Horizon; passing `sequence` builds fully offline. Raises `StellarError` (French message) on bad amount, unfunded source (Horizon 404) or Horizon unreachable.
+- `build_payment_xdr(*, source, destination, amount: Decimal, memo=None, sequence=None, base_fee=None) -> str` — one `payment` op of the configured asset, text memo trimmed to 28 UTF-8 bytes (`taskvault:task:<pk>`), timeout 300 s. `sequence=None` loads the account (and `/fee_stats`) from Horizon; passing `sequence` builds fully offline. Raises `StellarError` (English message) on bad amount, unfunded source (Horizon 404) or Horizon unreachable.
 - `build_change_trust_xdr(*, source, sequence=None, base_fee=None) -> str` — asset trustline (limit max); refused for the native asset.
 - `parse_payment_xdr(xdr) -> dict | None` — `{source, destination, amount, asset_code, asset_issuer, memo, hash, op_type}`; `services.confirm_direct_pay` uses it (`_check_payment_xdr`) to check the signed XDR matches the `Escrow` row (source = company, destination = chosen freelance, amount = task price, asset = configured) before submitting; a mismatch is refused as `tampered`.
-- `submit_xdr(signed_xdr) -> envelope + "hash"` — `POST {Horizon}/transactions`; `hash` is computed locally so it is known even on 504 (`ERR_TIMEOUT`). Horizon `result_codes` → French (`op_no_trust`, `op_underfunded`, `op_no_destination`, `tx_bad_seq`, `tx_bad_auth`, …) via `explain_result_codes()`.
+- `submit_xdr(signed_xdr) -> envelope + "hash"` — `POST {Horizon}/transactions`; `hash` is computed locally so it is known even on 504 (`ERR_TIMEOUT`). Horizon `result_codes` → English messages (`op_no_trust`, `op_underfunded`, `op_no_destination`, `tx_bad_seq`, `tx_bad_auth`, …) via `explain_result_codes()`.
 - `has_trustline(address) -> bool | None` (native ⇒ `True` without a call), `asset_balance(address) -> Decimal | None` (`None` only when Horizon is unreachable; 404 ⇒ `False` / `0`), `load_account`, `load_sequence`, `horizon_base_fee`.
 - `transaction_status(hash) -> bool | None` — `True` applied, `False` unknown/failed, `None` Horizon down. Used by `prepare_direct_pay` to reconcile a payment whose submit timed out, without a second signature.
 - `explorer_tx_url(hash)`, `explorer_account_url(addr)`, `explorer_contract_url(contract_id)` → stellar.expert (`testnet` unless `STELLAR_NETWORK == "public"`).
 
 ### 7.3 JS API (`static/js/lowbid-pay.js`, `window.Lowbid.pay`)
 
-Loaded on every page by `templates/base.html` (`defer`, after `lowbid-wallet.js`); `base.html` exposes `LOWBID.asset`, `LOWBID.paymentMode` and `LOWBID.urls.trustlinePrepare/trustlineSend`. Events are delegated on `document`, so buttons rendered later work.
+Loaded on every page by `templates/base.html` (`defer`, after `lowbid-wallet.js`; `vendor/stellar-sdk.min.js` is deferred too, `vendor/freighter-api.js` is not); `base.html` exposes `LOWBID.asset`, `LOWBID.paymentMode` and `LOWBID.urls.trustlinePrepare/trustlineSend`. Events are delegated on `document`, so buttons rendered later work.
 
 - `Lowbid.pay.signAndSend({xdr, sendUrl, extra})` → `Lowbid.signTransaction(xdr, {networkPassphrase, address: LOWBID.walletAddress})` → `Lowbid.api(sendUrl, {method:"POST", body:{signed_xdr, ...extra}})`. A declined Freighter prompt ⇒ warning toast and a rejected promise with `.handled = true`.
 - `Lowbid.pay.run({step, prepareUrl, body})` — one prepare → sign → send round trip; `Lowbid.pay.runChain(next, {stopAfter, onStep})` — follows the server's `next` while it is the viewer's own signature (deploy → fund, approve → release, direct_pay).
 - `Lowbid.pay.runStep(button)` — bound to `[data-pay-step][data-prepare-url]` (+ optional `data-confirm-*`, `data-pay-body`, `data-no-reload`): runs the step, chains `next`, then follows `redirect` or reloads; errors go to the nearest `[data-pay-error]` and a toast.
-- `Lowbid.pay.fundProject(button)` — bound to `[data-fund][data-pending-url]`: `GET /pay/project/<pk>/pending.json`, then `runChain(task.next, {stopAfter: ["fund"]})` for each pending task, with a progress label (« Tâche 1/2 … : Bloquer les fonds… »).
+- `Lowbid.pay.fundProject(button)` — bound to `[data-fund][data-pending-url]`: `GET /pay/project/<pk>/pending.json`, then `runChain(task.next, {stopAfter: ["fund"]})` for each pending task, with a progress label (`Task 1/2 "…": Lock the funds…`), then the toast `Project funded: N escrow(s) created and funded.`
 - `Lowbid.pay.ensureTrustline(button?)` — bound to `[data-pay-trustline]`: `POST /pay/trustline/prepare/` → sign & send, or a toast when already present.
 - `Lowbid.pay.watchBalance(el, {interval=5000, maxMs=900000})` → polls Horizon `/accounts/{addr}` (every 5 s for 2 min, then 15 s, up to 15 min) for every `[data-usdc-balance="<addr>"][data-watch]`; `fetchUsdcBalance(addr)` reads the configured asset; `explorerTxUrl` / `explorerAccountUrl` / `explorerContractUrl`; `toastTx(message, hash)`.
 
@@ -459,28 +460,28 @@ One prepare/send pair per step, under `/pay/` (`payments:` namespace), `@require
 
 | step | button (UI) | session wallet | prepare builds | Escrow status | Task status | persisted |
 |---|---|---|---|---|---|---|
-| `deploy` | « Créer l’escrow » (or « Financer le projet ») | company | `tw.deploy_single_release(signer=company, engagement_id=f"lowbid-task-{pk}", amount=task.price, approver=release_signer=company, service_provider=receiver=chosen freelance, dispute_resolver=platform_address=LOWBID_PLATFORM_ADDRESS, platform_fee=LOWBID_PLATFORM_FEE, milestone_description=f"Livraison de la tâche #{pk} — {title}")` | `created → deployed` | `taken` | `contract_id`, `deploy_tx_hash` |
-| `fund` | « Bloquer les fonds » | company | `tw.fund_escrow(contract_id, signer=company, amount)` | `deployed → funded` | `taken` | `fund_tx_hash`, `funded_at`; project `draft → funded` once every assigned task holds funds |
-| `deliver` | « Déclarer la livraison » (+ link) | chosen freelance | `tw.change_milestone_status(contract_id, evidence=link[:280], service_provider=freelance)` | `funded → delivered` | `taken → delivered` | `deliver_tx_hash`, `delivered_at`, `delivery_note`; `Task.delivery_link` keeps the full link |
-| (validate) | « Valider + noter » | company | nothing on chain: `POST /taches/<pk>/valider/` stores the Rating | — | `delivered` | `Rating` |
-| `approve` | « Valider la livraison » (chained) | company | `tw.approve_milestone(contract_id, approver=company)` | `delivered → approved` | `delivered` | `approve_tx_hash` |
-| `release` | « Libérer les fonds » (chained) | company | `tw.release_funds(contract_id, release_signer=company)` | `approved → released` | `delivered → paid` | `release_tx_hash`, `released_at`; `projects.services.mark_paid` |
+| `deploy` | "Create the escrow" (or "Fund the project") | company | `tw.deploy_single_release(signer=company, engagement_id=f"taskvault-task-{pk}", title=task.title, description=task.description or project.title, amount=task.price, approver=release_signer=company, service_provider=receiver=chosen freelance, dispute_resolver=platform_address=LOWBID_PLATFORM_ADDRESS, platform_fee=LOWBID_PLATFORM_FEE, milestone_description=f"Delivery of task #{pk} — {title}"[:200])` | `created → deployed` | `taken` | `contract_id`, `deploy_tx_hash` |
+| `fund` | "Lock the funds" | company | `tw.fund_escrow(contract_id, signer=company, amount)` | `deployed → funded` | `taken` | `fund_tx_hash`, `funded_at`; project `draft → funded` once every assigned task holds funds |
+| `deliver` | "Declare the delivery" (+ link) | chosen freelance | `tw.change_milestone_status(contract_id, evidence=link[:280], service_provider=freelance)` | `funded → delivered` | `taken → delivered` | `deliver_tx_hash`, `delivered_at`, `delivery_note`; `Task.delivery_link` keeps the full link |
+| (validate) | "Validate + rate" | company | nothing on chain: `POST /taches/<pk>/valider/` stores the Rating | — | `delivered` | `Rating` |
+| `approve` | "Validate the delivery" (chained) | company | `tw.approve_milestone(contract_id, approver=company)` | `delivered → approved` | `delivered` | `approve_tx_hash` |
+| `release` | "Release the funds" (chained) | company | `tw.release_funds(contract_id, release_signer=company)` | `approved → released` | `delivered → paid` | `release_tx_hash`, `released_at`; `projects.services.mark_paid` |
 
 **Direct mode** (`Escrow.mode == "direct"` — no `deployed`, `funded` or `approved`):
 
 | step | button (UI) | session wallet | prepare builds | Escrow status | Task status | persisted |
 |---|---|---|---|---|---|---|
-| `deliver` | « Déclarer la livraison » | chosen freelance | **nothing to sign**: prepare records the delivery and answers `{ok, redirect, message}` | `created → delivered` | `taken → delivered` | `delivered_at`, `delivery_note` |
-| (validate) | « Valider + noter » | company | the Rating | — | `delivered` | `Rating` |
-| `direct_pay` | « Payer le freelance » (chained) | company | `stellar.build_payment_xdr(source=company, destination=freelance, amount=task.price, memo=f"lowbid:task:{pk}")`; send checks it with `parse_payment_xdr` then `submit_xdr` | `created`/`delivered → paid` | `delivered → paid` | `payment_tx_hash`, `released_at`; `mark_paid`; project `draft → funded` on the first payment |
+| `deliver` | "Declare the delivery" | chosen freelance | **nothing to sign**: prepare records the delivery and answers `{ok, redirect, message}` | `created → delivered` | `taken → delivered` | `delivered_at`, `delivery_note` |
+| (validate) | "Validate + rate" | company | the Rating | — | `delivered` | `Rating` |
+| `direct_pay` | "Pay the freelancer" (chained) | company | `stellar.build_payment_xdr(source=company, destination=freelance, amount=task.price, memo=f"taskvault:task:{pk}")`; send checks it with `parse_payment_xdr` then `submit_xdr` | `created`/`delivered → paid` | `delivered → paid` | `payment_tx_hash`, `released_at`; `mark_paid`; project `draft → funded` on the first payment |
 
-`trustline` (no task): prepare checks `stellar.has_trustline(wallet)` → `{ok:true, message:"Trustline USDC déjà présente."}` if present (or the native-asset message), else `stellar.build_change_trust_xdr(source=wallet)`; send checks the op (`change_trust`, source, issuer) and submits to Horizon; nothing persisted.
+`trustline` (no task): prepare checks `stellar.has_trustline(wallet)` → `{ok:true, message:"USDC trustline already present."}` (`<code> trustline already present.`) if present (or the native-asset message), else `stellar.build_change_trust_xdr(source=wallet)`; send checks the op (`change_trust`, source, issuer) and submits to Horizon; nothing persisted.
 
-Response shapes: prepare → `{"ok": true, "xdr", "send_url", "extra"}`, or `{"ok": true, "redirect", "message", "next"}` when there is nothing to sign. send → `{"ok": true, "redirect", "status", "task_status", "tx_hash", "hash", "contract_id", "explorer_url", "message", "pending", "next"}`. **Business refusals are HTTP 200** `{"ok": false, "error", "message"}`; codes `not_chosen · forbidden · wrong_state · wrong_mode · unknown_step · tampered · provider · stellar · invalid · not_assigned`. A provider failure never flips the status; the TW/Horizon message is kept in `Escrow.last_error` and shown in the panel. A replayed send for a step already recorded with the same hash answers « Étape déjà confirmée. ».
+Response shapes: prepare → `{"ok": true, "xdr", "send_url", "extra"}`, or `{"ok": true, "redirect", "message", "next"}` when there is nothing to sign. send → `{"ok": true, "redirect", "status", "task_status", "tx_hash", "hash", "contract_id", "explorer_url", "message", "pending", "next"}`. **Business refusals are HTTP 200** `{"ok": false, "error", "message"}`; codes `not_chosen · forbidden · wrong_state · wrong_mode · unknown_step · tampered · provider · stellar · invalid · not_assigned`. A provider failure never flips the status; the TW/Horizon message is kept in `Escrow.last_error` and shown in the panel. A replayed send for a step already recorded with the same hash answers "Step already confirmed.".
 
 Model: `Escrow` 1-1 with `projects.Task` (`related_name="escrow"`), created at the first prepare (deploy in escrow mode, deliver / direct_pay in direct mode) or by `on_task_validated`: `mode` (frozen from `stellar.payment_mode()`, re-frozen while still `created`), `amount`, `payer_address`, `payee_address`, `platform_address`, `contract_id`, `engagement_id`, one `*_tx_hash` per step, `status` (`created / deployed / funded / delivered / approved / released / paid`; `failed` exists in the choices but the flow never sets it), `delivery_note`, `last_error`, `funded_at / delivered_at / released_at`.
 
-Before the demo: `LOWBID_PLATFORM_ADDRESS` set + funded + asset trustline; the chosen freelance has the asset trustline (« Ajouter la trustline USDC » in the panel — the release fails on chain otherwise); the company holds at least the price of each task it funds (Circle faucet, §2.5).
+Before the demo: `LOWBID_PLATFORM_ADDRESS` set + funded + asset trustline; the chosen freelance has the asset trustline ("Add the USDC trustline" in the panel — the release fails on chain otherwise); the company holds at least the price of each task it funds (Circle faucet, §2.5).
 
 ### 7.5 Open risks
 
@@ -488,7 +489,7 @@ Before the demo: `LOWBID_PLATFORM_ADDRESS` set + funded + asset trustline; the c
 2. `platformFee` unit (bps vs percent) — read it back with `get_escrow()`; `1` is safe either way. The freelance receives the task price minus the platform and protocol fees in escrow mode, the exact price in direct mode.
 3. `send-transaction` success detection relies on HTTP 2xx + `status != "FAILED"`; if TW ever returns 200 with another failure marker, `ok` would be wrongly true — log the payload on the first live run.
 4. `submit_xdr` 504: Horizon may have applied the tx; the response carries `hash`, so `confirm_direct_pay` stores it as *pending* (panel shows the explorer link) and the next `prepare_direct_pay` reconciles it. Trustless Work sends have no such reconciliation yet.
-5. Each task costs 10 Trustless Work calls (deploy, fund, deliver, approve, release: one build + one send each) against a 50 req / 60 s rate limit. Fine for a demo project; on a large one, « Financer le projet » (4 calls per task in a row) can hit HTTP 429 — retry after a minute, the steps already sent are kept.
+5. Each task costs 10 Trustless Work calls (deploy, fund, deliver, approve, release: one build + one send each) against a 50 req / 60 s rate limit. Fine for a demo project; on a large one, "Fund the project" (4 calls per task in a row) can hit HTTP 429 — retry after a minute, the steps already sent are kept.
 6. `watchBalance` hits Horizon from the browser (public CORS, rate-limited ~3600 req/h per IP) — one watcher per page is fine, do not multiply.
 
 ---
@@ -500,7 +501,7 @@ Research 2026-10-24, before the per-task design was built. Same verification cav
 ### 8.1 What multi-release offers (v1)
 
 ```
-POST /deployer/multi-release                          signer           (any account; the company in Lowbid)
+POST /deployer/multi-release                          signer           (any account; the company in TaskVault)
 POST /escrow/multi-release/fund-escrow                signer           (any depositor holding the asset + trustline)
 POST /escrow/multi-release/change-milestone-status    serviceProvider  (ONE address per escrow)
 POST /escrow/multi-release/approve-milestone          approver
@@ -515,7 +516,7 @@ GET  /helper/get-escrow-by-contract-ids?contractIds=C…&validateOnChain=true
 - `milestoneIndex` is a 0-based **string**; amounts are JSON numbers in asset units.
 - Vendor-reference inconsistencies resolved in favour of the client and the contract: there is no `complete-milestone` endpoint; approving does **not** release funds; the multi-release dispute endpoints are `dispute-milestone` / `resolve-milestone-dispute`; the path is unversioned (no `/v1/`).
 
-### 8.2 Why Lowbid did not use it
+### 8.2 Why TaskVault did not use it
 
 1. **One `serviceProvider` for the whole escrow.** The contract rejects any other signer on `change-milestone-status` (`OnlyServiceProviderChangeMilstoneStatus`), and `approve-milestone` needs a non-empty status. With several freelances on one project, no freelance could sign their own delivery on chain: either the company marks the milestone for them (three company signatures per task: status, approve, release) or the platform signs it server-side with a secret key in `.env`. The task board's promise — the freelance declares the delivery from their own wallet, with the link as on-chain evidence — would be lost.
 2. **Receivers must be known at deploy.** Tasks are attributed at different times. Deploying early means appending each milestone later with `update-escrow`, which is signed by **`platformAddress`** (a platform key or a fourth Freighter in the loop), and after funding existing milestones are frozen and must be copied back byte-for-byte. Deploying late means waiting until every task of the project is attributed before anything is locked.
@@ -526,7 +527,7 @@ v2 (beta) would fix (1) with up to five `serviceProviders` and batched `approve-
 
 ### 8.3 Decision
 
-**One v1 single-release escrow per task** (§1.2, `payments/services.py`): each freelance is `serviceProvider` + `receiver` of their own escrow and signs their own delivery; the escrow is deployed only once the company has chosen the freelance, so the receiver is right by construction; each escrow holds exactly one task's price. The costs, accepted: N deploys + N funds instead of one (« Financer le projet » chains them, two signatures per task), and no single "project escrow" to show on stellar.expert — the project banner lists every task's contract and hashes instead. The other fallback considered — `receiver` = company followed by a plain transfer to the freelance — was rejected outright: the freelance would not be protected by the escrow, which would be misleading in a demo.
+**One v1 single-release escrow per task** (§1.2, `payments/services.py`): each freelance is `serviceProvider` + `receiver` of their own escrow and signs their own delivery; the escrow is deployed only once the company has chosen the freelance, so the receiver is right by construction; each escrow holds exactly one task's price. The costs, accepted: N deploys + N funds instead of one ("Fund the project" chains them, two signatures per task), and no single "project escrow" to show on stellar.expert — the project banner lists every task's contract and hashes instead. The other fallback considered — `receiver` = company followed by a plain transfer to the freelance — was rejected outright: the freelance would not be protected by the escrow, which would be misleading in a demo.
 
 ---
 
@@ -539,5 +540,5 @@ v2 (beta) would fix (1) with up to five `serviceProviders` and batched `approve-
 
 - Read through `payments.stellar.asset_code()`, `asset_issuer()`, `is_native()` and `asset()` (a `stellar_sdk.Asset`), never from settings directly. The legacy names `STELLAR_USDC_CODE` / `STELLAR_USDC_ISSUER` still work as defaults.
 - The asset is used everywhere a payment touches the chain: the Trustless Work `trustline` field (`{address: issuer, symbol: code}`), the direct `payment` op, the signed-XDR check (`_check_payment_xdr` compares code **and** issuer), the `changeTrust` builder, Horizon balance and trustline reads (`_balance_entry`), the live balance in the browser (`LOWBID.asset`), and the unit printed by `{{ x|usdc }}` / `Lowbid.formatUsdc`.
-- **Native XLM fallback:** `STELLAR_ASSET_CODE=XLM` with an **empty** `STELLAR_ASSET_ISSUER` selects the native asset (`Asset.native()`). Direct payments, balances (the `native` balance line) and trustline checks handle it (`has_trustline` answers `True`, `prepare_trustline` says « L’actif natif XLM n’a pas besoin de trustline. », `build_change_trust_xdr` refuses). Trustless Work v1 cannot escrow it (no issuer to put in `trustline`), so `payment_mode()` returns `direct` with a logged warning whatever `LOWBID_PAYMENT_MODE` says. The native SAC (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` on testnet, inferred) would only be expressible in the v2 beta.
+- **Native XLM fallback:** `STELLAR_ASSET_CODE=XLM` with an **empty** `STELLAR_ASSET_ISSUER` selects the native asset (`Asset.native()`). Direct payments, balances (the `native` balance line) and trustline checks handle it (`has_trustline` answers `True`, `prepare_trustline` says "The native XLM asset needs no trustline.", `build_change_trust_xdr` refuses). Trustless Work v1 cannot escrow it (no issuer to put in `trustline`), so `payment_mode()` returns `direct` with a logged warning whatever `LOWBID_PAYMENT_MODE` says. The native SAC (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` on testnet, inferred) would only be expressible in the v2 beta.
 - Changing the asset needs a restart (`.env` is read at boot). Existing `Escrow` rows keep the asset they were deployed with on chain; only new steps use the new one, so switch assets between demos, not in the middle of a task.

@@ -1,8 +1,8 @@
 {
-  "name": "lowbid-frontend-assets",
+  "name": "taskvault-frontend-assets",
   "version": "0.1.0",
   "private": true,
-  "description": "Self-hosted frontend asset build for Lowbid: Tailwind CSS v3 + vendored Font Awesome, @stellar/freighter-api (UMD, global `freighterApi`) and @stellar/stellar-sdk (global `StellarSdk`). Nothing loads from a CDN; every output is committed.",
+  "description": "Self-hosted frontend asset build for TaskVault: Tailwind CSS v3 + vendored Font Awesome, @stellar/freighter-api (UMD, global `freighterApi`) and @stellar/stellar-sdk (global `StellarSdk`). Nothing loads from a CDN; every output is committed.",
   "scripts": {
     "build:css": "tailwindcss -c tailwind.config.js -i static/css/tailwind.src.css -o static/css/tailwind.css --minify",
     "watch:css": "tailwindcss -c tailwind.config.js -i static/css/tailwind.src.css -o static/css/tailwind.css --watch",

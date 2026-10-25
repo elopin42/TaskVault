@@ -6,7 +6,7 @@ unfunded task (escrow mode) from GET /pay/project/<pk>/pending.json; the aside's
 banner (totals, per-task escrow status, every hash with its stellar.expert link). `funding` =
 payments.services.project_funding().
 {% endcomment %}
-{% block title %}{{ project.title }} · Lowbid{% endblock %}
+{% block title %}{{ project.title }} · TaskVault{% endblock %}
 {% block meta_description %}{{ project.title }} — {{ project.tasks_count }} task{{ project.tasks_count|pluralize }}, {{ project.total_amount|usdc }} in total.{% endblock %}
 
 {% block content %}

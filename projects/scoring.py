@@ -1,4 +1,4 @@
-"""The candidate score — deterministic, no AI (SPEC §4).
+"""The candidate score — deterministic, no AI.
 
     score = 40 · [≥1 task `paid` for THIS company]
           + 8 · avg_note given by THIS company (0 without rating)

@@ -6,7 +6,7 @@ Network calls go through `payments.trustless_work` (escrow mode) and `payments.s
 session wallet must sign in Freighter, confirm submits the signed XDR and persists the
 result. Role and state gates run in BOTH halves, pinned to the session wallet.
 
-Why one escrow PER TASK (SPEC §7bis): Trustless Work v1 fixes the receiver of an escrow at
+Why one escrow PER TASK: Trustless Work v1 fixes the receiver of an escrow at
 deploy and freezes it once funded, so a project-wide escrow funded before the freelances are
 chosen could not pay them. The company deploys + funds a single-release escrow for each task
 once a freelance is chosen; "Fund the project" simply chains those steps task after task.
@@ -19,6 +19,7 @@ State table — Escrow.status (payments) and Task.status (projects):
     deploy      company    (none|created) → deployed  taken                TW deployer → contract_id, deploy_tx_hash
     fund        company    deployed → funded          taken                TW fund-escrow → fund_tx_hash, funded_at;
                                                                            project draft → funded when every assigned task holds funds
+                                                                           (choose sends a funded project back to draft)
     deliver     freelance  funded → delivered         taken → delivered    TW change-milestone-status (delivery link = evidence);
                                                                            confirm calls projects.services.deliver(link)
     validate    company    —                          delivered (+Rating)  (projects) saves the Rating, answers `next` = approve
@@ -283,7 +284,7 @@ def ensure_escrow(task: Task) -> Escrow:
             "payer_address": task.project.company.stellar_address,
             "payee_address": task.assigned_to.stellar_address,
             "platform_address": _platform_address(task) if mode == M.ESCROW else "",
-            "engagement_id": f"lowbid-task-{task.pk}",
+            "engagement_id": f"taskvault-task-{task.pk}",
         },
     )
     if created:
@@ -307,6 +308,8 @@ def _gate(task: Task, wallet, step: str) -> tuple[Escrow, dict]:
         raise PaymentError("wrong_mode", f"This step does not exist in {label} mode.")
     role = viewer_role(task, wallet)
     if role != entry["who"]:
+        if entry["who"] == "freelance":  # same code as projects.services.deliver for the same refusal
+            raise PaymentError("not_assigned", "Only the chosen freelancer can deliver this task.")
         who = "the company" if entry["who"] == "company" else "the chosen freelancer"
         raise PaymentError("forbidden", f"Only {who} can do this.")
     if escrow.status not in entry["allowed"] or task.status not in entry["task"]:
@@ -422,11 +425,13 @@ def _log_confirm(task: Task, step: str, wallet, tx_hash: str | None, extra: str 
 
 
 def sync_project_status(project: Project) -> Project:
-    """draft → funded when every assigned (non-open) task holds its money on chain (escrow mode:
-    funded / delivered / approved / released) — or, in direct mode, on the first payment, since
-    nothing is locked before. Closing (every task paid) is projects.services.mark_paid's job."""
+    """draft ↔ funded. Funded when every assigned (non-open) task holds its money on chain
+    (escrow mode: funded / delivered / approved / released) — or, in direct mode, from the first
+    payment, since nothing is locked before. A funded project goes back to draft when a newly
+    chosen task has no locked funds yet (and no direct payment was made), so "Funded" never lies.
+    Closing (every task paid) is projects.services.mark_paid's job; a closed project is left alone."""
     locked = Project.objects.select_for_update().get(pk=project.pk)
-    if locked.status != Project.Status.DRAFT:
+    if locked.status == Project.Status.CLOSED:
         return locked
     tasks = list(locked.tasks.exclude(status=T.OPEN))
     if not tasks:
@@ -434,10 +439,11 @@ def sync_project_status(project: Project) -> Project:
     escrows = {e.task_id: e for e in Escrow.objects.filter(task__in=tasks)}
     first_direct_payment = any(e.mode == M.DIRECT and e.status == S.PAID for e in escrows.values())
     all_locked = all(t.pk in escrows and escrows[t.pk].holds_funds for t in tasks)
-    if first_direct_payment or all_locked:
-        locked.status = Project.Status.FUNDED
+    target = Project.Status.FUNDED if (first_direct_payment or all_locked) else Project.Status.DRAFT
+    if locked.status != target:
+        locked.status = target
         locked.save(update_fields=["status", "updated_at"])
-        logger.info("payments: project funded project=%s tasks=%s", locked.pk, len(tasks))
+        logger.info("payments: project %s project=%s tasks=%s", target, locked.pk, len(tasks))
     return locked
 
 
@@ -673,7 +679,7 @@ def prepare_direct_pay(task: Task, wallet, data: dict | None = None) -> dict:
             source=escrow.payer_address,
             destination=escrow.payee_address,
             amount=escrow.amount,
-            memo=f"lowbid:task:{task.pk}",
+            memo=f"taskvault:task:{task.pk}",
         )
     except stellar.StellarError as exc:
         _record_error(escrow, str(exc))
@@ -749,6 +755,7 @@ def confirm_trustline(address: str, signed_xdr: str) -> dict:
         info is None
         or info.get("op_type") != "change_trust"
         or info.get("source") != address
+        or info.get("asset_code") != asset.code
         or info.get("asset_issuer") != asset.issuer
     ):
         raise PaymentError("tampered", "The signed transaction is not the expected trustline.")
@@ -763,6 +770,12 @@ def confirm_trustline(address: str, signed_xdr: str) -> dict:
 
 
 # --- hooks called by projects.services -----------------------------------------------------
+
+
+def on_task_chosen(task: Task) -> None:
+    """Inside choose()'s transaction: a newly assigned task has nothing locked yet, so a funded
+    project falls back to draft until its escrow is funded (see sync_project_status)."""
+    sync_project_status(task.project)
 
 
 def on_task_validated(task: Task) -> Escrow:

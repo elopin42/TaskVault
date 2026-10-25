@@ -42,9 +42,9 @@ viewer_is_company, task_open, can_choose. ({# #} comments are single-line in Dja
   {% endfor %}
 </div>
 <p class="ui-meta mt-3 flex flex-wrap gap-x-3 gap-y-1" aria-hidden="true">
-  <span><span class="inline-block w-2 h-2 rounded-full align-middle" style="background: var(--brand-500)"></span> History (40)</span>
-  <span><span class="inline-block w-2 h-2 rounded-full align-middle" style="background: var(--info)"></span> Ratings (×8)</span>
-  <span><span class="inline-block w-2 h-2 rounded-full align-middle" style="background: var(--success)"></span> Skills (20)</span>
+  <span><span class="ui-scorebar-key is-history"></span> History (40)</span>
+  <span><span class="ui-scorebar-key is-rating"></span> Ratings (×8)</span>
+  <span><span class="ui-scorebar-key is-skills"></span> Skills (20)</span>
 </p>
 {% else %}
 <div class="empty-state" data-candidates data-count="0" data-task="{{ task.pk }}">

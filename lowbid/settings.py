@@ -1,4 +1,4 @@
-"""Django settings for Lowbid.
+"""Django settings for TaskVault (the code keeps the `lowbid` package name).
 
 Every environment-specific value is read from the environment (a `.env` file at
 the repo root is loaded by python-dotenv; see `.env.example`). Defaults target
@@ -56,7 +56,7 @@ INSTALLED_APPS = [
     # Let whitenoise serve static files under runserver too (same code path as prod).
     "whitenoise.runserver_nostatic",
     "django.contrib.staticfiles",
-    # Lowbid apps
+    # TaskVault apps
     "core",
     "accounts",
     "projects",
@@ -175,7 +175,7 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 30
 
 # Bump whenever css/lowbid-*.css or js/lowbid-*.js changes (30-day static cache).
-LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261030-hero3d"
+LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-docs-audit"
 
 # --- Stellar ------------------------------------------------------------------
 

@@ -1,4 +1,4 @@
-"""Lowbid URL configuration.
+"""TaskVault URL configuration.
 
     /            core (landing, healthz) + projects (projets, tâches, tableau)
     /auth/       accounts (wallet challenge / verify / logout)

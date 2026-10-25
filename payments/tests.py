@@ -73,7 +73,7 @@ class TrustlessWorkClientTests(SimpleTestCase):
         with self._post_ok() as post:
             env = tw.deploy_single_release(
                 signer=CLIENT,
-                engagement_id="lowbid-task-42",
+                engagement_id="taskvault-task-42",
                 title="T" * 120,
                 description="Task #42 of the yoga studio project",
                 amount=Decimal("25"),
@@ -98,7 +98,7 @@ class TrustlessWorkClientTests(SimpleTestCase):
         self.assertEqual(kwargs["headers"]["Content-Type"], "application/json")
         body = kwargs["json"]
         self.assertEqual(body["signer"], CLIENT)
-        self.assertEqual(body["engagementId"], "lowbid-task-42")
+        self.assertEqual(body["engagementId"], "taskvault-task-42")
         self.assertEqual(len(body["title"]), 100)  # clipped to the v1 limit
         self.assertEqual(
             body["roles"],
@@ -129,7 +129,7 @@ class TrustlessWorkClientTests(SimpleTestCase):
 
     def test_change_milestone_status_body(self):
         with self._post_ok() as post:
-            tw.change_milestone_status(contract_id="CABC", evidence="https://lowbid.app/d/42", service_provider=FREELANCER)
+            tw.change_milestone_status(contract_id="CABC", evidence="https://taskvault.app/d/42", service_provider=FREELANCER)
         args, kwargs = post.call_args
         self.assertEqual(args[0], f"{TW_URL}/escrow/single-release/change-milestone-status")
         self.assertEqual(
@@ -138,7 +138,7 @@ class TrustlessWorkClientTests(SimpleTestCase):
                 "contractId": "CABC",
                 "milestoneIndex": "0",
                 "newStatus": "completed",
-                "newEvidence": "https://lowbid.app/d/42",
+                "newEvidence": "https://taskvault.app/d/42",
                 "serviceProvider": FREELANCER,
             },
         )
@@ -281,7 +281,7 @@ class StellarBuildersTests(SimpleTestCase):
     def test_build_payment_xdr_offline_roundtrip(self):
         with patch("payments.stellar.requests.get") as get:
             xdr = stellar.build_payment_xdr(
-                source=CLIENT, destination=FREELANCER, amount=Decimal("12.50"), memo="lowbid:42", sequence=1000
+                source=CLIENT, destination=FREELANCER, amount=Decimal("12.50"), memo="taskvault:42", sequence=1000
             )
         get.assert_not_called()  # sequence injected → no Horizon round trip
         env = TransactionEnvelope.from_xdr(xdr, TESTNET)
@@ -295,7 +295,7 @@ class StellarBuildersTests(SimpleTestCase):
         self.assertEqual(op.destination.account_id, FREELANCER)
         self.assertEqual(Decimal(op.amount), Decimal("12.5"))
         self.assertEqual((op.asset.code, op.asset.issuer), ("USDC", USDC_ISSUER))
-        self.assertEqual(tx.memo.memo_text, b"lowbid:42")
+        self.assertEqual(tx.memo.memo_text, b"taskvault:42")
         self.assertIsNotNone(tx.preconditions.time_bounds)
         self.assertGreater(tx.preconditions.time_bounds.max_time, 0)
         self.assertEqual(len(env.signatures), 0)
@@ -362,14 +362,14 @@ class StellarBuildersTests(SimpleTestCase):
         self.assertEqual(Decimal(op.limit), Decimal("922337203685.4775807"))
 
     def test_parse_payment_xdr(self):
-        xdr = stellar.build_payment_xdr(source=CLIENT, destination=FREELANCER, amount=Decimal("3.25"), memo="lowbid:7", sequence=9)
+        xdr = stellar.build_payment_xdr(source=CLIENT, destination=FREELANCER, amount=Decimal("3.25"), memo="taskvault:7", sequence=9)
         info = stellar.parse_payment_xdr(xdr)
         self.assertEqual(info["op_type"], "payment")
         self.assertEqual(info["source"], CLIENT)
         self.assertEqual(info["destination"], FREELANCER)
         self.assertEqual(info["amount"], Decimal("3.25"))
         self.assertEqual(info["asset_issuer"], USDC_ISSUER)
-        self.assertEqual(info["memo"], "lowbid:7")
+        self.assertEqual(info["memo"], "taskvault:7")
         self.assertEqual(len(info["hash"]), 64)
         self.assertEqual(stellar.parse_payment_xdr(stellar.build_change_trust_xdr(source=CLIENT, sequence=1))["op_type"], "change_trust")
         self.assertIsNone(stellar.parse_payment_xdr("not-xdr"))

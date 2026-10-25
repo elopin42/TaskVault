@@ -1,4 +1,4 @@
-/* Lowbid pay module — sign-and-send driver for the escrow (Trustless Work) and direct-payment steps.
+/* TaskVault pay module — sign-and-send driver for the escrow (Trustless Work) and direct-payment steps.
  *
  * Depends on window.Lowbid (lowbid-base.js: api/toast), Lowbid.signTransaction
  * (lowbid-wallet.js: Freighter) and window.LOWBID (base.html: asset, urls). View-agnostic: the

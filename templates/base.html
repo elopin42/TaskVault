@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {# Read by Lowbid.csrf() (lowbid-base.js) for every unsafe fetch(); rendering it also sets the csrftoken cookie. #}
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <meta name="description" content="{% block meta_description %}Lowbid — projects split into fixed-price tasks for freelancers, paid in USDC on Stellar.{% endblock %}">
-    <title>{% block title %}Lowbid{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}TaskVault — projects split into fixed-price tasks for freelancers, paid in {{ asset_code }} on Stellar.{% endblock %}">
+    <title>{% block title %}TaskVault{% endblock %}</title>
     <link rel="icon" href="{% static 'img/favicon.svg' %}?v={{ LOWBID_ASSET_VERSION }}" type="image/svg+xml">
 
     {# The site is dark only: html[data-theme="dark"] applies the "Coffre" palette on every page. #}
@@ -47,7 +47,7 @@
 </head>
 
 <body class="min-h-screen overflow-x-hidden flex flex-col{% if wallet_address %} has-tabbar{% endif %} {% block body_class %}{% endblock %}" style="color: var(--text); background: var(--bg-1);">
-    <!-- Background glow + gradient (flat white in light mode via tokens) -->
+    <!-- Background glow + gradient (tokens; dark only) -->
     <div class="fixed inset-0 -z-10" aria-hidden="true"
          style="background: radial-gradient(circle at 18% 12%, var(--glow-1), transparent 48%),
                             radial-gradient(circle at 84% 78%, var(--glow-2), transparent 56%),
@@ -74,12 +74,12 @@
     {% if wallet_address %}{% include "partials/tabbar.html" %}{% endif %}
 
     <footer class="px-6 py-4 text-xs text-center border-t border-[color:var(--soft-border)] text-[color:var(--muted)]">
-        <span>Lowbid · Hack Meridian · network <strong class="font-semibold">{{ STELLAR_NETWORK }}</strong></span>
+        <span>TaskVault · Hack Meridian · network <strong class="font-semibold">{{ STELLAR_NETWORK }}</strong></span>
         <span class="mx-2" aria-hidden="true">·</span>
         <a href="https://www.freighter.app/" target="_blank" rel="noopener" class="ui-link">Install Freighter</a>
     </footer>
 
-    <!-- Shared JS: lowbid-base.js (theme, toasts, Lowbid.api) then lowbid-ui.js (confirm modal,
+    <!-- Shared JS: lowbid-base.js (toasts, Lowbid.api) then lowbid-ui.js (confirm modal,
          identicons, sparklines, polling helper). Vendored Freighter API
          (UMD global `freighterApi`) + Stellar SDK (global `StellarSdk`) load next,
          then the wallet module that uses them. Not deferred: page scripts in

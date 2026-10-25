@@ -1,4 +1,4 @@
-/* Lowbid wallet module — Freighter (browser extension) as identity.
+/* TaskVault wallet module — Freighter (browser extension) as identity.
  *
  * Depends on window.Lowbid (lowbid-base.js), window.LOWBID (base.html) and the
  * vendored UMD global `freighterApi` (static/vendor/freighter-api.js).

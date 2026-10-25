@@ -1,39 +1,41 @@
-/* Lowbid design tokens — the « Registre » direction. ONE :root palette (light « Papier »), dark « Coffre »
+/* TaskVault design tokens — the « Vault » direction. ONE :root palette (light « Papier »), dark « Coffre »
    via html[data-theme="dark"] — and the same Coffre values on any .theme-coffre element (landing hero,
-   escrow receipt), whatever the page theme.
+   escrow receipt), whatever the page theme. The site renders dark only, so Coffre is what ships.
    base.html loads this FIRST; lowbid-components.css and tailwind.css read these var(--*).
-   The DNA: a cool mineral canvas, near-white surfaces with a 1px hairline, graphite ink, 6px corners.
-   ONE accent — Signal, Stellar yellow — and it means money: a signature that moves funds, locked
-   funds, the live dot. Everything that lives on chain (amounts, addresses, hashes) is set in mono. */
+   The DNA: a deep blue-steel vault, machined surfaces (1px hairline + a faint top bevel), 8–16px corners,
+   a cold mint / cobalt glow behind the page. ONE accent — Signal, vault mint — and it means money: a
+   signature that moves funds, locked funds, the live dot. Everything on chain (amounts, addresses,
+   hashes) is set in mono. */
 
 :root {
-    /* Signal (Stellar yellow) — the only accent hue */
-    --brand-500: #FDDA24;
-    --brand-600: #E6C20A;
-    --brand-700: #8A6D00;          /* yellow-family TEXT on the light canvas (≥ 4.5:1) */
-    --brand-800: #6B5500;
-    --brand-hover: #F0CC10;
-    --brand-soft: rgba(253,218,36,0.22);
-    --brand-ink: #151922;          /* text on a filled Signal surface — 12:1 */
+    /* Signal (vault mint) — the only accent hue */
+    --brand-500: #2FD9A6;
+    --brand-600: #1FBF8F;
+    --brand-700: #0B6E52;          /* mint-family TEXT on the light canvas (≥ 4.5:1) */
+    --brand-800: #08573F;
+    --brand-hover: #26C998;
+    --brand-soft: rgba(47,217,166,0.18);
+    --brand-ink: #04160F;          /* text on a filled Signal surface */
 
     /* Brand RGB triplets for Tailwind alpha utilities (bg-brand-500/20 …) */
-    --brand-50-rgb:  255 251 230;
-    --brand-100-rgb: 255 245 194;
-    --brand-200-rgb: 254 236 140;
-    --brand-300-rgb: 254 228 92;
-    --brand-400-rgb: 253 223 60;
-    --brand-500-rgb: 253 218 36;
-    --brand-600-rgb: 230 194 10;
-    --brand-700-rgb: 138 109 0;
-    --brand-800-rgb: 107 85 0;
-    --brand-900-rgb: 82 65 0;
-    --brand-950-rgb: 46 36 0;
+    --brand-50-rgb:  233 252 245;
+    --brand-100-rgb: 200 247 231;
+    --brand-200-rgb: 150 240 211;
+    --brand-300-rgb: 98 230 190;
+    --brand-400-rgb: 66 224 178;
+    --brand-500-rgb: 47 217 166;
+    --brand-600-rgb: 31 191 143;
+    --brand-700-rgb: 11 110 82;
+    --brand-800-rgb: 8 87 63;
+    --brand-900-rgb: 6 64 47;
+    --brand-950-rgb: 3 36 26;
 
-    /* Ink — graphite: primary off-chain actions, active nav tab, active chip */
+    /* Ink — graphite on paper, steel-white in the vault: primary off-chain actions, active chip */
     --ink: #151922;
     --ink-hover: #2A303C;
     --on-ink: #F1F3F5;
     --icon-accent: var(--ink);     /* accent icons: graphite on paper, Signal in the Coffre */
+    --bevel: rgba(255,255,255,0.7); /* the 1px top highlight of a machined surface */
 
     /* Secondary + accent — occasional (identicon / data) */
     --secondary-500: #3E6BE0;
@@ -83,10 +85,10 @@
     --shadow: none;
     --shadow-pop: 0 16px 36px -18px rgba(21,25,34,0.32);
     --backdrop: rgba(14,17,23,0.45);
-    --radius-lg: 12px;
-    --radius-md: 10px;
-    --radius-sm: 6px;
-    --radius-xs: 4px;
+    --radius-lg: 16px;
+    --radius-md: 12px;
+    --radius-sm: 8px;
+    --radius-xs: 5px;
 
     --glass-bg: var(--surface);
     --glass-border: var(--border);
@@ -108,30 +110,38 @@
     --nav-active: var(--ink);
 }
 
-/* COFFRE — graphite vault. The dark theme, and the fixed surface of the landing hero + escrow receipts. */
+/* COFFRE — the vault. The dark theme (the only one the site renders), and the fixed surface of the landing
+   hero + escrow receipts. Blue-steel steps: bg-3 (deepest) → bg-1 → surface → surface-soft. */
 html[data-theme="dark"], .theme-coffre {
-    --brand-500: #FDDA24;
-    --brand-600: #FDDA24;
-    --brand-700: #FDDA24;
-    --brand-800: #FFE873;
-    --brand-hover: #FFE45C;
-    --brand-soft: rgba(253,218,36,0.14);
-    --brand-ink: #151922;
+    --brand-500: #34E5B0;
+    --brand-600: #34E5B0;
+    --brand-700: #34E5B0;
+    --brand-800: #7FF2CF;
+    --brand-hover: #5EEDC2;
+    --brand-soft: rgba(52,229,176,0.13);
+    --brand-ink: #03150E;          /* 12:1 on the mint fill */
+    --brand-500-rgb: 52 229 176;
 
-    --ink: #E9ECF1;
+    --ink: #E8EDF4;
     --ink-hover: #FFFFFF;
-    --on-ink: #151922;
+    --on-ink: #0A0D13;
     --icon-accent: var(--brand-500);
+    --bevel: rgba(255,255,255,0.06);
 
-    --success: #4FD08F;
-    --success-soft: rgba(79,208,143,0.14);
-    --warning: #FFD86B;
-    --warning-soft: rgba(253,218,36,0.12);
-    --error: #F87171;
-    --error-soft: rgba(220,38,38,0.18);
+    --secondary-500: #6F8FFF;
+    --secondary-soft: rgba(111,143,255,0.16);
+    --accent-500: #FF8A5C;
+    --accent-soft: rgba(255,138,92,0.14);
+
+    --success: #A3E36A;            /* lime, kept apart from the mint accent */
+    --success-soft: rgba(163,227,106,0.13);
+    --warning: #FFC46B;
+    --warning-soft: rgba(255,196,107,0.13);
+    --error: #FF7B7B;
+    --error-soft: rgba(255,90,90,0.16);
     --on-error: #1A0505;
-    --info: #8FB0F5;
-    --info-soft: rgba(62,107,224,0.18);
+    --info: #8EAAFF;
+    --info-soft: rgba(111,143,255,0.16);
 
     --ui-badge-ok-text:     var(--success);
     --ui-badge-attn-text:   var(--warning);
@@ -139,39 +149,39 @@ html[data-theme="dark"], .theme-coffre {
     --ui-badge-brand-text:  var(--brand-ink);
     --ui-badge-info-text:   var(--info);
 
-    --bg-1: #0E1117;
-    --bg-2: #0B0E13;
-    --bg-3: #080A0E;
-    --surface: #151922;
-    --surface-soft: #1D2230;
-    --text-main: #E9ECF1;
-    --text-muted: #9AA1AE;
-    --text-faint: #7A8292;
+    --bg-1: #0A0D13;
+    --bg-2: #080A10;
+    --bg-3: #05070B;
+    --surface: #10141C;
+    --surface-soft: #181D28;
+    --text-main: #E8EDF4;
+    --text-muted: #98A2B4;
+    --text-faint: #7D8799;         /* ≥ 4.5:1 on surface */
     --text: var(--text-main);
     --muted: var(--text-muted);
-    --border: #262C3A;
-    --border-strong: #343B4D;
-    --rule: #E9ECF1;
-    --shadow: none;
-    --shadow-pop: 0 20px 44px -24px rgba(0,0,0,0.75);
-    --backdrop: rgba(5,6,10,0.66);
+    --border: #222938;
+    --border-strong: #313A4C;
+    --rule: #E8EDF4;
+    --shadow: inset 0 1px 0 rgba(255,255,255,0.035), 0 1px 2px rgba(0,0,0,0.35);
+    --shadow-pop: 0 24px 48px -24px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.03);
+    --backdrop: rgba(3,5,8,0.7);
 
     --glass-bg: var(--surface);
     --glass-border: var(--border);
     --glass-shadow: var(--shadow);
     --soft-bg: var(--surface-soft);
     --soft-border: var(--border);
-    --hover-border: #3E465A;
-    --hover-shadow: 0 6px 18px -12px rgba(0,0,0,0.6);
-    --glow-1: transparent;
-    --glow-2: transparent;
-    --divider: #1F2431;
+    --hover-border: #3B4559;
+    --hover-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 24px -16px rgba(0,0,0,0.7);
+    --glow-1: rgba(52,229,176,0.07);
+    --glow-2: rgba(111,143,255,0.07);
+    --divider: #1B212D;
     --row-hover: rgba(255,255,255,0.03);
-    --focus-ring: rgba(253,218,36,0.45);
+    --focus-ring: rgba(52,229,176,0.4);
 
-    --nav-bg: rgba(14,17,23,0.88);
-    --nav-border: #1F2431;
-    --nav-link-hover-bg: rgba(255,255,255,0.06);
-    --nav-active: var(--ink);
+    --nav-bg: rgba(10,13,19,0.82);
+    --nav-border: #1B212D;
+    --nav-link-hover-bg: rgba(255,255,255,0.05);
+    --nav-active: var(--surface-soft);
 }
 .theme-coffre { background: var(--bg-1); color: var(--text); }

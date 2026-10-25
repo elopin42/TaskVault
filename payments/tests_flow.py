@@ -213,7 +213,7 @@ class EscrowHappyPathTests(BasePayTest):
             self.assertEqual(esc.contract_id, CONTRACT)
             self.assertEqual(esc.deploy_tx_hash, sent["tx_hash"])
             self.assertEqual(len(esc.deploy_tx_hash), 64)
-            self.assertEqual(esc.engagement_id, f"lowbid-task-{self.task.pk}")
+            self.assertEqual(esc.engagement_id, f"taskvault-task-{self.task.pk}")
             self.assertEqual(esc.amount, Decimal("120"))
             self.assertEqual(esc.payer_address, self.company.stellar_address)
             self.assertEqual(esc.payee_address, self.freelance.stellar_address)
@@ -231,7 +231,7 @@ class EscrowHappyPathTests(BasePayTest):
             self.assertEqual(body["amount"], 120)
             self.assertEqual(body["platformFee"], 1)
             self.assertEqual(body["title"], "Logo vectoriel")
-            self.assertEqual(body["engagementId"], f"lowbid-task-{self.task.pk}")
+            self.assertEqual(body["engagementId"], f"taskvault-task-{self.task.pk}")
             self.assertEqual(body["milestones"], [{"description": f"Delivery of task #{self.task.pk} — Logo vectoriel"}])
             self.assertEqual(body["trustline"], {"address": USDC_ISSUER, "symbol": "USDC"})
 
@@ -406,6 +406,18 @@ class EscrowGuardTests(BasePayTest):
                     self.assertIn("company", resp.json()["message"])
             post.assert_not_called()
 
+    def test_choosing_a_new_task_sends_a_funded_project_back_to_draft(self):
+        router = TWRouter(self.unsigned)
+        with patch("payments.trustless_work.requests.post", side_effect=router):
+            login(self.client, self.company)
+            self.run_step("deploy", self.company_kp)
+            self.run_step("fund", self.company_kp)
+        self.assertEqual(Project.objects.get(pk=self.project.pk).status, Project.Status.FUNDED)
+        projects.apply(self.open_task, self.other, "Je prends", ["design"])
+        projects.choose(self.open_task, Application.objects.get(task=self.open_task), self.company)
+        self.assertEqual(Project.objects.get(pk=self.project.pk).status, Project.Status.DRAFT, "T2 holds nothing yet")
+        self.assertTrue(project_funding(self.project)["can_fund"])
+
     def test_non_assignee_cannot_deliver(self):
         router = TWRouter(self.unsigned)
         with patch("payments.trustless_work.requests.post", side_effect=router):
@@ -415,9 +427,9 @@ class EscrowGuardTests(BasePayTest):
             for wallet, kp in ((self.other, self.other_kp), (self.company, self.company_kp)):
                 login(self.client, wallet)
                 resp = self.prepare("deliver", {"delivery_link": LINK}).json()
-                self.assertEqual(resp["error"], "forbidden")
+                self.assertEqual(resp["error"], "not_assigned")
                 resp = self.send("deliver", sign(self.unsigned, kp), {"delivery_link": LINK}).json()
-                self.assertEqual(resp["error"], "forbidden")
+                self.assertEqual(resp["error"], "not_assigned")
         self.assertEqual(self.escrow().status, Escrow.Status.FUNDED)
         self.assertEqual(self.task_status(), "taken")
 
@@ -709,7 +721,7 @@ class DirectModeTests(BasePayTest):
         self.assertEqual(info["destination"], self.freelance.stellar_address)
         self.assertEqual(info["amount"], Decimal("120"))
         self.assertEqual(info["asset_issuer"], USDC_ISSUER)
-        self.assertEqual(info["memo"], f"lowbid:task:{self.task.pk}")
+        self.assertEqual(info["memo"], f"taskvault:task:{self.task.pk}")
         self.assertTrue(sent["ok"], sent)
         self.assertFalse(sent["pending"])
         self.assertIsNone(sent["next"])
@@ -915,6 +927,20 @@ class TrustlineTests(BasePayTest):
         self.assertTrue(sent["ok"], sent)
         self.assertEqual(sent["message"], "USDC trustline added.")
         self.assertIn(sent["tx_hash"], sent["explorer_url"])
+
+    def test_trustline_for_another_asset_code_is_tampered(self):
+        login(self.client, self.freelance)
+        with self.settings(STELLAR_ASSET_CODE="EURC"):
+            forged = stellar.build_change_trust_xdr(source=self.freelance.stellar_address, sequence=1)
+        with patch("payments.stellar.requests.post") as post:
+            sent = self.client.post(
+                reverse("payments:trustline_send"),
+                data=json.dumps({"signed_xdr": sign(forged, self.freelance_kp)}),
+                content_type="application/json",
+                **JSON,
+            ).json()
+        post.assert_not_called()
+        self.assertEqual(sent["error"], "tampered")
 
     def test_trustline_for_another_wallet_is_tampered(self):
         login(self.client, self.freelance)

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Lowbid end-to-end run — the task-board demo scenario (SPEC §8) with a simulated Freighter
+/* TaskVault end-to-end run — the task-board demo scenario with a simulated Freighter
  * (fake-freighter.js) and a fake Horizon (fake-horizon.js) for the DIRECT payment mode.
  *
  *   make e2e                      # fresh SQLite, runserver (direct mode, STELLAR_HORIZON_URL = the fake), this script
@@ -248,7 +248,7 @@ async function main() {
     // 1 ------------------------------------------------------------------------------------------
     await step("1. landing renders, Freighter login round-trip, navbar shows G…XXXX", async () => {
       await cp.goto("/");
-      assert((await cp.title()).includes("Lowbid"), "title contains Lowbid");
+      assert((await cp.title()).includes("TaskVault"), "title contains TaskVault");
       await cp.locator(".lb-hero-title").waitFor();
       assert(await cp.locator(".lb-hero [data-wallet-connect]").count() === 1, "hero has the connect button");
       const body = await cp.evaluate(() => document.body.innerText);
@@ -295,7 +295,7 @@ async function main() {
         assert((await rows.nth(i).getAttribute("data-status")) === "open", `task ${i + 1} is open`);
       }
       assert((await cp.locator("[data-kpi-total]").innerText()).replace(/\s+/g, " ").startsWith("1,200.00"), "KPI total = 1,200.00");
-      assert(await cp.locator("[data-task-delete]").count() === 3, "every open task of a draft project can be deleted");
+      assert(await cp.locator("[data-task-delete]").count() === 3, "every open task can be deleted");
       // direct payment mode (no Trustless Work key): no funding button, the panel says so
       assert(await cp.locator("[data-fund]").count() === 0, "no Fund button in direct mode");
       assert(await cp.locator("#funding-panel[data-mode=direct]").count() === 1, "funding banner in direct mode");

@@ -67,7 +67,7 @@ Envelope = dict[str, Any]
 
 
 class StellarError(Exception):
-    """Raised by the XDR builders when the transaction cannot be assembled (message is user-facing French)."""
+    """Raised by the XDR builders when the transaction cannot be assembled (message is user-facing English)."""
 
 
 # --- settings accessors --------------------------------------------------------

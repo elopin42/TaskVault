@@ -5,7 +5,7 @@
  * It keeps a toy ledger in memory: accounts exist only once `fund(address, {usdc})` was called
  * (friendbot semantics), a `payment` needs a funded source, a destination holding the asset
  * trustline and enough balance, a `change_trust` adds the trustline. Every rejection uses Horizon's
- * real `extras.result_codes` shape so payments.stellar translates it into the usual French message.
+ * real `extras.result_codes` shape so payments.stellar translates it into the usual English message.
  *
  *   GET  /accounts/{id}           -> account JSON (sequence, balances) | 404
  *   GET  /fee_stats               -> {last_ledger_base_fee}

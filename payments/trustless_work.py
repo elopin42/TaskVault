@@ -9,7 +9,7 @@ The wallet named in the body signs that XDR in the browser (Freighter, with the
 testnet passphrase + the same address) and the signed XDR comes back to Django,
 which calls :func:`send_transaction`. Nothing here signs or holds keys.
 
-Lifecycle of one Lowbid TASK (one single-release escrow per task, one milestone)::
+Lifecycle of one TaskVault TASK (one single-release escrow per task, one milestone)::
 
     step      endpoint                                            signs (Freighter)
     deploy    POST /deployer/single-release                       company   -> send-transaction returns contractId  (persist it)

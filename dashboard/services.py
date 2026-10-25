@@ -1,7 +1,7 @@
 """View-models for the dashboard and the public wallet profile.
 
-Pure read helpers over projects (Project / Task / Application / Rating): no HTTP, no writes.
-Every function takes a WalletUser and returns plain dicts / lists so the templates stay dumb
+Read helpers over projects (Project / Task / Application / Rating), no HTTP. The one write is
+`set_display_name` (the profile owner renaming their wallet). Every read function takes a WalletUser and returns plain dicts / lists so the templates stay dumb
 and the tests can assert on data rather than on markup.
 """
 
@@ -15,6 +15,7 @@ from payments.stellar import asset_code
 from projects.models import Application, Project, Rating, Task
 
 ZERO = Decimal("0")
+MAX_DISPLAY_NAME = 80
 
 # Payment steps → to-do copy for the wallet that must sign them (company side) and for the
 # freelance waiting on them. Mirrors payments.services.FLOW; the "validate" step is projects'.
@@ -358,3 +359,14 @@ def profile_stats(wallet) -> dict:
             Rating.objects.filter(freelancer=wallet).select_related("task", "company").order_by("-created_at")[:10]
         ),
     }
+
+
+def set_display_name(wallet, viewer, raw_name) -> str | None:
+    """The owner renames their wallet (trimmed, ≤ MAX_DISPLAY_NAME, empty clears it).
+    Returns the stored name, or None when the viewer is not the owner."""
+    if viewer is None or viewer.pk != wallet.pk:
+        return None
+    name = (raw_name or "").strip()[:MAX_DISPLAY_NAME]
+    wallet.display_name = name
+    wallet.save(update_fields=["display_name"])
+    return name

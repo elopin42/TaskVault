@@ -1,10 +1,10 @@
-/* Lowbid landing: the scroll story — the CSS 3D « project cube » that sits in the hero band of
+/* TaskVault landing: the scroll story — the CSS 3D « project cube » that sits in the hero band of
    templates/core/landing.html (pinned on the right), scrubbed by anime.js v4
    (static/vendor/anime.umd.min.js, global `anime`, loaded right before this file).
    Four timelines, one per chapter, each bound to the scroll position of its own trigger
    (onScroll, sync: true — no timer, nothing runs when the page does not scroll):
      01 Split    trigger: the hero copy scrolling out — the cube turns, its four task slabs pull apart
-     02 Bid      trigger: step card 2 — three offers slide in beside every task, the chosen one stays
+     02 Apply    trigger: step card 2 — three applications slide in beside every task, the chosen one stays
      03 Lock     trigger: step card 3 — the slabs close ranks, Signal frame + padlock on every task
      04 Release  trigger: step card 4 — the cube turns to its side: RELEASED · deliver · approve · release
    A card's window runs from its top entering the viewport bottom to its centre reaching the viewport
@@ -39,7 +39,11 @@
   var caption = story.querySelector("[data-scene-caption]");
   if (!hero || !cube || !slabs.length || steps.length < 4) return;
 
-  var CHAPTERS = ["Split", "Bid", "Lock", "Deliver, release"];
+  /* Caption = the step card titles (they follow the payment mode: Lock / Work, Deliver, release / pay) */
+  var CHAPTERS = steps.map(function (el) {
+    var t = el.querySelector(".lb-step-title");
+    return t ? t.textContent.trim() : "";
+  });
   var SPREAD = 30;                                  // px between two slabs when the cube is pulled apart
   var reduced = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   var narrow = !!(window.matchMedia && window.matchMedia("(max-width: 1023.98px)").matches);
@@ -66,7 +70,7 @@
 
   var cardLeave = narrow ? "top+=55% top" : "center center";
 
-  /* 02 Bid — twelve offers slide in (done by 685), then the two losers step back and the chosen one grows */
+  /* 02 Apply — twelve applications slide in (done by 685), then the two losers step back and the chosen one grows */
   var bid = chapter(1, steps[1], "bottom top", cardLeave)
     .add(bids, { x: [40, 0], opacity: [0, 1], duration: 300, delay: A.stagger(35) }, 0)
     .add(others, { opacity: [1, 0.3], x: [0, 8], duration: 250 }, 720)

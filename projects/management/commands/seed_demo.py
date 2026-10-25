@@ -1,4 +1,4 @@
-"""Seed the demo dataset (SPEC §8): 3 wallets, 2 projects.
+"""Seed the demo dataset: 3 wallets, 2 projects.
 
   1. "Booking platform" at the pitch state — T1 "Landing page" paid to freelance A
      (note 5, with its Escrow row: a direct payment and a demo tx hash so the explorer links render),
@@ -40,11 +40,11 @@ def _wallet(env_name: str, display: str) -> WalletUser:
 
 def _demo_hash(label: str) -> str:
     """A deterministic 64-hex "tx hash" for the seeded payment (explorer links render, nothing on chain)."""
-    return hashlib.sha256(f"lowbid-demo:{label}".encode()).hexdigest()
+    return hashlib.sha256(f"taskvault-demo:{label}".encode()).hexdigest()
 
 
 class Command(BaseCommand):
-    help = "Create the Lowbid demo data (wallets, projects, tasks, applications, one paid task with its escrow row)."
+    help = "Create the TaskVault demo data (wallets, projects, tasks, applications, one paid task with its escrow row)."
 
     def add_arguments(self, parser):
         parser.add_argument("--flush", action="store_true", help="Delete every Project (tasks, applications, ratings, escrows) first.")
@@ -95,7 +95,7 @@ class Command(BaseCommand):
         now = timezone.now()
         escrow = Escrow.objects.create(
             task=t1, mode=Escrow.Mode.DIRECT, status=Escrow.Status.DELIVERED, amount=t1.price,
-            payer_address=company.stellar_address, payee_address=a.stellar_address, engagement_id=f"lowbid-task-{t1.pk}",
+            payer_address=company.stellar_address, payee_address=a.stellar_address, engagement_id=f"taskvault-task-{t1.pk}",
             delivery_note=link, delivered_at=now,
         )
         services.deliver(t1, a, link)

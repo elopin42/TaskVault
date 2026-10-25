@@ -14,7 +14,7 @@ RUFF    := $(VENV)/bin/ruff
 HOST    ?= 0.0.0.0
 PORT    ?= 8000
 
-.PHONY: all verify dev venv env migrate run seed test lint fmt css css-check watch-css vendor check e2e shots playwright clean
+.PHONY: all verify dev venv env configure migrate run seed test lint fmt css css-check watch-css vendor check e2e shots playwright clean
 
 $(VENV)/bin/activate: requirements.txt requirements-dev.txt
 	test -d $(VENV) || $(PY) -m venv $(VENV)
@@ -24,8 +24,19 @@ $(VENV)/bin/activate: requirements.txt requirements-dev.txt
 
 venv: $(VENV)/bin/activate
 
-env:
+# .env from .env.example, then the interactive wizard (manage.py configure_env): Trustless Work key, payment
+# mode, Stellar keys (type `g` to generate + fund on testnet), deposit wallets, demo wallets. The full wizard
+# runs once (stamp data/.env-configured), later runs only ask for what the chosen mode still misses.
+# `make configure` asks everything again; `make NO_PROMPT=1` (or no TTY, as in CI) never asks.
+NO_PROMPT ?=
+
+env: venv
 	@test -f .env || (cp .env.example .env && echo "created .env from .env.example")
+	@$(PYTHON) manage.py configure_env $(if $(NO_PROMPT),--no-input)
+
+configure: venv
+	@test -f .env || (cp .env.example .env && echo "created .env from .env.example")
+	@$(PYTHON) manage.py configure_env --all
 
 migrate: venv env
 	$(PYTHON) manage.py migrate
@@ -39,10 +50,15 @@ dev: venv env migrate run
 seed: venv env migrate
 	$(PYTHON) manage.py seed_demo --flush
 
+# Tests and e2e run against the defaults, whatever the wizard wrote into .env (python-dotenv never overrides
+# a variable that is already set, even to an empty value).
+TEST_ENV := TRUSTLESS_WORK_API_KEY= LOWBID_PAYMENT_MODE= LOWBID_PLATFORM_ADDRESS= LOWBID_DISPUTE_RESOLVER= \
+	LOWBID_PLATFORM_SECRET= LOWBID_DEPOSIT_RESOLVER_SECRET= LOWBID_GUARANTEE_FUND_ADDRESS= LOWBID_GITHUB_TOKEN=
+
 test: venv env
-	$(PYTHON) manage.py check
-	$(PYTHON) manage.py makemigrations --check --dry-run
-	$(PYTHON) manage.py test -v 2
+	$(TEST_ENV) $(PYTHON) manage.py check
+	$(TEST_ENV) $(PYTHON) manage.py makemigrations --check --dry-run
+	$(TEST_ENV) $(PYTHON) manage.py test -v 2
 
 lint: venv
 	$(RUFF) check .
@@ -85,7 +101,7 @@ verify: venv env migrate check e2e
 # The default goal: verify, then serve. Nothing to type afterwards; Ctrl-C stops the server.
 all: verify
 	@echo " Starting the server: http://localhost:$(PORT)  (Ctrl-C to stop, 'make seed' for the demo data)"
-	@$(MAKE) --no-print-directory run
+	@$(MAKE) --no-print-directory run NO_PROMPT=1
 
 # End-to-end (Playwright, simulated Freighter + a fake Horizon): fresh SQLite at data/e2e.sqlite3,
 # runserver on a free port in DIRECT payment mode pointed at tests/e2e/fake-horizon.js (started by
@@ -104,7 +120,7 @@ e2e: venv playwright
 	@rm -f $(E2E_DB)
 	@port=$$($(PYTHON) -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'); \
 	hport=$$($(PYTHON) -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'); \
-	export LOWBID_SQLITE_PATH=$(E2E_DB) DJANGO_DEBUG=1 LOWBID_PAYMENT_MODE=direct STELLAR_HORIZON_URL=http://127.0.0.1:$$hport; \
+	export $(TEST_ENV) LOWBID_SQLITE_PATH=$(E2E_DB) DJANGO_DEBUG=1 LOWBID_PAYMENT_MODE=direct STELLAR_HORIZON_URL=http://127.0.0.1:$$hport; \
 	$(PYTHON) manage.py migrate --noinput -v 0 || exit 1; \
 	$(PYTHON) manage.py runserver 127.0.0.1:$$port --noreload >data/e2e-server.log 2>&1 & pid=$$!; \
 	trap 'kill $$pid 2>/dev/null' EXIT; \

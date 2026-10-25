@@ -16,6 +16,7 @@ There is **no GSD workflow** in this repo. Edit files directly, run `make check`
 ```bash
 make            # = make all: venv + .env + migrate + check + e2e (screenshots in data/e2e-shots/), then runserver — hands-off
 make verify     # the same checks, without starting the server
+make configure  # .env wizard again (manage.py configure_env --all): Trustless Work key, payment mode, Stellar keys ('g' generates + Friendbot/trustline on testnet), deposit wallets, demo wallets. `make` runs it once (stamp data/.env-configured), then only for keys the mode still misses; NO_PROMPT=1 or no TTY = never asks; tests/e2e run with those keys blanked (TEST_ENV)
 make dev        # venv + pip install + .env from .env.example + migrate + runserver 0.0.0.0:8000
 make test       # manage.py check + makemigrations --check --dry-run + test -v 2
 make lint       # ruff check .

@@ -1,4 +1,4 @@
-/* Lowbid shared runtime: theme toggle, toasts, CSRF-aware fetch, small DOM helpers.
+/* Lowbid shared runtime: toasts, CSRF-aware fetch, small DOM helpers.
    Loaded on every page BEFORE the vendor bundles and lowbid-wallet.js. No template
    tags here — per-request values arrive through window.LOWBID (set in base.html). */
 (function () {
@@ -67,16 +67,6 @@
     });
   };
 
-  /* ---------- theme ---------- */
-  /* Light is the default (no data-theme attribute); "dark" is the stored opt-in. */
-  Lowbid.toggleTheme = function () {
-    var current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
-    var next = current === "dark" ? "light" : "dark";
-    if (next === "dark") document.documentElement.setAttribute("data-theme", "dark");
-    else document.documentElement.removeAttribute("data-theme");
-    try { localStorage.setItem("lowbid_theme", next); } catch (e) { /* private mode */ }
-  };
-
   /* ---------- toasts ---------- */
   var ICONS = { success: "fa-circle-check", error: "fa-circle-xmark", warning: "fa-triangle-exclamation", info: "fa-circle-info" };
   var TITLES = { success: "Succès", error: "Erreur", warning: "Attention", info: "Info" };
@@ -127,9 +117,6 @@
 
   /* ---------- shell wiring ---------- */
   document.addEventListener("click", function (ev) {
-    var t = ev.target.closest("[data-theme-toggle]");
-    if (t) { Lowbid.toggleTheme(); return; }
-
     var nav = ev.target.closest("[data-nav-toggle]");
     if (nav) {
       var panel = document.getElementById(nav.getAttribute("aria-controls"));

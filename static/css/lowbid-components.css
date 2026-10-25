@@ -311,9 +311,6 @@ a.ui-list-row:hover { background: var(--row-hover); }
     border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 1rem;
 }
 .lb-icon-btn:hover { border-color: var(--border-strong); background: var(--row-hover); }
-.lb-theme-dark { display: none; }
-html[data-theme="dark"] .lb-theme-dark { display: inline; }
-html[data-theme="dark"] .lb-theme-light { display: none; }
 .lb-wallet-btn {
     display: inline-flex; align-items: center; gap: 0.5rem; min-height: 38px; padding: 0 0.95rem; border-radius: var(--radius-sm); cursor: pointer;
     border: 1px solid var(--ink); background: var(--ink); color: var(--on-ink); font-weight: 600; font-size: 0.8125rem; font-family: inherit;

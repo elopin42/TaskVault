@@ -19,11 +19,6 @@
     </nav>
 
     <div class="lb-nav-actions">
-      <button type="button" class="lb-icon-btn" data-theme-toggle aria-label="Changer de thème" title="Thème clair / sombre">
-        <i class="fa-solid fa-moon lb-theme-dark" aria-hidden="true"></i>
-        <i class="fa-solid fa-sun lb-theme-light" aria-hidden="true"></i>
-      </button>
-
       {% if wallet_address %}
         <details class="lb-wallet-menu">
           <summary class="lb-wallet-btn is-connected" title="{{ wallet_address }}" data-identicon="{{ wallet_address }}">

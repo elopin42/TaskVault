@@ -32,7 +32,7 @@ Golden rules: components only read `var(--*)` (never a hardcoded colour); any ne
 | Rows | `--row-hover` | Table / list row hover |
 | Layout | `--tabbar-h` | Height of the mobile tab bar (0 on desktop), read by `.ui-sticky-actions` |
 
-**Light is the default** (`<html>` without `data-theme`). **Dark mode** (« Coffre »): `html[data-theme="dark"]` redefines the same variables (`#0E1117` canvas, `#151922` surfaces, `#262C3A` hairlines, the same Signal yellow; graphite ink becomes off-white). The same block applies to `.theme-coffre`, so the landing hero band, the hero receipt and the escrow receipt stay graphite in light mode. The stored choice is applied **before** the stylesheets by an inline script in `base.html` (no flash) and persisted in `localStorage["lowbid_theme"]` (`"dark"` sets the attribute, `"light"` removes it); `Lowbid.toggleTheme()` / `[data-theme-toggle]` (sun in light mode, moon in dark mode).
+**The site is dark only**: `base.html` renders `<html data-theme="dark">` on every page, there is no toggle. The `:root` block holds the light « Papier » values as the base; the « Coffre » block `html[data-theme="dark"]` redefines the same variables (`#0E1117` canvas, `#151922` surfaces, `#262C3A` hairlines, the same Signal yellow; graphite ink becomes off-white). The same block applies to `.theme-coffre`, so a fragment can force the graphite palette on its own.
 
 ---
 
@@ -315,8 +315,8 @@ Load order (`base.html`, not deferred unless noted): `lowbid-base.js` → `lowbi
 
 - `Lowbid.api(url, {method, body})` → Promise JSON; adds CSRF + `Accept: application/json` + `X-Requested-With: fetch`; rejects with `err.status` / `err.data` on non-2xx.
 - `Lowbid.toast(message, type="info|success|warning|error", {title, duration=4500})` → `{el, dismiss}`; `duration: 0` = sticky.
-- `Lowbid.escapeHtml`, `Lowbid.csrf()`, `Lowbid.shortAddr(addr, keep)`, `Lowbid.formatUsdc(value, code)` (unit = `LOWBID.asset.code`; `code=""` → bare number), `Lowbid.toggleTheme()`.
-- Delegated: `[data-theme-toggle]`, `[data-nav-toggle][aria-controls]`, `[data-copy="…"]` (toast « Adresse copiée »), closing the wallet menu.
+- `Lowbid.escapeHtml`, `Lowbid.csrf()`, `Lowbid.shortAddr(addr, keep)`, `Lowbid.formatUsdc(value, code)` (unit = `LOWBID.asset.code`; `code=""` → bare number).
+- Delegated: `[data-nav-toggle][aria-controls]`, `[data-copy="…"]` (toast « Adresse copiée »), closing the wallet menu.
 
 ### `lowbid-ui.js`
 

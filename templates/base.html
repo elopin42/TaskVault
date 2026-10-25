@@ -1,6 +1,6 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="fr" dir="ltr">
+<html lang="fr" dir="ltr" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,23 +10,8 @@
     <title>{% block title %}Lowbid{% endblock %}</title>
     <link rel="icon" href="{% static 'img/favicon.svg' %}?v={{ LOWBID_ASSET_VERSION }}" type="image/svg+xml">
 
-    <!-- Anti-flash: apply the saved theme BEFORE any stylesheet so the right canvas paints
-         on the first frame. Light is the default (no data-theme); dark is the stored opt-in. -->
-    <script>
-      (function () {
-        var saved = null;
-        try { saved = localStorage.getItem("lowbid_theme"); } catch (e) {}
-        if (saved === "dark") {
-          document.documentElement.setAttribute("data-theme", "dark");
-        } else if (saved === "light") {
-          document.documentElement.removeAttribute("data-theme");
-        }
-      })();
-    </script>
-    <style>
-      html { color-scheme: light; }
-      html[data-theme="dark"] { color-scheme: dark; }
-    </style>
+    {# The site is dark only: html[data-theme="dark"] applies the « Coffre » palette on every page. #}
+    <style>html { color-scheme: dark; }</style>
 
     <!-- window.LOWBID — the only per-request values the static JS needs. -->
     <script>

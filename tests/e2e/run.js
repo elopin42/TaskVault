@@ -19,7 +19,7 @@
  * [data-pay-error], HTTP 200 {ok:false}) → the fake Horizon "friendbots" the wallets, A adds the
  * USDC trustline, the company resumes the payment from the panel button → T1 paid, hash + explorer
  * link shown → A and B apply to T2 → A is top with « Validé » + « Recommandé » (90 vs 20). Plus the
- * kanban, dashboard, profile, list filters, mobile (no horizontal scroll), theme toggle and logout.
+ * kanban, dashboard, profile, list filters, mobile (no horizontal scroll), dark-only theme and logout.
  */
 "use strict";
 
@@ -656,13 +656,10 @@ async function main() {
     });
 
     // 9 ------------------------------------------------------------------------------------------
-    await step("9. theme toggle persists (dark shot), logout clears the navbar, 404 on unknown task", async () => {
+    await step("9. dark-only theme (dark shot), logout clears the navbar, 404 on unknown task", async () => {
       await cp.goto(`/taches/${taskIds[1]}/`);
-      assert((await cp.getAttribute("html", "data-theme")) === null, "light is the default (no data-theme)");
-      await cp.click("[data-theme-toggle]");
-      assert((await cp.getAttribute("html", "data-theme")) === "dark", "html[data-theme=dark]");
-      await cp.reload();
-      assert((await cp.getAttribute("html", "data-theme")) === "dark", "dark theme survives a reload (no flash to light)");
+      assert((await cp.getAttribute("html", "data-theme")) === "dark", "html[data-theme=dark] on every page");
+      assert(await cp.locator("[data-theme-toggle]").count() === 0, "no theme toggle");
       await cp.locator("#candidates-panel").waitFor();
       await shot(cp, "12-tache-dark");
       const contrast = await cp.locator("#candidates-panel").evaluate((el) => {
@@ -670,8 +667,6 @@ async function main() {
         return { bg: cs.backgroundColor, text: getComputedStyle(el.querySelector(".ui-panel-title")).color };
       });
       assert(contrast.bg !== contrast.text, `panel text differs from its background (${JSON.stringify(contrast)})`);
-      await cp.click("[data-theme-toggle]");
-      assert((await cp.getAttribute("html", "data-theme")) === null, "back to light (attribute removed)");
 
       await cp.click("details.lb-wallet-menu summary");
       await cp.locator("details.lb-wallet-menu[open]").waitFor();

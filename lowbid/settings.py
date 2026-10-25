@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "projects",
     "payments",
     "dashboard",
+    "network",
 ]
 
 MIDDLEWARE = [

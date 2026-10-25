@@ -332,6 +332,7 @@ def delete_task(task: Task, company) -> None:
         locked = _locked_task(task)
         if locked.status != Task.Status.OPEN:
             raise ProjectError("wrong_state", "Only an open task can be deleted.")
+        _check_can_delete(locked)
         pk = locked.pk
         locked.delete()
     logger.info("task deleted task=%s", pk)
@@ -714,6 +715,17 @@ def _after_validate(task: Task) -> None:
     from payments import services as payments  # lazy: payments.services imports this module
 
     payments.on_task_validated(task)
+
+
+def _check_can_delete(task: Task) -> None:
+    """Deposit hook, inside delete_task()'s transaction: while a deposit is locked, a task with
+    applications cannot be deleted (payments.deposits.check_can_delete)."""
+    from payments import deposits  # lazy: payments imports this module
+
+    try:
+        deposits.check_can_delete(task)
+    except deposits.PaymentError as exc:
+        raise ProjectError(exc.code, exc.message) from None
 
 
 def _check_applications_open(task: Task) -> None:

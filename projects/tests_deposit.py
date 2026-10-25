@@ -9,6 +9,7 @@ from django.urls import reverse
 from payments.tests_deposit import DEPOSIT_SETTINGS
 from payments.tests_flow import JSON, login, make_wallet
 from projects import services
+from payments.models import ProjectDeposit
 from projects.models import Application, Project, Task
 from projects.services import ProjectError
 
@@ -145,3 +146,38 @@ class ListingTests(TestCase):
         self.assertContains(self.client.get(reverse("projects:project_detail", args=[self.hidden.pk])), "data-unpublished")
         self.assertNotContains(self.client.get(reverse("projects:project_detail", args=[self.public.pk])), "data-unpublished")
         self.assertEqual(Task.objects.filter(project=self.hidden).count(), 1)
+
+
+@override_settings(**DEPOSIT_SETTINGS)
+class DeleteGuardTests(TestCase):
+    """R72: while the deposit is locked, a task that received applications cannot be deleted."""
+
+    def setUp(self):
+        self.company, _ = make_wallet("company")
+        self.freelance, _ = make_wallet("freelance")
+        self.project = services.create_project(self.company, "Guarded project", "Body.")
+        self.task = services.add_task(self.project, self.company, "Task", "", "100", [])
+        self.empty = services.add_task(self.project, self.company, "Empty", "", "50", [])
+        ProjectDeposit.objects.create(
+            project=self.project, status=ProjectDeposit.Status.FUNDED, amount="5", covered_budget="1000",
+            payer_address=self.company.stellar_address, platform_address="G" + "A" * 55,
+            resolver_address="G" + "B" * 55, fund_address="G" + "C" * 55,
+        )
+        Project.objects.filter(pk=self.project.pk).update(published_at=self.project.created_at)
+        services.apply(self.task, self.freelance, "hi", [])
+
+    def test_task_with_applications_cannot_be_deleted_while_locked(self):
+        with self.assertRaises(ProjectError) as ctx:
+            services.delete_task(self.task, self.company)
+        self.assertEqual(ctx.exception.code, "wrong_state")
+        self.assertTrue(Task.objects.filter(pk=self.task.pk).exists())
+        self.assertEqual(Application.objects.count(), 1)
+
+    def test_task_without_applications_can_be_deleted(self):
+        services.delete_task(self.empty, self.company)
+        self.assertFalse(Task.objects.filter(pk=self.empty.pk).exists())
+
+    def test_guard_only_while_deposits_are_active(self):
+        with override_settings(LOWBID_DEPOSIT_ENABLED=False):
+            services.delete_task(self.task, self.company)
+        self.assertFalse(Task.objects.filter(pk=self.task.pk).exists())

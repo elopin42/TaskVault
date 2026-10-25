@@ -7,7 +7,7 @@ from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.core.checks import CheckMessage, Error
+from django.core.checks import CheckMessage
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone

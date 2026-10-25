@@ -199,6 +199,21 @@ def check_can_apply(task: Task) -> None:
         raise PaymentError("not_covered", "This task is not covered by the project's deposit yet.")
 
 
+def check_can_delete(task: Task) -> None:
+    """Called by projects.services.delete_task (inside its transaction). While a deposit is locked, a task
+    that already received applications cannot be deleted: deleting it would erase the applications the
+    verdict counts (R65) and turn a ghost listing into a refund. The company cancels the project instead."""
+    if not deposits_active():
+        return
+    if not task.applications.exists():
+        return
+    if task.project.deposits.filter(status=D.FUNDED).exists():
+        raise PaymentError(
+            "wrong_state",
+            "This task received applications while the deposit is locked: cancel the project instead of deleting it.",
+        )
+
+
 # --- verdict (pure) ------------------------------------------------------------------------------
 
 

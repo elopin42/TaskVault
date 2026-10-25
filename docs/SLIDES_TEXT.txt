@@ -1,0 +1,68 @@
+Create a 7-slide pitch deck for a hackathon project called TaskVault (Hack Meridian, Stellar hackathon, track "Composed").
+Style: dark theme (near-black / deep navy background), one accent colour: mint green (money). Modern fintech look, lots of space, big headlines, max 3-4 short bullets per slide, no stock photos of people. Leave a large image area on slides 1, 3, 4 and 6 (I will add app screenshots myself).
+Keep my wording, do not invent numbers or features. One card per section below.
+
+---
+
+# TaskVault
+Fixed prices. Earned trust. Guaranteed payment.
+
+A company splits its project into fixed-price tasks. Each task's money is locked on Stellar before the work starts, and released to the freelancer's wallet the moment the company approves.
+
+Hack Meridian · Track Composed · Freighter + USDC + Trustless Work
+
+---
+
+# The problem
+- Freelancers get paid late, sometimes never.
+- Small companies splitting a project between several freelancers juggle quotes, invoices and trust, with no shared track record.
+- Big platforms typically take 10 to 20% and hold the money until their payout cycle.
+- Price races to the bottom reward rushed work, not good work.
+
+---
+
+# The solution
+- The company splits a project into tasks with a fixed price in USDC. No haggling.
+- Freelancers apply with a message and their skills.
+- A transparent score recommends a candidate. The company always chooses.
+- Each task's money is locked in its own escrow before work starts, and released in about 5 seconds when the company approves the delivery.
+
+---
+
+# How it works (demo)
+1. Connect the Freighter wallet: a signed message, no account, no password.
+2. Create the project and its fixed-price tasks.
+3. Freelancers apply; candidates are ranked live, "Recommended" on top.
+4. Choose a freelancer, then "Fund the project": the price is locked in an escrow on Stellar.
+5. The freelancer delivers a link, recorded on chain as evidence.
+6. The company rates 1 to 5 stars and releases: USDC lands in the freelancer's wallet in seconds.
+
+---
+
+# Trust you can compute
+score = 40 × already paid by this company
+      + 8 × average rating from this company
+      + 20 × share of the task's skills matched
+Maximum 100. No AI, no black box.
+
+Next task: Yanis already delivered 5/5 → 90 points, "Validated" + "Recommended". Nora, a newcomer with matching skills → 20 points. The company still decides; trust is earned task by task.
+
+---
+
+# Why Stellar: 3 building blocks, 1 flow
+- Freighter: the wallet is the identity and the signature. TaskVault never holds a private key.
+- USDC on Stellar: dollar-stable, settled in about 5 seconds for a fraction of a cent.
+- Trustless Work on Soroban: one escrow per task. Nobody can run away with the money, not even the platform.
+Diagram: Browser + Freighter → TaskVault (Django) → Trustless Work / Horizon → Stellar
+
+---
+
+# Built to be trusted
+- 245 automated tests + a full end-to-end run in a real browser
+- Every money movement signed by the person it concerns, in their own wallet
+- Responsive from phone to desktop
+- Honest fallback: direct USDC payment if the escrow is unavailable
+
+Next: disputes through Trustless Work's resolver role · portable reputation · cash-out to euros via a Stellar anchor (SEP-24)
+
+TaskVault: fixed prices, earned trust, guaranteed payment.

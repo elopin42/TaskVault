@@ -225,6 +225,8 @@ class Command(BaseCommand):
             p3, company, "Order tracking", "Live order status for customers (queued, cooking, ready) with a map of the truck.",
             "450", ["js", "maps"],
         )
+        if deposits.deposits_active():  # escrow mode: the project must hold its publication deposit to take applications
+            _demo_deposit(p3, company, ProjectDeposit.Status.FUNDED)
 
         # T4 — chosen freelance B; delivered, sent back for changes, delivered again. Direct-mode row frozen
         # BEFORE the DB-only deliveries (escrow mode refuses them), moved like prepare_deliver does in direct mode.
@@ -242,6 +244,8 @@ class Command(BaseCommand):
         )
         services.deliver(t4, b, link_1, delivery_hash=hash_1, source_link=source_1)
         services.request_changes(t4, company, "Please fix the mobile layout on the menu page.")  # escrow row → created
+        # Keep the direct row frozen past `created`: in escrow mode a DB-only re-delivery would otherwise be refused.
+        Escrow.objects.filter(pk=escrow4.pk).update(status=Escrow.Status.DELIVERED)
         t4 = services.deliver(t4, b, link_2, delivery_hash=hash_2, source_link=source_2)
         Escrow.objects.filter(pk=escrow4.pk).update(
             status=Escrow.Status.DELIVERED, delivery_note=payment_services.build_evidence(link_2, hash_2), delivered_at=t4.delivered_at,

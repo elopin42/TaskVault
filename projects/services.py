@@ -8,7 +8,15 @@ Payment hooks (wired to the payments app, imported lazily to avoid an import cyc
     `payments.services.on_task_validated(task)`, which does NOT pay: the page then chains the
     Freighter signatures (approve → release, or direct_pay);
   - `_before_deliver(task)` a DB-only delivery is refused in escrow mode (the freelance signs the
-    milestone change instead; payments calls `deliver(..., on_chain=True)` after that).
+    milestone change instead; payments calls `deliver(..., on_chain=True)` after that);
+  - `_after_request_changes(task)` called by `request_changes()` once the task is back to `taken` →
+    `payments.services.on_changes_requested(task)` moves the Escrow row back as well.
+
+Review window and revisions: once delivered, the company has `LOWBID_REVIEW_DAYS` days
+(`review_deadline`, computed at read time — no timer anywhere) to validate or to send the delivery
+back for changes (`request_changes`, at most `LOWBID_MAX_REVISIONS` times, only before the Rating).
+A change request puts the task back to `taken` and the freelance delivers again; every (re)delivery is
+a `Delivery` row and every request a `RevisionRequest` row (`delivery_history`).
 
 Two-step delivery: `Task.delivery_link` (demo / preview, required) is public once delivered;
 `Task.source_link` (the full deliverable, optional) is revealed to the company only once the task is
@@ -19,13 +27,15 @@ escrow mode payments puts it on chain inside the milestone evidence.
 
 import logging
 import re
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
+from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
-from .models import Application, Project, Rating, Task
+from .models import Application, Delivery, Project, Rating, RevisionRequest, Task
 from .scoring import company_history, score_application
 
 logger = logging.getLogger(__name__)
@@ -43,6 +53,7 @@ __all__ = [
     "ProjectError",
     "add_task",
     "apply",
+    "can_request_changes",
     "choose",
     "clean_hash",
     "clean_link",
@@ -53,10 +64,16 @@ __all__ = [
     "dec_str",
     "delete_task",
     "deliver",
+    "delivery_history",
+    "is_review_overdue",
     "mark_paid",
+    "max_revisions",
     "parse_note",
     "parse_price",
+    "request_changes",
     "rescore",
+    "review_deadline",
+    "revisions_left",
     "source_visible",
     "validate",
 ]
@@ -284,12 +301,14 @@ def deliver(
     delivery_hash="",
     source_link="",
     on_chain: bool = False,
+    tx_hash: str = "",
 ) -> Task:
     """Only the assignee, only a `taken` task; the link must be http(s), ≤500 chars. The optional
     `delivery_hash` (git SHA / SHA-256, see `clean_hash`) and `source_link` (full deliverable, see
     `clean_source_link`) are stored with it. `on_chain=True` is payments confirming the Trustless
-    Work milestone change; otherwise the `_before_deliver` hook refuses a DB-only delivery in
-    escrow mode."""
+    Work milestone change (`tx_hash` = that transaction); otherwise the `_before_deliver` hook refuses
+    a DB-only delivery in escrow mode. The single write point of a delivery: the Task holds the latest
+    one, a `Delivery` row keeps every one (a re-delivery after `request_changes` adds a row)."""
     link = clean_link(delivery_link)
     fingerprint = clean_hash(delivery_hash)
     source = clean_source_link(source_link)
@@ -309,9 +328,17 @@ def deliver(
         locked.save(
             update_fields=["status", "delivery_link", "delivery_hash", "source_link", "delivered_at", "updated_at"]
         )
+        Delivery.objects.create(
+            task=locked,
+            freelancer=freelancer,
+            delivery_link=link,
+            delivery_hash=fingerprint,
+            source_link=source,
+            tx_hash=(tx_hash or "")[:64],
+        )
     logger.info(
-        "task delivered task=%s freelancer=%s hash=%s source=%s",
-        locked.pk, freelancer.pk, fingerprint or "-", "yes" if source else "no",
+        "task delivered task=%s freelancer=%s hash=%s source=%s revision=%s tx=%s",
+        locked.pk, freelancer.pk, fingerprint or "-", "yes" if source else "no", locked.revision_count, tx_hash or "-",
     )
     return locked
 
@@ -326,6 +353,103 @@ def source_visible(task: Task, wallet) -> bool:
     if task.project.company_id == wallet.pk:
         return task.status == Task.Status.PAID
     return False
+
+
+# --- review window + change requests ------------------------------------------------------------
+
+def max_revisions() -> int:
+    return int(getattr(settings, "LOWBID_MAX_REVISIONS", 2))
+
+
+def revisions_left(task: Task) -> int:
+    """How many change requests the company may still make on this task (never negative)."""
+    return max(0, max_revisions() - task.revision_count)
+
+
+def review_deadline(task: Task) -> datetime | None:
+    """End of the company's review window: `delivered_at` + LOWBID_REVIEW_DAYS days while the task is
+    `delivered`, None otherwise. Computed at read time — nothing runs on a timer."""
+    if task.status != Task.Status.DELIVERED or task.delivered_at is None:
+        return None
+    return task.delivered_at + timedelta(days=int(getattr(settings, "LOWBID_REVIEW_DAYS", 7)))
+
+
+def is_review_overdue(task: Task) -> bool:
+    """Delivered, not rated yet, and the review window is over (the freelance's protection: Phase 3
+    lets them open a dispute from here)."""
+    deadline = review_deadline(task)
+    if deadline is None or Rating.objects.filter(task=task).exists():
+        return False
+    return timezone.now() > deadline
+
+
+def can_request_changes(task: Task, wallet) -> bool:
+    """Whether the "Request changes" control is shown to this viewer: the company, while the task is
+    `delivered` and not rated yet. The max-revisions gate is `request_changes`' (the button is disabled
+    with a hint when `revisions_left` is 0). Views pass the result to the templates."""
+    if wallet is None or task.project.company_id != wallet.pk or task.status != Task.Status.DELIVERED:
+        return False
+    return not Rating.objects.filter(task=task).exists()
+
+
+def request_changes(task: Task, company, message) -> Task:
+    """The company sends a delivery back: only the company (`forbidden`), only a `delivered` task that
+    is not rated yet (`wrong_state`), at most LOWBID_MAX_REVISIONS times (`too_many_revisions`), with a
+    non-empty message ≤ 280 chars telling the freelance what to change (`invalid`). The task goes
+    `delivered → taken`, `revision_count` += 1, `delivered_at` is cleared (the window restarts at the
+    next delivery; the history stays in Delivery / RevisionRequest), then the payments hook moves the
+    Escrow row back (`delivered → funded` in escrow mode, `delivered → created` in direct mode)."""
+    _require_company(task.project, company)
+    message = str(message or "").strip()
+    if not message:
+        raise ProjectError("invalid", "Tell the freelancer what to change.")
+    if len(message) > MAX_MESSAGE:
+        raise ProjectError("invalid", f"The message is at most {MAX_MESSAGE} characters.")
+    with transaction.atomic():
+        locked = _locked_task(task)
+        if locked.status != Task.Status.DELIVERED:
+            raise ProjectError("wrong_state", "Only a delivered task can be sent back for changes.")
+        if Rating.objects.filter(task=locked).exists():
+            raise ProjectError("wrong_state", "This delivery has already been validated: it cannot be sent back.")
+        limit = max_revisions()
+        if locked.revision_count >= limit:
+            raise ProjectError(
+                "too_many_revisions",
+                f"At most {limit} change request{'s' if limit != 1 else ''} per task: validate this delivery.",
+            )
+        RevisionRequest.objects.create(task=locked, company=company, message=message)
+        locked.status = Task.Status.TAKEN
+        locked.revision_count += 1
+        locked.delivered_at = None
+        locked.save(update_fields=["status", "revision_count", "delivered_at", "updated_at"])
+        _after_request_changes(locked)
+    logger.info(
+        "changes requested task=%s company=%s revision=%s/%s", locked.pk, company.pk, locked.revision_count, limit
+    )
+    return locked
+
+
+def delivery_history(task: Task, *, source_visible: bool = False) -> list[dict]:
+    """Every Delivery and RevisionRequest of the task, newest first, as plain dicts for the templates:
+    {kind: "delivery" | "revision", when, ...}. `source_link` is included only when the caller may see
+    it (`source_visible`), so it never reaches the markup otherwise."""
+    rows: list[dict] = []
+    for d in task.deliveries.select_related("freelancer"):
+        rows.append(
+            {
+                "kind": "delivery",
+                "when": d.created_at,
+                "who": d.freelancer,
+                "delivery_link": d.delivery_link,
+                "delivery_hash": d.delivery_hash,
+                "source_link": d.source_link if source_visible else "",
+                "tx_hash": d.tx_hash,
+            }
+        )
+    for r in task.revision_requests.select_related("company"):
+        rows.append({"kind": "revision", "when": r.created_at, "who": r.company, "message": r.message})
+    rows.sort(key=lambda row: row["when"], reverse=True)
+    return rows
 
 
 # --- company: validate + rate → payment hook ----------------------------------------------------
@@ -370,6 +494,17 @@ def _before_deliver(task: Task) -> None:
 
     try:
         payments.check_db_deliver(task)
+    except payments.PaymentError as exc:
+        raise ProjectError("wrong_state", exc.message) from None
+
+
+def _after_request_changes(task: Task) -> None:
+    """Payment hook, inside request_changes()'s transaction: the Escrow row follows the task back
+    (`delivered → funded` | `delivered → created`); any other escrow stage refuses the request."""
+    from payments import services as payments  # lazy: payments.services imports this module
+
+    try:
+        payments.on_changes_requested(task)
     except payments.PaymentError as exc:
         raise ProjectError("wrong_state", exc.message) from None
 

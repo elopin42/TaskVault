@@ -4,12 +4,16 @@ Rendered by the `escrow_panel` inclusion tag (payments/templatetags/payments_ext
 {% escrow_panel task wallet %} in projects/task_detail.html for every non-open task. Context: task, project,
 escrow (may be None), mode, is_direct, status, steps, action (next_action(): a payment step or "validate"),
 role (company|freelance|other|anonymous), is_party, rated, amount, payee, payer, links (each with its `at` time),
-last_error, pending_hash, asset_code, asset_native, validate_url, trustline_url, and the two-step delivery:
+last_error, pending_hash, asset_code, asset_native, validate_url, trustline_url, the two-step delivery:
 delivery_hash, hash_kind, deliver_tx_hash, deliver_tx_url, delivered_at, source_visible (this viewer may see
-task.source_link), source_pending (the company, before payment).
+task.source_link), source_pending (the company, before payment), and the review window: review_deadline,
+review_overdue, can_request_changes, revision_count, max_revisions, revisions_left, latest_revision,
+request_changes_url.
 DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-url] · [data-pay-error] ·
-#deliver-panel #deliver-link #deliver-hash #deliver-source [data-deliver] · [data-delivery-hash] · [data-source-link] ·
-#validate-panel form[data-validate] [data-rate] [data-validate-submit] · [data-pay-trustline] · [data-usdc-balance].
+#deliver-panel #deliver-link #deliver-hash #deliver-source [data-deliver] [data-changes-requested] · [data-delivery-hash] ·
+[data-source-link] · #validate-panel form[data-validate] [data-rate] [data-validate-submit] · [data-request-changes]
+#request-changes-form #request-changes-message [data-request-changes-submit] · [data-review-deadline][data-deadline] ·
+[data-pay-trustline] · [data-usdc-balance].
 {% endcomment %}
 <section class="glass-card ui-receipt-card" id="escrow-panel" data-task="{{ task.pk }}" data-status="{{ task.status }}" data-escrow-status="{{ status }}" data-mode="{{ mode }}">
   <a id="paiement" class="block -mt-20 pt-20 pointer-events-none" aria-hidden="true"></a>
@@ -45,7 +49,24 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
       {% endfor %}
     </dl>
 
-    {% if task.delivery_link %}
+    {% if review_deadline or revision_count %}
+    {# Review window (computed at read time) + change requests so far — everyone sees it #}
+    <dl class="ui-receipt-rows" data-review-window>
+      {% if review_deadline %}
+        <dt>Review window</dt>
+        <dd class="text-end" data-review-deadline data-deadline="{{ review_deadline|date:'c' }}"{% if review_overdue %} data-overdue{% endif %}>
+          <span class="whitespace-nowrap">until {{ review_deadline|date:"M j, Y H:i" }}</span>
+          <span class="ui-meta whitespace-nowrap" data-countdown>{% if review_overdue %}Review window over{% endif %}</span>
+        </dd>
+      {% endif %}
+      {% if revision_count %}
+        <dt>Revisions requested</dt>
+        <dd><span class="ui-num" data-revisions="{{ revision_count }}">{{ revision_count }}/{{ max_revisions }}</span></dd>
+      {% endif %}
+    </dl>
+    {% endif %}
+
+    {% if task.delivery_link and task.status != 'taken' %}
     {# Delivery proof: the fingerprint (on chain inside the milestone evidence in escrow mode) and the two-step link #}
     <dl class="ui-receipt-rows" data-delivery-proof>
       <dt>Fingerprint</dt>
@@ -125,14 +146,42 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
             <span class="ui-error" data-error-for="_" hidden></span>
             <p class="ui-error" data-pay-error hidden></p>
             <div class="ui-sticky-actions">
+              {% if can_request_changes %}
+                <button type="button" class="ui-btn" data-request-changes{% if revisions_left == 0 %} disabled title="No change request left ({{ revision_count }}/{{ max_revisions }}): validate the delivery" aria-disabled="true"{% else %} title="Send the delivery back ({{ revisions_left }} request{{ revisions_left|pluralize }} left)"{% endif %} aria-controls="request-changes-form" aria-expanded="false"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Request changes</button>
+              {% endif %}
               <button type="submit" class="ui-btn ui-btn-primary" data-validate-submit data-loading-label="Validating…"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> {% if is_direct %}Validate and pay {{ amount|usdc:asset_code }}{% else %}Validate and release {{ amount|usdc:asset_code }}{% endif %}</button>
+            </div>
+            {% if can_request_changes and revisions_left == 0 %}<p class="ui-help mt-2" data-revisions-exhausted>Revisions requested: {{ revision_count }}/{{ max_revisions }} — no change request left, validate the delivery.</p>{% endif %}
+          </div>
+        </form>
+        {% if can_request_changes and revisions_left > 0 %}
+        <form id="request-changes-form" class="ui-form-grid mt-4" novalidate hidden data-request-changes-url="{{ request_changes_url }}" data-revisions-left="{{ revisions_left }}" data-max-revisions="{{ max_revisions }}">
+          <div class="ui-field ui-field-wide">
+            <label for="request-changes-message" class="ui-label">What should change? <span class="normal-case font-normal">(280 chars, required)</span></label>
+            <textarea id="request-changes-message" name="message" class="ui-textarea" rows="3" maxlength="280" required placeholder="The mobile menu overlaps the header; the contact form accepts an empty email…" style="min-height: 84px"></textarea>
+            <span class="ui-help">The task goes back to "Taken" and the freelancer delivers again. Revisions requested: {{ revision_count }}/{{ max_revisions }}{% if not is_direct %} — the funds stay locked in the escrow{% endif %}.</span>
+            <span class="ui-error" data-error-for="message" hidden></span>
+          </div>
+          <div class="ui-field-wide">
+            <div class="ui-sticky-actions">
+              <button type="button" class="ui-btn ui-btn-ghost" data-request-changes-cancel>Cancel</button>
+              <button type="submit" class="ui-btn ui-btn-primary" data-request-changes-submit data-loading-label="Sending…"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Send back for changes</button>
             </div>
           </div>
         </form>
+        {% endif %}
       </div>
     {% elif action and action.mine and action.evidence %}
       <div id="deliver-panel" class="ui-form-scope">
-        <p class="text-sm mb-3"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> You've been chosen: submit the link to your delivery.</p>
+        {% if revision_count and latest_revision %}
+          <div class="ui-alert ui-alert-attn mb-3" role="status" data-changes-requested="{{ revision_count }}">
+            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+            <span><strong class="text-strong">Changes requested ({{ revision_count }}/{{ max_revisions }})</strong> <span class="ui-meta whitespace-nowrap">{{ latest_revision.created_at|date:"M j, H:i" }}</span>: "{{ latest_revision.message }}"</span>
+          </div>
+          <p class="text-sm mb-3"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> Fix it, then declare the new delivery below (a new link and fingerprint).</p>
+        {% else %}
+          <p class="text-sm mb-3"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> You've been chosen: submit the link to your delivery.</p>
+        {% endif %}
         <form id="deliver-form" class="ui-form-grid" data-pay-form novalidate onsubmit="return false">
           <div class="ui-field ui-field-wide">
             <label for="deliver-link" class="ui-label">Delivery link <span class="normal-case font-normal">(demo, preview, PR)</span></label>

@@ -15,9 +15,18 @@ from accounts.models import WalletUser
 from payments import stellar
 from payments import trustless_work as tw
 from payments.models import Escrow
-from payments.services import EVIDENCE_MAX, PENDING_MESSAGE, PaymentError, build_evidence, next_action, project_funding, stepper
+from payments.services import (
+    EVIDENCE_MAX,
+    PENDING_MESSAGE,
+    PaymentError,
+    build_evidence,
+    next_action,
+    on_changes_requested,
+    project_funding,
+    stepper,
+)
 from projects import services as projects
-from projects.models import Application, Project, Rating, Task
+from projects.models import Application, Delivery, Project, Rating, RevisionRequest, Task
 
 JSON = {"HTTP_ACCEPT": "application/json", "HTTP_X_REQUESTED_WITH": "fetch"}
 USDC_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
@@ -396,6 +405,137 @@ class EscrowHappyPathTests(BasePayTest):
 
 
 @override_settings(**ESCROW_SETTINGS)
+class EscrowRevisionTests(BasePayTest):
+    """Review window + change requests in escrow mode: the Escrow row goes back to `funded`, the freelance
+    signs a NEW change-milestone-status (second newEvidence), the old signature is refused."""
+
+    def fund_and_deliver(self, router, body):
+        login(self.client, self.company)
+        self.run_step("deploy", self.company_kp)
+        self.run_step("fund", self.company_kp)
+        login(self.client, self.freelance)
+        return self.run_step("deliver", self.freelance_kp, body)
+
+    def test_request_changes_then_redelivery_with_a_new_signature(self):
+        router = TWRouter(self.unsigned)
+        with patch("payments.trustless_work.requests.post", side_effect=router):
+            prep1, sent1 = self.fund_and_deliver(router, {"delivery_link": LINK, "delivery_hash": GIT_SHA, "source_link": SOURCE})
+            self.assertTrue(sent1["ok"], sent1)
+            first_hash = sent1["tx_hash"]
+            esc = self.escrow()
+            self.assertEqual(esc.status, Escrow.Status.DELIVERED)
+            self.assertEqual(router.last(tw.PATH_CHANGE_MILESTONE)["newEvidence"], build_evidence(LINK, GIT_SHA))
+            d1 = Delivery.objects.get(task=self.task)
+            self.assertEqual((d1.tx_hash, d1.delivery_hash, d1.source_link), (first_hash, GIT_SHA, SOURCE), "the on-chain hash is kept on the Delivery row")
+            Escrow.objects.filter(pk=esc.pk).update(last_error="stale")
+
+            # the company sends it back: Escrow delivered → funded, task taken, hashes kept, no transaction
+            sends = router.count(tw.PATH_SEND)
+            task = projects.request_changes(self.fresh(), self.company, "The header overlaps the menu on mobile.")
+            self.assertEqual((task.status, task.revision_count, task.delivered_at), ("taken", 1, None))
+            esc = self.escrow()
+            self.assertEqual(esc.status, Escrow.Status.FUNDED)
+            self.assertEqual((esc.deliver_tx_hash, esc.last_error), (first_hash, ""), "the first deliver hash stays (history)")
+            self.assertTrue(esc.fund_tx_hash and esc.deploy_tx_hash)
+            self.assertTrue(esc.holds_funds, "the money stays locked")
+            self.assertEqual(router.count(tw.PATH_SEND), sends, "no transaction for a change request")
+            self.assertEqual(RevisionRequest.objects.get(task=self.task).message, "The header overlaps the menu on mobile.")
+            self.assertEqual(Project.objects.get(pk=self.project.pk).status, Project.Status.FUNDED, "still funded")
+            # the freelance's next step is "deliver" again, labelled accordingly
+            nxt = next_action(self.fresh(), self.freelance)
+            self.assertEqual((nxt["step"], nxt["mine"], nxt["label"]), ("deliver", True, "Deliver again"))
+            # approve is impossible: task taken, escrow funded
+            login(self.client, self.company)
+            self.assertEqual(self.prepare("approve").json()["error"], "wrong_state")
+
+            # replaying the OLD signed delivery is refused — it must not pass as "already confirmed" nor as the new delivery
+            login(self.client, self.freelance)
+            old_signed = sign(prep1["xdr"], self.freelance_kp)
+            replay = self.send("deliver", old_signed, {"delivery_link": LINK, "delivery_hash": GIT_SHA}).json()
+            self.assertEqual((replay["ok"], replay["error"]), (False, "tampered"), replay)
+            self.assertIn("already submitted", replay["message"])
+            self.assertEqual(self.task_status(), "taken")
+            self.assertEqual(Delivery.objects.filter(task=self.task).count(), 1)
+            self.assertEqual(router.count(tw.PATH_SEND), sends, "the replay never reached Trustless Work")
+
+            # the new delivery: Trustless Work builds a fresh transaction (new sequence number → new hash), a
+            # second change-milestone-status with the new evidence, a second Delivery row
+            link2 = LINK.replace("/1", "/2")
+            router.build_payload = {"status": "SUCCESS", "unsignedTransaction": some_xdr(self.company.stellar_address, self.freelance.stellar_address, "2")}
+            prep2, sent2 = self.run_step("deliver", self.freelance_kp, {"delivery_link": link2, "delivery_hash": SHA256})
+            self.assertTrue(sent2["ok"], sent2)
+            self.assertEqual(router.count(tw.PATH_CHANGE_MILESTONE), 2)
+            self.assertEqual(router.last(tw.PATH_CHANGE_MILESTONE)["newEvidence"], build_evidence(link2, SHA256))
+            esc = self.escrow()
+            self.assertEqual(esc.status, Escrow.Status.DELIVERED)
+            self.assertEqual(esc.delivery_note, build_evidence(link2, SHA256))
+            self.assertEqual(esc.deliver_tx_hash, sent2["tx_hash"])
+            rows = list(Delivery.objects.filter(task=self.task))
+            self.assertEqual([r.delivery_link for r in rows], [link2, LINK], "newest first")
+            self.assertEqual({r.tx_hash for r in rows}, {first_hash, sent2["tx_hash"]})
+            task = self.fresh()
+            self.assertEqual((task.status, task.delivery_link, task.delivery_hash, task.revision_count), ("delivered", link2, SHA256, 1))
+            self.assertIsNotNone(projects.review_deadline(task))
+            # the same (second) XDR sent twice is still the idempotent "already confirmed"
+            again = self.send("deliver", sign(prep2["xdr"], self.freelance_kp), {"delivery_link": link2, "delivery_hash": SHA256}).json()
+            self.assertTrue(again["ok"], again)
+            self.assertIn("already", again["message"])
+            self.assertEqual(Delivery.objects.filter(task=self.task).count(), 2)
+            # then the normal end: validate → approve → release
+            login(self.client, self.company)
+            self.assertTrue(self.validate(4).json()["ok"])
+            with self.assertRaises(projects.ProjectError) as ctx:
+                projects.request_changes(self.fresh(), self.company, "too late")
+            self.assertEqual(ctx.exception.code, "wrong_state")
+            self.run_step("approve", self.company_kp)
+            _, sent = self.run_step("release", self.company_kp)
+            self.assertTrue(sent["ok"], sent)
+            self.assertEqual(self.task_status(), "paid")
+            # the task page history carries the explorer link of each on-chain declaration
+            html = self.detail().content.decode()
+            self.assertIn('data-delivery-history data-count="3"', html)
+            for h in (first_hash, sent2["tx_hash"]):
+                self.assertIn(f"/tx/{h}", html)
+
+    def test_on_changes_requested_refuses_any_other_escrow_stage(self):
+        router = TWRouter(self.unsigned)
+        with patch("payments.trustless_work.requests.post", side_effect=router):
+            _, sent = self.fund_and_deliver(router, {"delivery_link": LINK})
+            self.assertTrue(sent["ok"], sent)
+        Escrow.objects.filter(task=self.task).update(status=Escrow.Status.APPROVED)
+        with self.assertRaises(PaymentError) as ctx:
+            on_changes_requested(self.fresh())
+        self.assertEqual(ctx.exception.code, "wrong_state")
+        with self.assertRaises(projects.ProjectError) as ctx:
+            projects.request_changes(self.fresh(), self.company, "x")
+        self.assertEqual(ctx.exception.code, "wrong_state")
+        self.assertEqual(self.task_status(), "delivered", "the refusal rolled everything back")
+        self.assertEqual(RevisionRequest.objects.count(), 0)
+        self.assertEqual(self.escrow().status, Escrow.Status.APPROVED)
+
+    def test_panel_shows_the_review_window_and_the_request_control(self):
+        router = TWRouter(self.unsigned)
+        with patch("payments.trustless_work.requests.post", side_effect=router):
+            self.fund_and_deliver(router, {"delivery_link": LINK})
+        login(self.client, self.company)
+        html = self.detail().content.decode()
+        self.assertIn("data-review-window", html)
+        self.assertIn("data-review-deadline", html)
+        self.assertIn("data-request-changes", html)
+        self.assertIn("the funds stay locked in the escrow", html)
+        projects.request_changes(self.fresh(), self.company, "Fix it.")
+        html = self.detail().content.decode()
+        self.assertIn('data-escrow-status="funded"', html)
+        self.assertIn('data-revisions="1"', html)
+        self.assertNotIn("data-review-deadline", html)
+        login(self.client, self.freelance)
+        html = self.detail().content.decode()
+        self.assertIn('data-changes-requested="1"', html)
+        self.assertIn("Deliver again", html)
+        self.assertIn('data-pay-step="deliver"', html)
+
+
+@override_settings(**ESCROW_SETTINGS)
 class EscrowGuardTests(BasePayTest):
     def test_anonymous_gets_401_json(self):
         resp = self.prepare("deploy")
@@ -752,6 +892,29 @@ class DirectModeTests(BasePayTest):
         self.assertNotIn("data-source-link", html)
         self.assertNotIn(SOURCE, html)
         self.assertIn("data-source-pending", html)
+
+    def test_request_changes_moves_the_row_back_to_created_then_redelivery(self):
+        self.deliver_db()
+        esc = self.escrow()
+        self.assertEqual(esc.status, Escrow.Status.DELIVERED)
+        task = projects.request_changes(self.fresh(), self.company, "Please add the CSV export.")
+        self.assertEqual((task.status, task.revision_count), ("taken", 1))
+        esc = self.escrow()
+        self.assertEqual((esc.status, esc.mode), (Escrow.Status.CREATED, Escrow.Mode.DIRECT))
+        self.assertEqual(esc.delivery_note, LINK, "the first evidence stays until the next delivery")
+        login(self.client, self.freelance)
+        with patch("payments.trustless_work.requests.post") as tw_post:
+            resp = self.prepare("deliver", {"delivery_link": LINK + "?v=2", "delivery_hash": GIT_SHA}).json()
+        tw_post.assert_not_called()
+        self.assertTrue(resp["ok"], resp)
+        esc = self.escrow()
+        self.assertEqual((esc.status, esc.delivery_note), (Escrow.Status.DELIVERED, build_evidence(LINK + "?v=2", GIT_SHA)))
+        self.assertEqual([d.delivery_link for d in Delivery.objects.filter(task=self.task)], [LINK + "?v=2", LINK])
+        self.assertEqual([d.tx_hash for d in Delivery.objects.filter(task=self.task)], ["", ""], "direct mode: nothing on chain")
+        login(self.client, self.company)
+        self.assertTrue(self.validate(5).json()["ok"])
+        with patch("payments.stellar.requests.get", side_effect=self.horizon):
+            self.assertTrue(self.prepare("direct_pay").json()["ok"], "the payment follows the re-delivery as usual")
 
     def test_direct_pay_needs_delivery_and_rating(self):
         login(self.client, self.company)

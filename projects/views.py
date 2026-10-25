@@ -19,6 +19,7 @@ from django.views.decorators.http import require_GET, require_POST
 from accounts.decorators import wallet_required
 from accounts.identity import get_wallet
 from payments import services as payments
+from payments import stellar
 from payments.views import next_json
 
 from . import services
@@ -52,6 +53,7 @@ ERROR_STATUS = {
     "not_assigned": 403,
     "wrong_state": 409,
     "duplicate": 409,
+    "too_many_revisions": 409,
     "invalid": 400,
     "bad_tags": 400,
 }
@@ -291,6 +293,10 @@ def task_detail(request: HttpRequest, pk: int) -> HttpResponse:
         rating = task.rating
     except Task.rating.RelatedObjectDoesNotExist:
         rating = None
+    source_visible = services.source_visible(task, wallet)
+    history = services.delivery_history(task, source_visible=source_visible)
+    for row in history:  # explorer link of the on-chain delivery declaration (escrow mode)
+        row["explorer_url"] = stellar.explorer_tx_url(row["tx_hash"]) if row.get("tx_hash") else ""
     ctx.update(
         {
             "project": task.project,
@@ -298,8 +304,15 @@ def task_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "my_application": my_app,
             "can_apply": wallet is not None and not is_company and task.is_open and my_app is None,
             "is_assignee": task.is_assignee(wallet),
-            "source_visible": services.source_visible(task, wallet),
+            "source_visible": source_visible,
             "rating": rating,
+            # Review window + revisions (projects.services decides; the template reads the values).
+            "review_deadline": services.review_deadline(task),
+            "review_overdue": services.is_review_overdue(task),
+            "max_revisions": services.max_revisions(),
+            "revisions_left": services.revisions_left(task),
+            "latest_revision": task.revision_requests.first() if task.revision_count else None,
+            "history": history,
             "pay_action": payments.next_action(task, wallet),
             "pay_mode": payments.effective_mode(payments.get_escrow(task)),
             "candidates_url": reverse("projects:task_candidates_json", kwargs={"pk": task.pk}),
@@ -505,6 +518,29 @@ def task_deliver(request: HttpRequest, pk: int) -> JsonResponse:
     except ProjectError as e:
         return _error_response(e)
     return JsonResponse({"ok": True, "status": task.status, "message": "Delivery submitted. The company validates and rates."})
+
+
+@require_POST
+@wallet_required
+def task_request_changes(request: HttpRequest, pk: int) -> JsonResponse:
+    """The company sends the delivery back for changes (projects.services.request_changes): the task
+    returns to `taken`, the escrow row follows, the freelance delivers again."""
+    task = get_object_or_404(Task.objects.select_related("project__company", "assigned_to"), pk=pk)
+    data = _json_body(request)
+    try:
+        task = services.request_changes(task, get_wallet(request), message=data.get("message"))
+    except ProjectError as e:
+        return _error_response(e)
+    left = services.revisions_left(task)
+    return JsonResponse(
+        {
+            "ok": True,
+            "status": task.status,
+            "revision_count": task.revision_count,
+            "revisions_left": left,
+            "message": f"Changes requested: the freelancer delivers again ({left} request{'s' if left != 1 else ''} left).",
+        }
+    )
 
 
 @require_POST

@@ -1,16 +1,18 @@
+from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
 
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from stellar_sdk import Keypair
 
 from accounts.models import WalletUser
 from payments.models import Escrow
 
 from . import services
-from .models import Application, Project, Rating, Task
+from .models import Application, Delivery, Project, Rating, RevisionRequest, Task
 from .scoring import company_history, is_validated, recommended_pk, score_application, score_parts
 from .services import ProjectError
 
@@ -1074,3 +1076,297 @@ class SeedDemoTests(TestCase):
         call_command("seed_demo", "--flush", stdout=StringIO())
         self.assertEqual(Project.objects.count(), 2)
         self.assertEqual(Task.objects.count(), 6)
+
+
+# --- review window + change requests (docs/PRODUCT.md R33–R36) -------------------------------------
+
+class ReviewWindowTests(BaseProjectTest):
+    def setUp(self):
+        super().setUp()
+        services.apply(self.t1, self.a, "", ["django"])
+        services.choose(self.t1, app_of(self.t1, self.a), self.company)
+
+    def test_deadline_is_delivered_at_plus_review_days_while_delivered(self):
+        self.assertIsNone(services.review_deadline(self.t1), "taken: no window")
+        self.assertFalse(services.is_review_overdue(self.t1))
+        task = services.deliver(self.t1, self.a, "https://x.y/pr")
+        self.assertEqual(services.review_deadline(task), task.delivered_at + timedelta(days=7))
+        with override_settings(LOWBID_REVIEW_DAYS=3):
+            self.assertEqual(services.review_deadline(task), task.delivered_at + timedelta(days=3))
+        self.assertFalse(services.is_review_overdue(task), "just delivered")
+        services.validate(task, self.company, 5)
+        paid = services.mark_paid(task)
+        self.assertIsNone(services.review_deadline(paid), "paid: no window")
+
+    def test_overdue_when_the_window_is_over_and_nothing_is_rated(self):
+        services.deliver(self.t1, self.a, "https://x.y/pr")
+        Task.objects.filter(pk=self.t1.pk).update(delivered_at=timezone.now() - timedelta(days=8))
+        task = Task.objects.get(pk=self.t1.pk)
+        self.assertTrue(services.is_review_overdue(task))
+        with override_settings(LOWBID_REVIEW_DAYS=30):
+            self.assertFalse(services.is_review_overdue(task), "a longer window is not over yet")
+        services.validate(task, self.company, 4)
+        self.assertFalse(services.is_review_overdue(Task.objects.get(pk=self.t1.pk)), "rated: the window no longer matters")
+
+    def test_revisions_left_and_can_request_changes(self):
+        self.assertEqual(services.max_revisions(), 2)
+        self.assertEqual(services.revisions_left(self.t1), 2)
+        self.assertFalse(services.can_request_changes(self.t1, self.company), "not delivered")
+        services.deliver(self.t1, self.a, "https://x.y/pr")
+        task = Task.objects.get(pk=self.t1.pk)
+        self.assertTrue(services.can_request_changes(task, self.company))
+        for who in (self.a, self.b, None):
+            self.assertFalse(services.can_request_changes(task, who), who)
+        services.validate(task, self.company, 5)
+        self.assertFalse(services.can_request_changes(Task.objects.get(pk=self.t1.pk), self.company), "rated")
+        with override_settings(LOWBID_MAX_REVISIONS=1):
+            self.assertEqual(services.revisions_left(task), 1)
+            Task.objects.filter(pk=self.t1.pk).update(revision_count=3)
+            self.assertEqual(services.revisions_left(Task.objects.get(pk=self.t1.pk)), 0, "never negative")
+
+
+class RequestChangesTests(BaseProjectTest):
+    LINK1 = "https://github.com/x/y/pull/1"
+    LINK2 = "https://github.com/x/y/pull/2"
+
+    def setUp(self):
+        super().setUp()
+        services.apply(self.t1, self.a, "", ["django"])
+        services.choose(self.t1, app_of(self.t1, self.a), self.company)
+        services.deliver(self.t1, self.a, self.LINK1, delivery_hash=GIT_SHA, source_link="https://github.com/x/y")
+
+    def fresh(self) -> Task:
+        return Task.objects.select_related("project").get(pk=self.t1.pk)
+
+    def test_deliver_writes_a_delivery_row(self):
+        rows = list(Delivery.objects.filter(task=self.t1))
+        self.assertEqual(len(rows), 1)
+        d = rows[0]
+        self.assertEqual(
+            (d.freelancer, d.delivery_link, d.delivery_hash, d.source_link, d.tx_hash),
+            (self.a, self.LINK1, GIT_SHA, "https://github.com/x/y", ""),
+        )
+
+    def test_only_the_company(self):
+        for who in (self.a, self.b, None):
+            with self.assertRaises(ProjectError, msg=who) as ctx:
+                services.request_changes(self.t1, who, "Please fix the header.")
+            self.assertEqual(ctx.exception.code, "forbidden")
+        self.assertEqual(self.fresh().status, Task.Status.DELIVERED)
+        self.assertEqual(RevisionRequest.objects.count(), 0)
+
+    def test_message_is_required_and_bounded(self):
+        for bad in ("", "   ", None, "x" * 281):
+            with self.assertRaises(ProjectError, msg=bad) as ctx:
+                services.request_changes(self.t1, self.company, bad)
+            self.assertEqual(ctx.exception.code, "invalid")
+        self.assertEqual(self.fresh().status, Task.Status.DELIVERED)
+        services.request_changes(self.t1, self.company, " " + "y" * 280 + " ")
+        self.assertEqual(len(RevisionRequest.objects.get(task=self.t1).message), 280, "stripped, 280 accepted")
+
+    def test_only_a_delivered_unrated_task(self):
+        for task in (self.t2, self.t3):  # open
+            with self.assertRaises(ProjectError) as ctx:
+                services.request_changes(task, self.company, "x")
+            self.assertEqual(ctx.exception.code, "wrong_state")
+        services.request_changes(self.t1, self.company, "Round one.")  # now taken
+        with self.assertRaises(ProjectError) as ctx:
+            services.request_changes(self.t1, self.company, "again")
+        self.assertEqual(ctx.exception.code, "wrong_state")
+        services.deliver(self.t1, self.a, self.LINK2)
+        services.validate(self.t1, self.company, 5)
+        with self.assertRaises(ProjectError) as ctx:
+            services.request_changes(self.t1, self.company, "too late")
+        self.assertEqual(ctx.exception.code, "wrong_state")
+        self.assertIn("already been validated", ctx.exception.message)
+        services.mark_paid(self.t1)
+        with self.assertRaises(ProjectError) as ctx:
+            services.request_changes(self.t1, self.company, "paid")
+        self.assertEqual(ctx.exception.code, "wrong_state")
+        self.assertEqual(self.fresh().revision_count, 1)
+
+    def test_success_in_direct_mode_moves_the_escrow_back_to_created(self):
+        """Direct mode: the Escrow row (frozen at the DB-only delivery through payments) goes delivered → created."""
+        from payments.models import Escrow
+
+        Escrow.objects.create(
+            task=self.t1, mode=Escrow.Mode.DIRECT, status=Escrow.Status.DELIVERED, amount=self.t1.price,
+            payer_address=self.company.stellar_address, payee_address=self.a.stellar_address,
+            delivery_note=self.LINK1, delivered_at=timezone.now(), last_error="old error",
+        )
+        task = services.request_changes(self.t1, self.company, "The contact form accepts an empty email.")
+        self.assertEqual((task.status, task.revision_count, task.delivered_at), (Task.Status.TAKEN, 1, None))
+        self.assertEqual((task.delivery_link, task.delivery_hash), (self.LINK1, GIT_SHA), "the latest delivery stays readable")
+        req = RevisionRequest.objects.get(task=self.t1)
+        self.assertEqual((req.company, req.message), (self.company, "The contact form accepts an empty email."))
+        esc = Escrow.objects.get(task=self.t1)
+        self.assertEqual((esc.status, esc.last_error), (Escrow.Status.CREATED, ""))
+        self.assertIsNone(services.review_deadline(task))
+        # re-delivery: a second Delivery row, the task holds the latest one, the window restarts
+        again = services.deliver(self.t1, self.a, self.LINK2)
+        self.assertEqual(again.status, Task.Status.DELIVERED)
+        self.assertEqual((again.delivery_link, again.delivery_hash, again.source_link), (self.LINK2, "", ""))
+        self.assertEqual(Delivery.objects.filter(task=self.t1).count(), 2)
+        self.assertEqual(Delivery.objects.filter(task=self.t1).first().delivery_link, self.LINK2, "newest first")
+        self.assertEqual(services.review_deadline(again), again.delivered_at + timedelta(days=7))
+
+    def test_without_an_escrow_row_the_hook_has_nothing_to_move(self):
+        task = services.request_changes(self.t1, self.company, "No escrow row yet (DB-only delivery).")
+        self.assertEqual(task.status, Task.Status.TAKEN)
+
+    def test_escrow_at_another_stage_refuses_the_request(self):
+        from payments.models import Escrow
+
+        Escrow.objects.create(
+            task=self.t1, mode=Escrow.Mode.ESCROW, status=Escrow.Status.APPROVED, amount=self.t1.price,
+            payer_address=self.company.stellar_address, payee_address=self.a.stellar_address,
+        )
+        with self.assertRaises(ProjectError) as ctx:
+            services.request_changes(self.t1, self.company, "x")
+        self.assertEqual(ctx.exception.code, "wrong_state")
+        self.assertIn("Delivery validated", ctx.exception.message)
+        self.assertEqual(self.fresh().status, Task.Status.DELIVERED, "nothing changed")
+        self.assertEqual(RevisionRequest.objects.count(), 0)
+
+    def test_too_many_revisions_at_the_max(self):
+        services.request_changes(self.t1, self.company, "One.")
+        services.deliver(self.t1, self.a, self.LINK2)
+        services.request_changes(self.t1, self.company, "Two.")
+        services.deliver(self.t1, self.a, self.LINK2 + "?v=3")
+        with self.assertRaises(ProjectError) as ctx:
+            services.request_changes(self.t1, self.company, "Three.")
+        self.assertEqual(ctx.exception.code, "too_many_revisions")
+        self.assertIn("At most 2 change requests", ctx.exception.message)
+        self.assertEqual((self.fresh().status, self.fresh().revision_count), (Task.Status.DELIVERED, 2))
+        self.assertEqual(RevisionRequest.objects.filter(task=self.t1).count(), 2)
+        self.assertEqual(Delivery.objects.filter(task=self.t1).count(), 3)
+
+    @override_settings(LOWBID_MAX_REVISIONS=1)
+    def test_max_revisions_is_configurable(self):
+        services.request_changes(self.t1, self.company, "One.")
+        services.deliver(self.t1, self.a, self.LINK2)
+        with self.assertRaises(ProjectError) as ctx:
+            services.request_changes(self.t1, self.company, "Two.")
+        self.assertEqual(ctx.exception.code, "too_many_revisions")
+        self.assertIn("At most 1 change request per task", ctx.exception.message)
+        self.assertEqual(services.revisions_left(self.fresh()), 0)
+
+    def test_delivery_history_interleaves_newest_first_and_hides_the_source(self):
+        services.request_changes(self.t1, self.company, "Fix the header.")
+        services.deliver(self.t1, self.a, self.LINK2, delivery_hash=SHA256, source_link="https://github.com/x/y2")
+        rows = services.delivery_history(self.t1)
+        self.assertEqual([r["kind"] for r in rows], ["delivery", "revision", "delivery"])
+        self.assertEqual(rows[0]["delivery_link"], self.LINK2)
+        self.assertEqual(rows[0]["delivery_hash"], SHA256)
+        self.assertEqual(rows[1]["message"], "Fix the header.")
+        self.assertEqual(rows[2]["delivery_link"], self.LINK1)
+        self.assertEqual([r["source_link"] for r in rows if r["kind"] == "delivery"], ["", ""], "hidden by default")
+        visible = services.delivery_history(self.t1, source_visible=True)
+        self.assertEqual([r["source_link"] for r in visible if r["kind"] == "delivery"], ["https://github.com/x/y2", "https://github.com/x/y"])
+
+
+class RequestChangesEndpointTests(BaseProjectTest):
+    def setUp(self):
+        super().setUp()
+        services.apply(self.t1, self.a, "", ["django"])
+        services.choose(self.t1, app_of(self.t1, self.a), self.company)
+        services.deliver(self.t1, self.a, "https://x.y/pr/1")
+        self.url = reverse("projects:task_request_changes", args=[self.t1.pk])
+
+    def test_role_state_and_input_codes(self):
+        login(self.client, self.a)
+        resp = self.post_json(self.client, self.url, {"message": "x"})
+        self.assertEqual((resp.status_code, resp.json()["error"]), (403, "forbidden"))
+        login(self.client, self.company)
+        resp = self.post_json(self.client, self.url, {"message": ""})
+        self.assertEqual((resp.status_code, resp.json()["error"]), (400, "invalid"))
+        resp = self.post_json(self.client, reverse("projects:task_request_changes", args=[self.t2.pk]), {"message": "x"})
+        self.assertEqual((resp.status_code, resp.json()["error"]), (409, "wrong_state"))
+        self.client.logout()
+        resp = self.post_json(self.client, self.url, {"message": "x"})
+        self.assertEqual((resp.status_code, resp.json()["error"]), (401, "wallet_required"))
+        self.assertEqual(Task.objects.get(pk=self.t1.pk).status, Task.Status.DELIVERED)
+
+    def test_success_then_409_too_many_revisions(self):
+        login(self.client, self.company)
+        resp = self.post_json(self.client, self.url, {"message": "Round one."})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual((data["ok"], data["status"], data["revision_count"], data["revisions_left"]), (True, "taken", 1, 1))
+        self.assertIn("1 request left", data["message"])
+        services.deliver(self.t1, self.a, "https://x.y/pr/2")
+        data = self.post_json(self.client, self.url, {"message": "Round two."}).json()
+        self.assertEqual((data["revision_count"], data["revisions_left"]), (2, 0))
+        self.assertIn("0 requests left", data["message"])
+        services.deliver(self.t1, self.a, "https://x.y/pr/3")
+        resp = self.post_json(self.client, self.url, {"message": "Round three."})
+        self.assertEqual((resp.status_code, resp.json()["error"]), (409, "too_many_revisions"))
+        self.assertEqual(Task.objects.get(pk=self.t1.pk).status, Task.Status.DELIVERED)
+
+    def test_task_page_review_controls_and_history(self):
+        """[data-request-changes] for the company only, while delivered + unrated; [data-review-deadline] for everyone;
+        [data-delivery-history] lists every delivery and request; the freelance gets the alert and "Deliver again"."""
+        page = reverse("projects:task_detail", args=[self.t1.pk])
+        login(self.client, self.company)
+        html = self.client.get(page).content.decode()
+        self.assertIn("data-request-changes", html)
+        self.assertIn('id="request-changes-form"', html)
+        self.assertIn('id="request-changes-message"', html)
+        self.assertIn("data-request-changes-submit", html)
+        self.assertIn("data-review-deadline", html)
+        self.assertIn('data-deadline="', html)
+        self.assertIn("Review until", html)
+        self.assertIn('data-delivery-history data-count="1"', html)
+        self.assertIn(self.url, html)
+        for who in (self.a, self.b):
+            login(self.client, who)
+            html = self.client.get(page).content.decode()
+            self.assertNotIn("data-request-changes", html, who)
+            self.assertIn("data-review-deadline", html, "everyone sees the window")
+        self.client.logout()
+        self.assertIn("data-review-deadline", self.client.get(page).content.decode(), "anonymous too")
+        # the company requests changes → freelance alert + "Deliver again"; no deadline while taken
+        services.request_changes(self.t1, self.company, "Fix the mobile menu.")
+        login(self.client, self.a)
+        html = self.client.get(page).content.decode()
+        self.assertIn('data-changes-requested="1"', html)
+        self.assertIn("Changes requested (1/2)", html)
+        self.assertIn("Fix the mobile menu.", html)
+        self.assertIn("Deliver again", html)
+        self.assertNotIn("data-review-deadline", html)
+        self.assertNotIn('id="delivery-panel"', html, "the old delivery is in the history, not in the Delivery panel")
+        self.assertIn('data-delivery-history data-count="2"', html)
+        login(self.client, self.company)
+        html = self.client.get(page).content.decode()
+        self.assertIn("data-changes-pending", html)
+        self.assertNotIn("data-request-changes", html, "taken: nothing to send back")
+        # second delivery → 2 deliveries + 1 request in the history, the source only for the assignee
+        services.deliver(self.t1, self.a, "https://x.y/pr/2", delivery_hash=SHA256, source_link="https://github.com/x/src")
+        html = self.client.get(page).content.decode()
+        self.assertIn('data-delivery-history data-count="3"', html)
+        self.assertEqual(html.count('data-kind="delivery"'), 2)
+        self.assertEqual(html.count('data-kind="revision"'), 1)
+        self.assertIn(f'data-history-hash="{SHA256}"', html)
+        self.assertNotIn("https://github.com/x/src", html, "the company does not see the source before payment")
+        self.assertIn('data-revisions="1"', html)
+        self.assertIn("1/2", html)
+        self.assertIn("data-request-changes", html)
+        login(self.client, self.a)
+        html = self.client.get(page).content.decode()
+        self.assertIn("https://github.com/x/src", html, "the assignee sees the source in the history")
+        # rated → the control disappears for the company
+        services.validate(self.t1, self.company, 5)
+        login(self.client, self.company)
+        html = self.client.get(page).content.decode()
+        self.assertNotIn("data-request-changes", html)
+
+    @override_settings(LOWBID_MAX_REVISIONS=1)
+    def test_button_disabled_once_the_max_is_reached(self):
+        services.request_changes(self.t1, self.company, "Round one.")
+        services.deliver(self.t1, self.a, "https://x.y/pr/2")
+        login(self.client, self.company)
+        html = self.client.get(reverse("projects:task_detail", args=[self.t1.pk])).content.decode()
+        self.assertIn("data-request-changes disabled", html)
+        self.assertIn("data-revisions-exhausted", html)
+        self.assertNotIn('id="request-changes-form"', html)
+        self.assertIn("1/1", html)

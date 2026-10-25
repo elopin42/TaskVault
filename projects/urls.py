@@ -19,5 +19,6 @@ urlpatterns = [
     path("taches/<int:pk>/choisir/<int:app_pk>/", views.task_choose, name="task_choose"),
     path("taches/<int:pk>/livrer/", views.task_deliver, name="task_deliver"),
     path("taches/<int:pk>/valider/", views.task_validate, name="task_validate"),
+    path("taches/<int:pk>/modifications/", views.task_request_changes, name="task_request_changes"),
     path("taches/<int:pk>/candidats.json", views.task_candidates_json, name="task_candidates_json"),
 ]

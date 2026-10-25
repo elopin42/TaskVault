@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Application, Project, Rating, Task
+from .models import Application, Delivery, Project, Rating, RevisionRequest, Task
 
 
 class TaskInline(admin.TabularInline):
@@ -51,4 +51,18 @@ class ApplicationAdmin(admin.ModelAdmin):
 class RatingAdmin(admin.ModelAdmin):
     list_display = ("id", "task", "company", "freelancer", "note", "created_at")
     raw_id_fields = ("task", "company", "freelancer")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(Delivery)
+class DeliveryAdmin(admin.ModelAdmin):
+    list_display = ("id", "task", "freelancer", "delivery_hash", "tx_hash", "created_at")
+    raw_id_fields = ("task", "freelancer")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(RevisionRequest)
+class RevisionRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "task", "company", "message", "created_at")
+    raw_id_fields = ("task", "company")
     readonly_fields = ("created_at",)

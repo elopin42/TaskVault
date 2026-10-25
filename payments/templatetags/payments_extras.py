@@ -1,13 +1,14 @@
 """`{% escrow_panel task wallet %}` — renders templates/payments/_escrow_panel.html with the
 payment view-model (escrow row, mode, stepper, next action for this viewer, explorer links, the
-delivery fingerprint and whether this viewer may see the full deliverable).
-Keeps the projects views free of payment logic."""
+delivery fingerprint, whether this viewer may see the full deliverable, the review window and the
+change requests). Keeps the projects views free of payment logic."""
 
 from django import template
 from django.urls import reverse
 
 from payments import services, stellar
 from payments.models import STATUS_BADGES, STATUS_LABELS, Escrow
+from projects import services as projects
 from projects.services import source_visible
 
 register = template.Library()
@@ -63,4 +64,13 @@ def escrow_panel(context, task, wallet=None):
         "source_pending": role == "company" and bool(task.source_link) and not visible,
         "validate_url": reverse("projects:task_validate", kwargs={"pk": task.pk}),
         "trustline_url": reverse("payments:trustline_prepare"),
+        # Review window + change requests (projects.services decides; the template reads booleans / numbers).
+        "review_deadline": projects.review_deadline(task),
+        "review_overdue": projects.is_review_overdue(task),
+        "can_request_changes": projects.can_request_changes(task, wallet),
+        "revision_count": task.revision_count,
+        "max_revisions": projects.max_revisions(),
+        "revisions_left": projects.revisions_left(task),
+        "latest_revision": task.revision_requests.first() if task.revision_count else None,
+        "request_changes_url": reverse("projects:task_request_changes", kwargs={"pk": task.pk}),
     }

@@ -44,9 +44,14 @@
     </section>
     {% endif %}
 
-    {% if task.delivery_link %}
+    {% if task.delivery_link and task.status != 'taken' %}
     <section class="ui-panel" id="delivery-panel" style="border-color: var(--icon-accent)">
-      <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> Delivery</h2><p class="ui-panel-sub">declared {% if task.delivered_at %}on {{ task.delivered_at|date:"M j, Y H:i" }}{% endif %} by {{ task.assigned_to.display_name|default:task.assigned_to.short_address }}</p></div></div>
+      <div class="ui-panel-head">
+        <div><h2 class="ui-panel-title"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> Delivery{% if task.revision_count %} <span class="ui-badge ui-badge-neutral" title="Change requests so far" data-revisions="{{ task.revision_count }}">rev. {{ task.revision_count }}</span>{% endif %}</h2><p class="ui-panel-sub">declared {% if task.delivered_at %}on {{ task.delivered_at|date:"M j, Y H:i" }}{% endif %} by {{ task.assigned_to.display_name|default:task.assigned_to.short_address }}</p></div>
+        {% if review_deadline %}
+          <p class="ui-meta text-end whitespace-nowrap" data-review-deadline data-deadline="{{ review_deadline|date:'c' }}"{% if review_overdue %} data-overdue{% endif %} title="The company validates or requests changes within this window"><i class="fa-regular fa-clock text-[10px]" aria-hidden="true"></i> Review until {{ review_deadline|date:"M j, Y H:i" }} <span data-countdown>{% if review_overdue %}· Review window over{% endif %}</span></p>
+        {% endif %}
+      </div>
       <a href="{{ task.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-delivery-link><i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i> {{ task.delivery_link }}</a>
       {% if task.delivery_hash %}
         <p class="ui-meta mt-3 flex flex-wrap items-center gap-1.5"><i class="fa-solid fa-fingerprint text-[10px]" aria-hidden="true"></i> Fingerprint <code class="font-mono text-xs break-all" data-delivery-hash="{{ task.delivery_hash }}">{{ task.delivery_hash }}</code> <button type="button" class="ui-copy-btn shrink-0" data-copy="{{ task.delivery_hash }}" title="Copy the fingerprint" aria-label="Copy the delivery fingerprint"><i class="fa-regular fa-copy" aria-hidden="true"></i></button></p>
@@ -61,6 +66,35 @@
       {% if rating %}
         <div class="ui-alert ui-alert-ok mt-4" data-rating="{{ rating.note }}"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Validated and rated <strong class="text-strong">{{ rating.note }}/5</strong>{% if rating.comment %} — "{{ rating.comment }}"{% endif %}{% if task.status == 'paid' %} · {{ task.price|usdc:asset_code }} paid out to the freelancer.{% endif %}</span></div>
       {% endif %}
+    </section>
+    {% endif %}
+
+    {% if history %}
+    <section class="ui-panel" id="history-panel">
+      <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-clock-rotate-left" style="color: var(--icon-accent)" aria-hidden="true"></i> Delivery history</h2><p class="ui-panel-sub">{{ history|length }} event{{ history|length|pluralize }} · revisions requested {{ task.revision_count }}/{{ max_revisions }}</p></div></div>
+      <ol class="ui-timeline" data-delivery-history data-count="{{ history|length }}">
+        {% for h in history %}
+          {% if h.kind == 'delivery' %}
+            <li class="ui-timeline-item is-brand" data-kind="delivery">
+              <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-truck-fast"></i></span>
+              <div class="ui-timeline-body">
+                <span class="ui-timeline-title">Delivery declared</span> by {{ h.who.display_name|default:h.who.short_address }} — <a href="{{ h.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer">{{ h.delivery_link|truncatechars:60 }}</a>
+                {% if h.delivery_hash %}<p class="ui-meta mt-1 flex flex-wrap items-center gap-1.5"><i class="fa-solid fa-fingerprint text-[10px]" aria-hidden="true"></i> <code class="font-mono text-xs" data-history-hash="{{ h.delivery_hash }}" title="{{ h.delivery_hash }}">{{ h.delivery_hash|short_addr:8 }}</code> <button type="button" class="ui-copy-btn shrink-0" data-copy="{{ h.delivery_hash }}" title="Copy the fingerprint" aria-label="Copy the delivery fingerprint"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>{% if h.tx_hash %} · <a href="{{ h.explorer_url }}" class="ui-link font-mono" target="_blank" rel="noopener" title="{{ h.tx_hash }}">on Stellar {{ h.tx_hash|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% endif %}</p>{% endif %}
+                {% if h.source_link %}<p class="ui-meta mt-1"><i class="fa-solid fa-box-archive text-[10px]" aria-hidden="true"></i> Full deliverable: <a href="{{ h.source_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-source-link>{{ h.source_link|truncatechars:60 }}</a></p>{% endif %}
+                <div class="ui-timeline-time"><span data-time-ago="{{ h.when|date:'c' }}">{{ h.when|date:"M j, Y H:i" }}</span></div>
+              </div>
+            </li>
+          {% else %}
+            <li class="ui-timeline-item" data-kind="revision">
+              <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-rotate-left"></i></span>
+              <div class="ui-timeline-body">
+                <span class="ui-timeline-title">Changes requested</span> by {{ h.who.display_name|default:h.who.short_address }}{% if h.message %} — "{{ h.message }}"{% endif %}
+                <div class="ui-timeline-time"><span data-time-ago="{{ h.when|date:'c' }}">{{ h.when|date:"M j, Y H:i" }}</span></div>
+              </div>
+            </li>
+          {% endif %}
+        {% endfor %}
+      </ol>
     </section>
     {% endif %}
 
@@ -148,10 +182,12 @@
       {% escrow_panel task wallet %}
       {% if task.status == 'taken' and not is_assignee and not viewer_is_company %}
         <div class="ui-alert ui-alert-info"><i class="fa-solid fa-user-check" aria-hidden="true"></i><span>A freelancer has been chosen for this task.{% if my_application %} Your application was not selected.{% endif %}</span></div>
+      {% elif task.status == 'taken' and viewer_is_company and task.revision_count %}
+        <div class="ui-alert ui-alert-attn" data-changes-pending><i class="fa-solid fa-rotate-left" aria-hidden="true"></i><span>Changes requested ({{ task.revision_count }}/{{ max_revisions }}){% if latest_revision %}: "{{ latest_revision.message }}"{% endif %}. Waiting for {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} to deliver again.</span></div>
       {% elif task.status == 'taken' and viewer_is_company %}
         <div class="ui-alert ui-alert-info"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>In progress: {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} is working on the task. You will validate and rate on delivery.</span></div>
       {% elif task.status == 'delivered' and is_assignee %}
-        <div class="ui-alert ui-alert-attn"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>Delivery declared. The company checks, validates and rates you: payment follows.</span></div>
+        <div class="ui-alert ui-alert-attn"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>Delivery declared. The company checks, validates and rates you{% if review_deadline %} by {{ review_deadline|date:"M j" }}{% endif %}: payment follows.</span></div>
       {% elif task.status == 'paid' %}
         <section class="ui-panel" style="border-color: var(--icon-accent)">
           <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-circle-check" style="color: var(--success)" aria-hidden="true"></i> Task paid</h2><p class="ui-panel-sub">{% if task.paid_at %}{{ task.paid_at|date:"M j, Y H:i" }}{% endif %}</p></div></div>
@@ -180,9 +216,11 @@
       choose: "{% url 'projects:task_choose' task.pk 0 %}",
       deliver: "{% url 'projects:task_deliver' task.pk %}",
       validate: "{% url 'projects:task_validate' task.pk %}",
+      requestChanges: "{% url 'projects:task_request_changes' task.pk %}",
       pay: "{% url 'payments:task_pay' task.pk %}"
     },
     payMode: "{{ pay_mode|escapejs }}",
+    revisions: { count: {{ task.revision_count }}, max: {{ max_revisions }}, left: {{ revisions_left }} },
     payAction: {% if pay_action %}{"step": "{{ pay_action.step|escapejs }}", "mine": {{ pay_action.mine|yesno:"true,false" }}, "prepareUrl": "{{ pay_action.prepare_url|default:''|escapejs }}"}{% else %}null{% endif %}
   };
 </script>

@@ -1,9 +1,12 @@
-"""Project → Task → Application (+ Rating): the task-board domain.
+"""Project → Task → Application (+ Rating, Delivery, RevisionRequest): the task-board domain.
 
 A company splits a Project into fixed-price Tasks; freelances apply to open tasks; the
 company picks one freelance per task; the chosen one delivers; the company validates and
-rates. The payments app attaches one Escrow row to each Task (one Trustless Work escrow per task,
-or one direct payment) — nothing Stellar-related is stored here.
+rates — or sends the delivery back for changes (at most LOWBID_MAX_REVISIONS times, before the
+Rating). Every (re)delivery is a Delivery row and every change request a RevisionRequest row, so the
+task's history is readable; Task itself holds the LATEST delivery. The payments app attaches one
+Escrow row to each Task (one Trustless Work escrow per task, or one direct payment) — nothing
+Stellar-related is stored here except the tx hash a Delivery was declared with.
 """
 
 from decimal import Decimal
@@ -135,8 +138,12 @@ class Task(models.Model):
     # The full deliverable (repository, archive…): the assignee always sees it, the company only once paid
     # (projects.services.source_visible).
     source_link = models.CharField(max_length=500, blank=True, default="")
+    # Time of the LATEST delivery; None again when the company requests changes (the review window —
+    # projects.services.review_deadline — only makes sense while the task is `delivered`).
     delivered_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    # Change requests made by the company so far (projects.services.request_changes, max LOWBID_MAX_REVISIONS).
+    revision_count = models.PositiveSmallIntegerField(default=0)
     position = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -221,6 +228,42 @@ class Application(models.Model):
         task = task or self.task
         wanted = set(task.tags or [])
         return [t for t in (self.tags or []) if t in wanted]
+
+
+class Delivery(models.Model):
+    """One row per (re)delivery of a task, written by projects.services.deliver — the history behind
+    Task.delivery_link / delivery_hash / source_link, which hold the latest one. `tx_hash` is the
+    Trustless Work milestone change that declared it (escrow mode), empty in direct mode."""
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="deliveries")
+    freelancer = models.ForeignKey("accounts.WalletUser", on_delete=models.PROTECT, related_name="deliveries")
+    delivery_link = models.CharField(max_length=500)
+    delivery_hash = models.CharField(max_length=64, blank=True, default="")
+    source_link = models.CharField(max_length=500, blank=True, default="")
+    tx_hash = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self) -> str:
+        return f"Delivery #{self.pk} of task #{self.task_id}"
+
+
+class RevisionRequest(models.Model):
+    """The company sent a delivery back for changes (projects.services.request_changes): the task
+    went `delivered → taken`, the freelance delivers again."""
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="revision_requests")
+    company = models.ForeignKey("accounts.WalletUser", on_delete=models.PROTECT, related_name="revision_requests")
+    message = models.CharField(max_length=280, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self) -> str:
+        return f"Change request #{self.pk} on task #{self.task_id}"
 
 
 class Rating(models.Model):

@@ -1,7 +1,9 @@
+from datetime import timedelta
 from decimal import Decimal
 
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from stellar_sdk import Keypair
 
 from accounts.models import WalletUser
@@ -90,6 +92,34 @@ class TodoTests(ScenarioTest):
         self.assertTrue(any(it["kicker"] == "Delivery declared" and it["tone"] == "wait" for it in b), b)
         self.assertFalse(any(it["kicker"] == "Task taken" for it in b))
         self.assertEqual(sum(1 for it in b if it["kicker"] == "Application sent"), 1, "the rejected T1 application is gone")
+
+    def test_company_validate_item_mentions_the_review_deadline(self):
+        items = services.todo_items(self.company)
+        validate = next(it for it in items if "Validate and rate" in it["headline"])
+        self.assertIn("Review until", validate["body"])
+        b = services.todo_items(self.b)
+        wait = next(it for it in b if it["kicker"] == "Delivery declared")
+        self.assertIn("Review until", wait["body"], "the freelance sees the same window")
+        Task.objects.filter(pk=self.t4.pk).update(delivered_at=timezone.now() - timedelta(days=9))
+        validate = next(it for it in services.todo_items(self.company) if "Validate and rate" in it["headline"])
+        self.assertIn("Review window over", validate["body"])
+
+    def test_freelance_changes_requested_item(self):
+        projects.request_changes(self.t4, self.company, "The clipping is rough on three photos.")
+        b = services.todo_items(self.b)
+        item = next(it for it in b if it["kicker"] == "Changes requested")
+        self.assertEqual(item["tone"], "act")
+        self.assertIn('Changes requested on "Retouche photos" (1/2)', item["headline"])
+        self.assertIn("clipping is rough", item["body"])
+        self.assertEqual(item["cta"], "Deliver again")
+        self.assertTrue(item["href"].endswith("#deliver-panel"))
+        self.assertFalse(any(it["kicker"] == "Task taken" and "Retouche" in it["headline"] for it in b))
+        company = services.todo_items(self.company)
+        self.assertFalse(any("Validate and rate" in it["headline"] and "Retouche" in it["headline"] for it in company), "nothing to validate while taken")
+        projects.deliver(self.t4, self.b, "https://example.com/photos-v2")
+        validate = next(it for it in services.todo_items(self.company) if "Validate and rate" in it["headline"] and "Retouche" in it["headline"])
+        self.assertIn("delivered again (revision 1)", validate["body"])
+        self.assertIn("Review until", validate["body"])
 
     def test_fresh_wallet_has_nothing_to_do(self):
         self.assertEqual(services.todo_items(make_wallet()), [])

@@ -25,6 +25,11 @@ State table — Escrow.status (payments) and Task.status (projects):
                                                                            "git:<40hex> <link>" / "<link>", ≤ 280 chars → deliver_tx_hash,
                                                                            delivered_at, delivery_note; confirm calls
                                                                            projects.services.deliver(link, hash, source_link)
+    request_    company    delivered → funded         delivered → taken    (projects) no tx: RevisionRequest row, revision_count += 1,
+    changes                                                                 delivered_at cleared; max LOWBID_MAX_REVISIONS times, only
+                                                                           before the Rating; every tx hash is kept (history); the
+                                                                           freelance delivers again (a second change-milestone-status
+                                                                           with the new evidence; the contract accepts it)
     validate    company    —                          delivered (+Rating)  (projects) saves the Rating, answers `next` = approve
     approve     company    delivered → approved       delivered            TW approve-milestone → approve_tx_hash
     release     company    approved → released        delivered → paid     TW release-funds → release_tx_hash, released_at;
@@ -34,6 +39,8 @@ State table — Escrow.status (payments) and Task.status (projects):
     deliver     freelance  created → delivered        taken → delivered    NO transaction: projects.services.deliver(link, hash,
                                                                            source_link); delivery_note = build_evidence(link, hash)
                                                                            (database only — nothing on chain)
+    request_    company    delivered → created        delivered → taken    (projects) no tx: same rules as in escrow mode; the
+    changes                                                                 freelance delivers again (database only)
     validate    company    —                          delivered (+Rating)  (projects) saves the Rating, answers `next` = direct_pay
     direct_pay  company    created|delivered → paid   delivered → paid     Django builds the payment XDR, Freighter signs,
                                                                            Django checks it (source/destination/amount/asset)
@@ -44,6 +51,11 @@ State table — Escrow.status (payments) and Task.status (projects):
 The validate view saves the Rating FIRST (DB), then the page chains the signatures (approve →
 release, or direct_pay) from the `next` it gets back; stopping half-way is fine, the panel
 shows the remaining step ("Release the funds"). `mark_paid` is the ONLY way a task becomes paid.
+
+Review window: the company has LOWBID_REVIEW_DAYS days after a delivery (projects.services
+.review_deadline, computed at read time) to validate or request changes. A change request sends the
+Escrow row back (`on_changes_requested`) and the `deliver` step runs again; a replay of the PREVIOUS
+delivery's signed XDR is refused (`tampered`), the new delivery needs its own signature.
 
 The mode is frozen on the Escrow row at the first prepare (`stellar.payment_mode()`), but may be
 re-frozen while the row is still `created` (nothing is on chain yet), so flipping
@@ -69,7 +81,7 @@ from payments import stellar
 from payments import trustless_work as tw
 from payments.models import STATUS_BADGES, STATUS_LABELS, Escrow
 from projects import services as projects
-from projects.models import Project, Rating, Task
+from projects.models import Delivery, Project, Rating, Task
 
 logger = logging.getLogger(__name__)
 
@@ -603,16 +615,30 @@ def prepare_deliver(task: Task, wallet, data: dict | None = None) -> dict:
         raise
 
 
+def _deliver_replayed(task: Task, escrow: Escrow, tx_hash: str | None) -> bool:
+    """A signed deliver XDR already recorded for this task (the Escrow's latest, or any Delivery row):
+    after `request_changes` the gate is open again, so an old signature must not pass as the new
+    delivery — the freelance signs a fresh change-milestone-status."""
+    if not tx_hash:
+        return False
+    return escrow.deliver_tx_hash == tx_hash or Delivery.objects.filter(task=task, tx_hash=tx_hash).exists()
+
+
 @_records_errors
 def confirm_deliver(task: Task, wallet, signed_xdr: str, data: dict | None = None) -> dict:
     with transaction.atomic():
         escrow, tx_hash, done = _begin(task, wallet, "deliver", signed_xdr)
         if done:
             return done
+        if _deliver_replayed(task, escrow, tx_hash):
+            logger.warning("payments: replayed deliver xdr refused task=%s hash=%s", task.pk, tx_hash)
+            raise PaymentError("tampered", "This signed delivery was already submitted: declare the new delivery again.")
         link, fingerprint, source = _delivery_fields(data)
         tx_hash, _ = _tw_send(task, escrow, "deliver", signed_xdr)
         try:
-            projects.deliver(task, wallet, link, delivery_hash=fingerprint, source_link=source, on_chain=True)
+            projects.deliver(
+                task, wallet, link, delivery_hash=fingerprint, source_link=source, on_chain=True, tx_hash=tx_hash
+            )
         except projects.ProjectError as exc:
             raise _project_error(exc) from None
         escrow.deliver_tx_hash = tx_hash
@@ -808,6 +834,31 @@ def on_task_chosen(task: Task) -> None:
     sync_project_status(task.project)
 
 
+def on_changes_requested(task: Task) -> Escrow | None:
+    """Inside request_changes()'s transaction, once the task is back to `taken`: the Escrow row follows
+    (`delivered → funded` in escrow mode — the money stays locked —, `delivered → created` in direct
+    mode). Every tx hash stays on the row (history; the Delivery rows keep each declaration's hash),
+    `last_error` is cleared. No row (a direct-mode task delivered through the DB-only endpoint) means
+    nothing to move. Any other stage → PaymentError('wrong_state'), which projects surfaces as such."""
+    escrow = get_escrow(task)
+    if escrow is None:
+        logger.info("payments: changes requested without an escrow row task=%s", task.pk)
+        return None
+    if escrow.status != S.DELIVERED:
+        raise PaymentError(
+            "wrong_state", f"Changes cannot be requested at this stage of the payment ({escrow.status_label})."
+        )
+    before = escrow.status
+    escrow.status = S.FUNDED if escrow.mode == M.ESCROW else S.CREATED
+    escrow.last_error = ""
+    escrow.save(update_fields=["status", "last_error", "updated_at"])
+    logger.info(
+        "payments: changes requested task=%s mode=%s escrow=%s -> %s deliver_tx=%s",
+        task.pk, escrow.mode, before, escrow.status, escrow.deliver_tx_hash or "-",
+    )
+    return escrow
+
+
 def on_task_validated(task: Task) -> Escrow:
     """Inside validate()'s transaction, right after the Rating is stored. Does NOT pay: it makes
     sure the Escrow row exists (so the next step is known) and logs what the company signs next
@@ -882,6 +933,8 @@ def _action_dict(task: Task, entry: dict, role: str, status: str) -> dict:
     label = entry["label"]
     if status == S.DELIVERED and entry.get("label_after_delivery"):
         label = entry["label_after_delivery"]
+    if step == "deliver" and task.revision_count:
+        label = "Deliver again"
     return {
         "step": step,
         "who": entry["who"],

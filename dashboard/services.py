@@ -9,9 +9,12 @@ from decimal import Decimal
 
 from django.db.models import Avg, Count, Q, Sum
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.formats import date_format
 
 from payments import services as payments
 from payments.stellar import asset_code
+from projects import services as projects
 from projects.models import Application, Project, Rating, Task
 
 ZERO = Decimal("0")
@@ -29,7 +32,7 @@ COMPANY_PAY_STEPS = {
 FREELANCE_WAIT_STEPS = {
     "deploy": ("Funding awaited", '"{title}": waiting for the company to fund it', "You can declare the delivery once the {amount} {code} are locked in escrow."),
     "fund": ("Funding awaited", '"{title}": waiting for the company to fund it', "Escrow created, funds not locked yet."),
-    "validate": ("Delivery declared", '"{title}": waiting for the company to validate it', ""),
+    "validate": ("Delivery declared", '"{title}": waiting for the company to validate it', "{deadline}"),
     "approve": ("Payment in progress", '"{title}": validated, funds release pending', "The company is signing the release of your {amount} {code}."),
     "release": ("Payment in progress", '"{title}": validated, funds release pending', "The company is signing the release of your {amount} {code}."),
     "direct_pay": ("Payment in progress", '"{title}": validated, payment pending', "The company is signing the payment of your {amount} {code}."),
@@ -37,7 +40,7 @@ FREELANCE_WAIT_STEPS = {
 
 
 def _fmt(text: str, task: Task) -> str:
-    return text.format(title=task.title, amount=f"{task.price:,.2f}", code=asset_code())
+    return text.format(title=task.title, amount=f"{task.price:,.2f}", code=asset_code(), deadline=_deadline_note(task))
 
 
 def _task_url(task: Task, anchor: str = "") -> str:
@@ -46,6 +49,17 @@ def _task_url(task: Task, anchor: str = "") -> str:
 
 def _project_url(project: Project, anchor: str = "") -> str:
     return reverse("projects:project_detail", kwargs={"pk": project.pk}) + anchor
+
+
+def _deadline_note(task: Task) -> str:
+    """"Review until Oct 31, 14:05" (or "Review window over") for the company's validate to-do; "" when
+    the task is not delivered. The deadline is projects.services.review_deadline, computed at read time."""
+    deadline = projects.review_deadline(task)
+    if deadline is None:
+        return ""
+    if projects.is_review_overdue(task):
+        return "Review window over."
+    return f"Review until {date_format(timezone.localtime(deadline), 'M j, H:i')}."
 
 
 def _avg_note(wallet):
@@ -73,12 +87,15 @@ def todo_items(wallet) -> list[dict]:
             action = payments.next_action(task, wallet)
             if action and action["mine"] and action["step"] == "validate":
                 who = task.assigned_to.display_name or task.assigned_to.short_address if task.assigned_to else "the freelancer"
+                delivered = f"{who} delivered: {task.delivery_link}" if task.delivery_link else f"{who} delivered."
+                if task.revision_count:
+                    delivered = f"{who} delivered again (revision {task.revision_count}): {task.delivery_link}"
                 items.append(
                     {
                         "tone": "act",
                         "kicker": "Delivery declared",
                         "headline": f'Validate and rate "{task.title}"',
-                        "body": f"{who} delivered: {task.delivery_link}" if task.delivery_link else f"{who} delivered.",
+                        "body": " ".join(part for part in (delivered, _deadline_note(task)) if part),
                         "href": _task_url(task, "#validate-panel"),
                         "cta": "Validate + rate",
                         "icon": "fa-star",
@@ -134,7 +151,21 @@ def todo_items(wallet) -> list[dict]:
         if task.status not in (Task.Status.TAKEN, Task.Status.DELIVERED):
             continue
         action = payments.next_action(task, wallet)
-        if action and action["mine"] and action["step"] == "deliver":
+        if action and action["mine"] and action["step"] == "deliver" and task.revision_count:
+            latest = task.revision_requests.first()
+            items.append(
+                {
+                    "tone": "act",
+                    "kicker": "Changes requested",
+                    "headline": f'Changes requested on "{task.title}" ({task.revision_count}/{projects.max_revisions()})',
+                    "body": f'"{latest.message}"' if latest and latest.message else "The company sent the delivery back: deliver again.",
+                    "href": _task_url(task, "#deliver-panel"),
+                    "cta": "Deliver again",
+                    "icon": "fa-rotate-left",
+                    "when": latest.created_at if latest else task.updated_at,
+                }
+            )
+        elif action and action["mine"] and action["step"] == "deliver":
             items.append(
                 {
                     "tone": "act",

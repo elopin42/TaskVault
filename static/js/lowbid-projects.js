@@ -9,7 +9,11 @@
      [data-task-delete="<task_pk>"]              company deletes an open task (any project status)
      [data-add-tag="x"][data-target="input-id"]  adds a suggested tag to the target input
    Forms: #task-form [data-task-add] · #apply-form [data-apply-submit] ·
-          #validate-form[data-validate] [data-rate] radios + [data-validate-submit] (escrow panel).
+          #validate-form[data-validate] [data-rate] radios + [data-validate-submit] (escrow panel) ·
+          [data-request-changes] reveals #request-changes-form (#request-changes-message, [data-request-changes-submit]):
+          the company sends the delivery back, behind Lowbid.confirm (POST urls.requestChanges).
+   Review window: every [data-review-deadline][data-deadline="ISO"] gets a live countdown in its [data-countdown]
+   (Lowbid.countdown), refreshed each minute — computed in the browser from the server's deadline, no timer server-side.
    The deliver form (#deliver-form, #deliver-link) and the funding button ([data-fund]) are payment
    steps driven by lowbid-pay.js ([data-pay-step] / [data-fund]). */
 (function () {
@@ -75,6 +79,31 @@
   }
 
   var setBusy = Lowbid.setBusy;
+
+  /* ---------- review window countdown: "6 d 23 h left" / "3 h 12 min left" / "Review window over" ---------- */
+  Lowbid.countdown = function (value) {
+    var t = value instanceof Date ? value.getTime() : Date.parse(value);
+    if (isNaN(t)) return "";
+    var diff = Math.round((t - Date.now()) / 1000);
+    if (diff <= 0) return "Review window over";
+    var d = Math.floor(diff / 86400), h = Math.floor((diff % 86400) / 3600), m = Math.floor((diff % 3600) / 60);
+    if (d >= 1) return d + " d " + h + " h left";
+    if (h >= 1) return h + " h " + m + " min left";
+    return Math.max(1, m) + " min left";
+  };
+  function tickCountdowns() {
+    document.querySelectorAll("[data-review-deadline][data-deadline]").forEach(function (el) {
+      var slot = el.querySelector("[data-countdown]");
+      if (!slot) return;
+      var text = Lowbid.countdown(el.getAttribute("data-deadline"));
+      if (!text) return;
+      var over = /over/.test(text);
+      slot.textContent = (slot.hasAttribute("data-plain") ? "" : "· ") + text;
+      el.toggleAttribute("data-overdue", over);
+      el.classList.toggle("ui-error", over);
+    });
+  }
+  if (document.querySelector("[data-review-deadline]")) { tickCountdowns(); setInterval(tickCountdowns, 60000); }
 
   /* ---------- delegated clicks: suggested tags, choose, delete ---------- */
   document.addEventListener("click", function (ev) {
@@ -215,6 +244,53 @@
         var msg = toastError(err, "Application rejected.");
         fieldError(applyForm, APPLY_FIELD[code] || "_", msg);
         if (code === "wrong_state") setTimeout(function () { location.reload(); }, 1500);
+      });
+    });
+  }
+
+  /* ----- request changes (company): reveal the form, confirm, POST, reload ----- */
+  var rcForm = document.getElementById("request-changes-form");
+  var rcButton = document.querySelector("[data-request-changes]");
+  if (rcButton && rcForm) {
+    function toggleRc(show) {
+      if (show) rcForm.removeAttribute("hidden"); else rcForm.setAttribute("hidden", "");
+      rcButton.setAttribute("aria-expanded", show ? "true" : "false");
+      if (show) { var ta = document.getElementById("request-changes-message"); if (ta) ta.focus(); }
+    }
+    rcButton.addEventListener("click", function () { if (!rcButton.disabled) toggleRc(rcForm.hasAttribute("hidden")); });
+    var rcCancel = rcForm.querySelector("[data-request-changes-cancel]");
+    if (rcCancel) rcCancel.addEventListener("click", function () { toggleRc(false); });
+    var requesting = false;
+    rcForm.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      if (requesting) return;
+      clearErrors(rcForm);
+      var ta = document.getElementById("request-changes-message");
+      var message = ta ? ta.value.trim() : "";
+      if (!message) { fieldError(rcForm, "message", "Tell the freelancer what to change."); if (ta) ta.focus(); return; }
+      var left = parseInt(rcForm.getAttribute("data-revisions-left") || "0", 10), max = rcForm.getAttribute("data-max-revisions") || "";
+      var after = Math.max(0, left - 1);
+      var btn = rcForm.querySelector("[data-request-changes-submit]");
+      Lowbid.confirm({
+        title: "Send the delivery back?",
+        message: "The task returns to \"Taken\" and the freelancer delivers again. " +
+          (after > 0 ? after + " of " + max + " change request" + (after > 1 ? "s" : "") + " will remain after this one." : "This is your last change request (" + max + "/" + max + "): the next delivery must be validated."),
+        confirmLabel: "Request changes", cancelLabel: "Keep reviewing", icon: "fa-rotate-left"
+      }).then(function (ok) {
+        if (!ok) return;
+        requesting = true;
+        setBusy(btn, true, "Sending…");
+        var url = rcForm.getAttribute("data-request-changes-url") || cfg.urls.requestChanges;
+        Lowbid.api(url, { method: "POST", body: { message: message } }).then(function (data) {
+          Lowbid.toast(data.message || "Changes requested.", "success", { title: "Review" });
+          setTimeout(function () { location.reload(); }, 500);
+        }).catch(function (err) {
+          requesting = false;
+          setBusy(btn, false);
+          var code = err && err.data && err.data.error;
+          fieldError(rcForm, code === "invalid" ? "message" : "_", toastError(err, "Could not request changes."));
+          if (code === "wrong_state" || code === "too_many_revisions") setTimeout(function () { location.reload(); }, 1500);
+        });
       });
     });
   }

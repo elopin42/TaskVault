@@ -28,6 +28,11 @@ def _bool(name: str, default: str = "0") -> bool:
     return os.environ.get(name, default).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _int(name: str, default: int) -> int:
+    """An integer setting; an empty / missing variable means the default."""
+    return int(os.environ.get(name, "").strip() or default)
+
+
 # --- Security / debug ---------------------------------------------------------
 
 DEBUG = _bool("DJANGO_DEBUG", "0")
@@ -175,7 +180,7 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 30
 
 # Bump whenever css/lowbid-*.css or js/lowbid-*.js changes (30-day static cache).
-LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-fingerprint"
+LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-review"
 
 # --- Stellar ------------------------------------------------------------------
 
@@ -205,6 +210,11 @@ LOWBID_PLATFORM_ADDRESS = os.environ.get("LOWBID_PLATFORM_ADDRESS", "").strip()
 # Trustless Work v1 `platformFee` (JSON number). Unit unverified (bps vs percent) — keep 1 until
 # a get-escrow read-back on testnet settles it (docs/STELLAR_NOTES.md §1.3).
 LOWBID_PLATFORM_FEE = Decimal(os.environ.get("LOWBID_PLATFORM_FEE", "1").strip() or "1")
+# Review window: days the company has to validate (or request changes) after a delivery; the deadline
+# is computed at read time (projects.services.review_deadline), nothing runs on a timer.
+LOWBID_REVIEW_DAYS = _int("LOWBID_REVIEW_DAYS", 7)
+# How many times the company may send a delivery back for changes (projects.services.request_changes).
+LOWBID_MAX_REVISIONS = _int("LOWBID_MAX_REVISIONS", 2)
 
 # --- Logging ------------------------------------------------------------------
 # Structured key=value lines on stdout; level from DJANGO_LOG_LEVEL (default INFO).

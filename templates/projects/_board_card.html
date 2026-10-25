@@ -5,6 +5,7 @@
     <h3 class="kanban-card-title min-w-0"><a href="{% url 'projects:task_detail' task.pk %}" class="text-strong hover:underline">{{ task.title }}</a></h3>
     {% include "components/price.html" with amount=task.price %}
   </div>
+  {% if task.revision_count %}<p><span class="ui-badge ui-badge-neutral" title="Change requests so far" data-revisions="{{ task.revision_count }}"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> rev. {{ task.revision_count }}</span></p>{% endif %}
   <p class="ui-meta truncate" title="{{ task.project.title }}"><i class="fa-solid fa-diagram-project text-[10px]" aria-hidden="true"></i> <a href="{% url 'projects:project_detail' task.project.pk %}" class="hover:underline">{{ task.project.title }}</a></p>
   {% include "components/tags.html" with tags=task.tags %}
   <div class="flex flex-wrap items-center justify-between gap-2 mt-auto pt-1">

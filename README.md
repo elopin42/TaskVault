@@ -25,8 +25,9 @@
                         FREELANCES
 3.                      Connect Freighter, open the kanban (/taches/)
 4.                      « Apply »: price + message + tags -> application scored (price ≤ budget)
-5. See ranked candidates ---------> score = history + ratings + skills, « Validated » / « Recommended »
-6. « Choose » one freelance ------> task "Taken" at that price, the others "Not selected"
+5. See ranked candidates ---------> score = history + ratings + skills (price × 0), « Validated » / « Recommended »
+                                    + sponsorship: « Yanis recommends » + quote, « New account », « Sponsor »
+6. « Choose » one freelance ------> task "Taken" at that price (budget kept as « up to »), the others "Not selected"
 7. « Fund the project » ----------> Trustless Work API (proxied) -------> one single-release escrow
    2 signatures per task:           deploy, then fund                     PER TASK, USDC locked
 8.                      « Declare the delivery » + link ------------------> milestone marked done
@@ -42,8 +43,8 @@ Fallback (LOWBID_PAYMENT_MODE=direct): no escrow; delivery is a declaration and 
 1. The **company** connects its **Freighter** wallet (Stellar testnet). Login is a signed message, no password.
 2. It creates a **project** (title, description) and splits it into **tasks**, each with a title, a **budget** in USDC (the maximum price) and up to 3 skill tags. Tasks can be added until the project is closed; an open task can still be deleted.
 3. **Freelances** connect their own wallet. The kanban (`/taches/`) shows every open task of other companies plus the tasks assigned to them, in four columns: Open, Taken, Delivered, Paid.
-4. A freelance **applies** to a task with **their price** (at most the budget), a short message and their skills. Once chosen, that price is the task's price: it is what the escrow locks and what the freelance is paid.
-5. TaskVault ranks the candidates with a **deterministic score** (no AI). Two badges help: **« Validated »** (already paid by this company with an average rating ≥ 3) and **« Recommended »** (the best score among the pending candidates).
+4. A freelance **applies** to a task with **their price** (at most the budget), a short message and their skills. Once chosen, that price is the task's price: it is what the escrow locks and what the freelance is paid. The company's budget is kept (`Task.budget`) and shown as « up to 500 » beside the agreed 480, on the project table, the kanban and the task page.
+5. TaskVault ranks the candidates with a **deterministic score** (no AI). Two badges help: **« Validated »** (already paid by this company with an average rating ≥ 3) and **« Recommended »** (the best score among the pending candidates). **The price never enters the score**: there is no race to the bottom, the cheapest bid is just a bid.
 6. **The company chooses** any candidate. The score is a hint, not a rule.
 7. Once a freelance is chosen, the company clicks **« Fund the project »**. For every task with a chosen freelance, Trustless Work deploys a **single-release escrow** (first Freighter signature) and the company funds it with the task's price (second signature).
 8. The freelance delivers: a link to the PR, the demo or the repository. In escrow mode, **« Declare the delivery »** marks the milestone done on chain with the link as evidence (one signature by the freelance).
@@ -60,11 +61,14 @@ TaskVault protects both sides of a task, not just the payment:
 - **Source revealed on payment** — the full deliverable link stays hidden from the company until the task is paid (or resolved); the public preview link and the fingerprint are enough to judge it.
 - **Link warnings** — every delivery link shows its real domain in large type, opens with `rel="noopener noreferrer nofollow ugc"`, and carries "Unknown domain — open with care" outside `LOWBID_TRUSTED_LINK_HOSTS`.
 
+- **Publication deposit** (escrow mode + `LOWBID_DEPOSIT_ENABLED` + the server keys) — before a project is listed the company locks max(1 % of the budget, 5 USDC) in a project-level escrow; a ghost listing (no choice within `LOWBID_CHOICE_DAYS` once candidates applied) forfeits it to the guarantee fund shown on `/fonds/`, a closed or cancelled project gets it back. Both chains are signed by two server-held keys that never touch a task's money.
+- **Reputation both ways** — freelances rate the company after a settled task; the public profile shows a payer profile computed only from confirmed on-chain hashes, with the badges « Reliable payer », « New account » and « Verified GitHub » (a signed public gist links a GitHub account to a wallet). None of it feeds the score.
+
 Direct mode (no escrow) keeps the fingerprint, the review window, change requests and link warnings, but has no dispute: the panel says "unprotected payment".
 
 The next task gets easier: a freelance who has delivered well for a company climbs to the top of that company's next candidate list, with « Validated » and « Recommended ».
 
-**Trust network.** Any wallet can follow and recommend another (one recommendation per pair, 280-character message, public). When a company looks at candidates it sees who the people *it follows* vouch for: « Yanis recommends » (strong) or « Followed by Yanis » (weak), one hop only, so strangers cannot game it. It is a hint next to the score and never changes the score, the « Validé » / « Recommandé » badges or the candidate order. Badges show on candidate rows, the kanban and project cards (company chip), the public profile (follow / recommend buttons) and the dashboard's « In your network » feed. The demo seed builds a small graph: the company follows Yanis (A), Yanis recommends Chloé (C, who applies to T3) and follows Nora (B), so the company sees « Yanis (freelancer A) recommends » on Chloé and « Followed by Yanis (freelancer A) » on Nora, while T2 still ranks A 90 above B 20.
+**Sponsorship (trust network).** A newcomer has no reviews, so no missions, so still no reviews. TaskVault breaks the loop: any wallet can **follow** another and **sponsor** it (one sponsorship per pair, a public 280-character quote; the code and URLs keep the `recommend` vocabulary). When a company looks at candidates it sees who the people *it follows* vouch for, one hop only, so strangers cannot game it: the badge **« Yanis recommends »** (strong) or « Followed by Yanis » (weak), the sponsor's quote under the badges, a **« New account »** badge on every candidate without an on-chain payout, and a **« Sponsor »** button on each row for any signed-in viewer but the candidate. It is a hint next to the score and never changes the score, the « Validated » / « Recommended » badges or the candidate order. Badges also show on the kanban and project cards (company chip), the public profile (« Sponsorship » panel: follow, sponsor, « Sponsored by ») and the dashboard's « In your network » feed. The demo seed builds a small graph: the company follows Yanis (A), Yanis sponsors Chloé (C, a new account applying to T3 at 380 on a 400 budget) and follows Nora (B), so the company sees « Yanis (freelancer A) recommends » with his quote on Chloé and « Followed by Yanis (freelancer A) » on Nora, while T2 still ranks A 90 above B 20.
 
 Around the flow: a **dashboard** (`/tableau-de-bord/`, the signed-in home) lists what the wallet has to do next (candidates to choose, tasks to fund, deliveries to validate, payments to sign, tasks to deliver, empty projects), with KPIs as company and as freelance and the recent activity; every wallet has a **public profile** (`/profil/<address>/`: identicon, display name, ratings received). The project list has text search, tag chips, sorting and pagination. Dark theme only, responsive from 320 px to wide screens (stacked cards, bottom tab bar), no horizontal scroll. The landing tells the flow with a CSS 3D project cube scrubbed on scroll by anime.js.
 
@@ -100,7 +104,7 @@ make seed   # optional: demo data (4 wallets incl. the arbiter, the pitch-state 
 
 `.env` is read once at startup: after any change (API key, `LOWBID_PAYMENT_MODE`, asset, demo wallets…) stop the server and run `make run` again. Without `TRUSTLESS_WORK_API_KEY` the app runs in direct-payment mode.
 
-Tests: `make test` (315 Django tests: rules, scoring, payment flow in both modes, revisions, disputes, link safety, the demo seed, network mocked) and `make e2e` (Playwright, the full task-board scenario in a real browser with a simulated Freighter and a fake Horizon, on a throwaway SQLite; screenshots land in `docs/screenshots/`; the e2e run by a bare `make` / `make verify` writes them to `data/e2e-shots/` instead). `make check` = lint + tests + Tailwind-in-sync (run it before every commit).
+Tests: `make test` (529 Django tests: rules, scoring, budget vs agreed price, sponsorship, payment flow in both modes, revisions, disputes, link safety, the demo seed, network mocked) and `make e2e` (Playwright, the full task-board scenario in a real browser with a simulated Freighter and a fake Horizon, on a throwaway SQLite; screenshots land in `docs/screenshots/`; the e2e run by a bare `make` / `make verify` writes them to `data/e2e-shots/` instead). `make check` = lint + tests + Tailwind-in-sync (run it before every commit).
 
 ## Where Stellar lives in the code
 
@@ -153,7 +157,10 @@ Three Stellar building blocks composed into one flow: **Freighter** for identity
 ## Status / what works
 
 - [ ] Wallet login (Freighter signMessage) on a live testnet
-- [x] Projects, tasks with a budget, priced applications, scoring, choice, delivery, rating (unit + e2e tested)
+- [x] Projects, tasks with a budget, priced applications (budget kept as « up to »), scoring, choice, delivery, rating (unit + e2e tested)
+- [x] Sponsorship: follow / sponsor with a quote, one-hop badges, « New account », Sponsor button on candidate rows (unit + e2e tested)
+- [x] Review window, change requests, delivery fingerprint, link warnings, on-chain dispute + arbiter desk (unit tested, network mocked)
+- [x] Publication deposit, guarantee fund, company ratings, payer profile, GitHub proof (unit tested, network mocked)
 - [x] Direct payment end to end in the e2e (fake Horizon: trustline, payment, explorer link)
 - [ ] Escrow deploy + fund on the live testnet
 - [ ] Escrow deliver + approve + release on the live testnet

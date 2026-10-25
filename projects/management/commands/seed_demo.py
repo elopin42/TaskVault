@@ -1,12 +1,17 @@
-"""Seed the demo dataset (SPEC §8): 3 wallets, 2 projects.
+"""Seed the demo dataset (SPEC §8): 4 wallets, 2 projects, a small trust network.
 
   1. "Booking platform" at the pitch state — T1 "Landing page" paid to freelance A
      (note 5, with its Escrow row: a direct payment and a demo tx hash so the explorer links render),
      T2 "Freighter integration" open with A + B applying (A is Validated + Recommended:
-     40 + 5·8 + 20·(1/2) = 90 vs B 0 + 0 + 20·(2/2) = 20), T3 "Dashboard" open, no candidate.
+     40 + 5·8 + 20·(1/2) = 90 vs B 0 + 0 + 20·(2/2) = 20), T3 "Dashboard" open with C applying.
   2. A draft project with open tasks and no application.
+  3. The trust network (one hop, never touches a score): the company follows A, A recommends C
+     (with a message) and A follows B. Signed in as the company you therefore see
+     "Yanis (freelancer A) recommends" on C's candidate row on T3, "Followed by Yanis (freelancer A)"
+     on B's row on T2, and "Following" on A.
 
-Addresses come from LOWBID_DEMO_CLIENT / LOWBID_DEMO_FREELANCE1 / LOWBID_DEMO_FREELANCE2 (so the
+Wallets: the company, freelancers A (Yanis), B (Nora) and C (Chloé). Addresses come from
+LOWBID_DEMO_CLIENT / LOWBID_DEMO_FREELANCE1 / LOWBID_DEMO_FREELANCE2 / LOWBID_DEMO_FREELANCE3 (so the
 Freighter accounts you own are the actors), else random. The dev DB is throwaway: `rm data/db.sqlite3`
 then `make dev` after a models change.
 
@@ -22,6 +27,8 @@ from django.utils import timezone
 from stellar_sdk import Keypair
 
 from accounts.models import WalletUser
+from network import services as network
+from network.models import Follow, Recommendation
 from payments import services as payment_services
 from payments import stellar
 from payments.models import Escrow
@@ -47,7 +54,7 @@ class Command(BaseCommand):
     help = "Create the Lowbid demo data (wallets, projects, tasks, applications, one paid task with its escrow row)."
 
     def add_arguments(self, parser):
-        parser.add_argument("--flush", action="store_true", help="Delete every Project (tasks, applications, ratings, escrows) first.")
+        parser.add_argument("--flush", action="store_true", help="Delete every Project (tasks, applications, ratings, escrows), Follow and Recommendation first.")
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -57,11 +64,17 @@ class Command(BaseCommand):
             apps, _ = Application.objects.all().delete()
             tasks, _ = Task.objects.all().delete()
             projects, _ = Project.objects.all().delete()
-            self.stdout.write(f"flushed projects={projects} tasks={tasks} applications={apps} ratings={ratings} escrows={escrows}")
+            follows, _ = Follow.objects.all().delete()
+            recommendations, _ = Recommendation.objects.all().delete()
+            self.stdout.write(
+                f"flushed projects={projects} tasks={tasks} applications={apps} ratings={ratings} escrows={escrows} "
+                f"follows={follows} recommendations={recommendations}"
+            )
 
         company = _wallet("LOWBID_DEMO_CLIENT", "Studio Nova (company)")
         a = _wallet("LOWBID_DEMO_FREELANCE1", "Yanis (freelancer A)")
         b = _wallet("LOWBID_DEMO_FREELANCE2", "Nora (freelancer B)")
+        c = _wallet("LOWBID_DEMO_FREELANCE3", "Chloé (freelancer C)")
         mode = stellar.payment_mode()
 
         # 1. The pitch project: T1 paid to A, T2 open with A + B, T3 open.
@@ -105,6 +118,13 @@ class Command(BaseCommand):
         payment_services.sync_project_status(t1.project)  # what confirm_direct_pay / confirm_release do live
         services.apply(t2, a, "I have already wired Freighter and Horizon into a Django back office.", ["stellar"])
         services.apply(t2, b, "Stellar/JS specialist: SEP-53, trustlines, Soroban.", ["stellar", "js"])
+        services.apply(t3, c, "Django dashboards with Chart.js and CSV exports are my daily job, 6 days.", ["django", "charts"])
+
+        # 3. The trust network (one hop): company → A, A recommends C, A → B. Scores are untouched.
+        network.follow(company, a)
+        recommendation = "Chloé shipped our analytics dashboard in a week, clean Django and sharp charts."
+        network.recommend(a, c, recommendation)
+        network.follow(a, b)
 
         # 2. A draft project with open tasks and no candidate.
         p2 = services.create_project(
@@ -123,6 +143,9 @@ class Command(BaseCommand):
         self.stdout.write(f"  company      {company.stellar_address}")
         self.stdout.write(f"  freelancer A {a.stellar_address}")
         self.stdout.write(f"  freelancer B {b.stellar_address}")
-        self.stdout.write(f"  projects: pitch=#{p1.pk} (T1 #{t1.pk} paid, T2 #{t2.pk} open A+B, T3 #{t3.pk} open)  draft=#{p2.pk}")
+        self.stdout.write(f"  freelancer C {c.stellar_address}")
+        self.stdout.write(f"  projects: pitch=#{p1.pk} (T1 #{t1.pk} paid, T2 #{t2.pk} open A+B, T3 #{t3.pk} open C)  draft=#{p2.pk}")
+        self.stdout.write("  network: company follows A, A recommends C, A follows B")
+        self.stdout.write("    as the company: T3 C \"Yanis (freelancer A) recommends\", T2 B \"Followed by Yanis (freelancer A)\"")
         self.stdout.write(f"  T1 payment: direct, demo hash {_demo_hash(f't1-{t1.pk}')[:12]}… → {stellar.explorer_tx_url(_demo_hash(f't1-{t1.pk}'))}")
         self.stdout.write(f"  T2 scores: {scores}")

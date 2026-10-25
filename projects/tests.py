@@ -921,7 +921,7 @@ class SeedDemoTests(TestCase):
         self.assertIn("Demo data ready.", text)
         self.assertIn("freelancer A", text)
         self.assertEqual(Project.objects.count(), 2)
-        self.assertEqual(WalletUser.objects.count(), 3)
+        self.assertEqual(WalletUser.objects.count(), 4)
         pitch = Project.objects.get(title__startswith="Booking")
         t1, t2, t3 = list(pitch.tasks.order_by("position"))
         self.assertEqual((t1.status, t2.status, t3.status), ("paid", "open", "open"))

@@ -9,6 +9,7 @@
     <p class="ui-meta mb-2"><a href="{% url 'projects:project_list' %}" class="ui-link"><i class="fa-solid fa-arrow-left text-[10px]" aria-hidden="true"></i> Projects</a> · Public profile</p>
     <h1 class="ui-page-title flex flex-wrap items-center gap-3">
       {% include "components/wallet.html" with address=profile.stellar_address name=profile.display_name|default:"Anonymous wallet" size="xl" copy=True nolink=True keep=6 you=is_me %}
+      {% include "components/network_badges.html" with signal=net.signal %}
     </h1>
     <p class="ui-page-sub flex flex-wrap items-center gap-x-3 gap-y-1">
       <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> member since {{ stats.member_since|date:"M j, Y" }}</span>
@@ -21,6 +22,45 @@
     {% if is_me %}<a href="{% url 'dashboard:home' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Dashboard</a>{% endif %}
   </div>
 </div>
+
+<section class="ui-panel ui-network-panel mb-6" id="network-panel" aria-label="Trust network">
+  <ul class="ui-network-counts">
+    <li class="ui-network-count"><span class="ui-network-count-value" data-followers-count>{{ net.followers_count }}</span><span class="ui-network-count-label">Followers</span></li>
+    <li class="ui-network-count"><span class="ui-network-count-value" data-following-count>{{ net.following_count }}</span><span class="ui-network-count-label">Following</span></li>
+    <li class="ui-network-count"><span class="ui-network-count-value" data-recommendations-count>{{ net.recommendations_count }}</span><span class="ui-network-count-label">Recommendations</span></li>
+  </ul>
+  {% if net.known_followers %}
+    {% with n=net.known_followers|length %}
+    <p class="ui-network-known" data-known-followers>Followed by {{ n }} {{ n|pluralize:"person,people" }} you follow: <strong>{{ net.known_followers|join:", " }}</strong></p>
+    {% endwith %}
+  {% endif %}
+  {% if net.can_act %}
+  <div class="ui-network-actions">
+    <button type="button" class="ui-btn {% if net.viewer_follows %}is-following{% else %}ui-btn-primary{% endif %}" data-follow
+            data-follow-url="{% url 'network:follow' profile.stellar_address %}" data-unfollow-url="{% url 'network:unfollow' profile.stellar_address %}"
+            data-following="{{ net.viewer_follows|yesno:'1,0' }}" data-name="{{ profile }}" aria-pressed="{{ net.viewer_follows|yesno:'true,false' }}">
+      {% if net.viewer_follows %}<i class="fa-solid fa-check" aria-hidden="true"></i> Following{% else %}<i class="fa-solid fa-user-plus" aria-hidden="true"></i> Follow{% endif %}
+    </button>
+    <button type="button" class="ui-btn" data-recommend data-recommended="{{ net.viewer_recommendation|yesno:'1,0' }}" aria-controls="recommend-form" aria-expanded="false">
+      <i class="fa-solid fa-user-group" aria-hidden="true"></i> {% if net.viewer_recommendation %}Edit recommendation{% else %}Recommend{% endif %}
+    </button>
+    <button type="button" class="ui-btn ui-btn-ghost" data-unrecommend data-unrecommend-url="{% url 'network:unrecommend' profile.stellar_address %}" data-name="{{ profile }}"{% if not net.viewer_recommendation %} hidden{% endif %}>Withdraw</button>
+  </div>
+  <form id="recommend-form" class="ui-network-form" hidden>
+    <label class="ui-label" for="recommend-message">Your recommendation (optional)</label>
+    <textarea id="recommend-message" class="ui-textarea" maxlength="280" placeholder="What did they do well?">{{ net.viewer_recommendation.message|default:"" }}</textarea>
+    <div class="ui-network-form-foot">
+      <span class="ui-network-counter" data-recommend-counter>0 / 280</span>
+      <button type="submit" class="ui-btn ui-btn-primary" data-recommend-submit data-recommend-url="{% url 'network:recommend' profile.stellar_address %}">Publish</button>
+    </div>
+  </form>
+  {% elif not is_me %}
+  <div class="ui-network-actions">
+    <p class="ui-network-known">Connect your wallet to follow or recommend this wallet.</p>
+    <button type="button" class="ui-btn ui-btn-primary" data-wallet-connect data-next="{{ request.path }}"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Connect my wallet</button>
+  </div>
+  {% endif %}
+</section>
 
 {% if is_me %}
 <section class="ui-panel mb-6" id="edit-name" aria-labelledby="edit-name-title">
@@ -83,6 +123,28 @@
   {% endif %}
 </section>
 
+<section class="ui-section" id="recommendations" aria-label="Recommendations received">
+  {% include "components/section_head.html" with title="Recommendations received" icon="fa-user-group" %}
+  {% if net.recommendations %}
+  <div class="ui-panel">
+    <ol class="ui-timeline">
+      {% for rec in net.recommendations %}
+        <li class="ui-timeline-item is-brand">
+          <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-user-group"></i></span>
+          <div class="ui-timeline-body">
+            <div class="ui-timeline-title">{% include "components/wallet.html" with address=rec.author.stellar_address name=rec.author.display_name %}</div>
+            {% if rec.message %}<p class="ui-network-quote">{{ rec.message }}</p>{% endif %}
+            <div class="ui-timeline-time"><span data-time-ago="{{ rec.updated_at|date:'c' }}">{{ rec.updated_at|date:"M j H:i" }}</span></div>
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+  </div>
+  {% else %}
+    {% include "components/empty_state.html" with icon="fa-user-group" title="No recommendations yet" desc="Recommendations from other wallets will show up here." %}
+  {% endif %}
+</section>
+
 {% if stats.ratings %}
 <section class="ui-section" aria-labelledby="ratings-title">
   {% include "components/section_head.html" with title="Ratings received" icon="fa-star" %}
@@ -103,4 +165,5 @@
 {% endif %}
 {% endblock %}
 
-{% block extra_js %}<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
+<script src="{% static 'js/lowbid-network.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

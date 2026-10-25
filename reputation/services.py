@@ -57,6 +57,7 @@ GIST_URL_RE = re.compile(r"^https://gist\.github\.com/[A-Za-z0-9-]{1,39}/([0-9a-
 MESSAGE_PREFIX = "lowbid:"
 SIGNATURE_PREFIX = "signature:"
 ZERO = Decimal("0")
+DISPUTE_LOST_PCT = 50  # a dispute is lost by the company when the freelance got at least this share
 TENTH = Decimal("0.1")
 
 __all__ = [
@@ -144,9 +145,25 @@ def _link(escrow: Escrow) -> dict:
 
 
 def _disputes_lost(wallet) -> dict:
-    """Disputes resolved against this company, with their on-chain resolution links."""
-    # merge hook (step 3): will read Escrow.resolve_tx_hash on tasks resolved against the company.
-    return {"count": 0, "links": []}
+    """Disputes resolved against this company: the arbiter's resolve-dispute tx is confirmed
+    (`Escrow.resolve_tx_hash`) and the freelance got at least DISPUTE_LOST_PCT % of the escrow
+    (`Dispute.freelance_pct`). Links point at the resolution tx on stellar.expert."""
+    escrows = (
+        Escrow.objects.exclude(resolve_tx_hash="")
+        .filter(task__project__company=wallet, task__dispute__freelance_pct__gte=DISPUTE_LOST_PCT)
+        .select_related("task__dispute")
+        .order_by("resolved_at", "pk")
+    )
+    links = [
+        {
+            "label": f"task #{e.task_id} · {e.task.dispute.freelance_pct} % to the freelancer",
+            "url": stellar.explorer_tx_url(e.resolve_tx_hash),
+            "tx": e.resolve_tx_hash,
+            "task_id": e.task_id,
+        }
+        for e in escrows
+    ]
+    return {"count": len(links), "links": links}
 
 
 def _deposits_forfeited(wallet) -> dict:

@@ -12,12 +12,13 @@ import requests
 from django.template import Context, Template
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from stellar_sdk import Keypair
 
 from accounts.models import WalletUser
 from payments.models import Escrow
 from projects import services as projects
-from projects.models import Application, Task
+from projects.models import Application, Dispute, Task
 
 from . import services
 from .models import CompanyRating, GithubIdentity
@@ -180,6 +181,23 @@ class PayerProfileTests(TestCase):
         self.assertEqual(profile["paid_total"], Decimal("200"))
         self.assertEqual(profile["disputes_lost"], {"count": 0, "links": []})
         self.assertEqual(profile["deposits_forfeited"], {"count": 0, "links": []})
+
+    def test_disputes_lost_from_resolved_escrows(self):
+        lost = make_task(self.company, self.f1)
+        Escrow.objects.filter(task=lost).update(resolve_tx_hash=_tx_hash(), status=Escrow.Status.RESOLVED)
+        Dispute.objects.create(task=lost, opened_by=self.f1, reason="silence", freelance_pct=70, resolved_at=timezone.now())
+        won = make_task(self.company, self.f2)
+        Escrow.objects.filter(task=won).update(resolve_tx_hash=_tx_hash(), status=Escrow.Status.RESOLVED)
+        Dispute.objects.create(task=won, opened_by=self.company, reason="late", freelance_pct=20, resolved_at=timezone.now())
+        pending = make_task(self.company, self.f3)  # dispute open, nothing resolved on chain
+        Dispute.objects.create(task=pending, opened_by=self.company, reason="late")
+        for _ in range(3):
+            paid_task(self.company, self.f3)
+        profile = services.payer_profile(self.company)
+        self.assertEqual(profile["disputes_lost"]["count"], 1)
+        self.assertEqual(profile["disputes_lost"]["links"][0]["task_id"], lost.pk)
+        self.assertIn("/tx/", profile["disputes_lost"]["links"][0]["url"])
+        self.assertFalse(profile["reliable_payer"])
 
     def test_distinct_partners(self):
         paid_task(self.company, self.f1)

@@ -15,16 +15,17 @@ TaskVault/
 ├── core/                   # landing (stats, ledger tape, 3D cube story), /healthz/, error handlers, context processors,
 │                           # templatetags/lowbid_extras.py
 ├── accounts/               # WalletUser + Freighter login (challenge / verify / logout), wallet_required, get_wallet
-├── projects/               # Project / Task / Application / Rating, services (rules + payment hooks), scoring,
+├── projects/               # Project / Task / Application / Rating / Delivery / RevisionRequest / Dispute,
+│                           # services (rules + payment hooks + link_info), scoring,
 │                           # forms, pages + JSON endpoints, management/commands/seed_demo.py         mounted at /
 ├── payments/               # Escrow (1-1 Task), services (prepare/confirm per step, both modes), trustless_work.py,
 │                           # stellar.py, JSON endpoints, templatetags/payments_extras.py              mounted at /pay/
 ├── dashboard/              # no models: signed-in home (/tableau-de-bord/) + public wallet profile (/profil/<addr>/),
 │                           # services.py (view-models + `set_display_name`), templates in dashboard/templates/dashboard/
 ├── templates/              # base.html, partials/{navbar,tabbar,toasts,modal,page_header}.html, core/landing.html,
-│   │                       # 400/403/404/500.html, payments/_escrow_panel.html
-│   ├── components/         # wallet, status_badge, tags, kpi, price, empty_state, pager, next_card, section_head
-│   └── projects/           # project_list, project_form, project_detail, task_detail, board, my_projects
+│   │                       # 400/403/404/500.html, payments/_escrow_panel.html, payments/_dispute_form.html
+│   ├── components/         # wallet, status_badge, tags, kpi, price, empty_state, pager, next_card, section_head, ext_link
+│   └── projects/           # project_list, project_form, project_detail, task_detail, board, my_projects, disputes
 │                           # + _project_card, _task_row, _task_form, _candidates, _funding_panel, _board_card
 ├── static/
 │   ├── css/  lowbid-tokens.css  lowbid-components.css  tailwind.src.css  tailwind.css (BUILT, committed)
@@ -47,12 +48,13 @@ TaskVault/
 make              # = make all: venv + .env + migrate + check + e2e (screenshots in data/e2e-shots/), then runserver
 make verify       # the same checks, without starting the server
 make dev          # venv + pip install + .env from .env.example + migrate + runserver 0.0.0.0:8000
-make test         # manage.py check + makemigrations --check + test (245 tests)
+make test         # manage.py check + makemigrations --check + test (315 tests)
 make lint         # ruff check .
 make css          # npm ci + tailwind build  (commit static/css/tailwind.css!)
 make css-check    # rebuild and fail when the committed tailwind.css is stale (= CI tailwind-in-sync)
 make check        # lint + test + css-check — the pre-commit gate
-make seed         # python manage.py seed_demo --flush (3 wallets, the pitch-state project, a draft project)
+make seed         # python manage.py seed_demo --flush (4 wallets, the pitch-state project, a draft, the food-truck project:
+                  # a task delivered again after a change request + a disputed escrow task)
 make vendor       # re-copy Font Awesome / freighter-api / stellar-sdk / anime.js from node_modules
 make e2e          # Playwright end-to-end (see E2E below); `make shots` = the e2e writing to docs/screenshots/
 ```
@@ -79,7 +81,10 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
   5 stars → the chained payment fails gracefully (company unknown on Horizon: `stellar` error, `last_error` persisted)
   → the wallets are funded, A adds the USDC trustline from the panel, the company resumes "Pay the freelancer" → T1
   "Paid" with its stellar.expert link, A's balance at 300, the project "Funded" → A and B apply to T2 → A ranks first
-  with "Validated" + "Recommended" (90.0 vs 20.0). Plus role refusals, the kanban, list filters, My projects,
+  with "Validated" + "Recommended" (90.0 vs 20.0). Before the payment of T1 the run also covers the fingerprint (a bad
+  hash refused, the stored one lowercased), the full deliverable hidden from the company until paid, two change requests
+  then the `too_many_revisions` cap, the delivery history, the direct-mode "unprotected payment" warning and the
+  company's 403 on `/litiges/`. Plus role refusals, the kanban, list filters, My projects,
   dashboard, profile, mobile at 390×844 (no horizontal scroll, tap targets), the dark-only theme (no toggle), logout
   and 404s.
 - Screenshots land in `docs/screenshots/` (`01-landing.png` … `15-financement-projet.png`, `mobile-*.png`), or in
@@ -136,6 +141,8 @@ project / task / application is a 404). Payments refusals are HTTP 200
 WalletUser ─┬─< Project (company, PROTECT) ──< Task (CASCADE) ──< Application (CASCADE) >── WalletUser (freelancer, PROTECT)
             │                                   │  └── assigned_to ─> WalletUser (PROTECT, null until chosen)
             │                                   ├── Rating (1-1, CASCADE): company, freelancer, note 1–5, comment
+            │                                   ├──< Delivery (CASCADE): freelancer (PROTECT), link, hash, source link, tx_hash
+            │                                   ├──< RevisionRequest (CASCADE): company (PROTECT), message
             │                                   ├── Dispute (1-1, CASCADE): opened_by (PROTECT), reason, freelance_pct, resolved_at
             │                                   └── Escrow (1-1, CASCADE, payments): mode, status, contract_id, hashes
 ```
@@ -144,9 +151,11 @@ WalletUser ─┬─< Project (company, PROTECT) ──< Task (CASCADE) ──< 
 |-------|--------------------|
 | `accounts.WalletUser` | `stellar_address` (unique, 56), `display_name` (≤80), `created_at`, `last_login_at` |
 | `projects.Project` | `company` (FK WalletUser), `title` (≤120), `description`, `status` `draft`/`funded`/`closed`; default ordering `-created_at`. `Project.objects.with_totals()` annotates `total` (Σ task prices), `tasks_total`, `paid_total`, `resolved_total`, `open_total` in one query; `progress_pct` = settled (paid + resolved) / tasks |
-| `projects.Task` | `project`, `title`, `description`, `price` `Decimal(18,7)`, `tags` (JSON list, ≤3 enforced by `services.clean_tags`), `status` `open`/`taken`/`delivered`/`paid`/`disputed`/`resolved`, `assigned_to`, `delivery_link` (≤500), `delivered_at`, `paid_at`, `resolved_at`, `position` (1-based order in the project) |
+| `projects.Task` | `project`, `title`, `description`, `price` `Decimal(18,7)`, `tags` (JSON list, ≤3 enforced by `services.clean_tags`), `status` `open`/`taken`/`delivered`/`paid`/`disputed`/`resolved`, `assigned_to`, `delivery_link` (≤500, the latest demo / preview link), `delivery_hash` ("" or 40 / 64 lowercase hex), `source_link` (≤500, the full deliverable, revealed by `source_visible`), `revision_count`, `delivered_at` (cleared by a change request), `paid_at`, `resolved_at`, `position` (1-based order in the project) |
 | `projects.Application` | `task`, `freelancer`, `message` (≤280), `tags`, `score` `Decimal(5,1)` (stored, refreshed by `services.rescore`), `status` `pending`/`chosen`/`rejected`; unique (`task`, `freelancer`); default ordering `-score, created_at, pk` |
 | `projects.Rating` | `task` (1-1), `company`, `freelancer`, `note` 1–5, `comment` (≤280) |
+| `projects.Delivery` | `task` (FK, `related_name="deliveries"`), `freelancer` (PROTECT), `delivery_link`, `delivery_hash`, `source_link`, `tx_hash` (the change-milestone-status in escrow mode, "" otherwise), `created_at` — one row per (re)delivery, written by `services.deliver` |
+| `projects.RevisionRequest` | `task` (FK, `related_name="revision_requests"`), `company` (PROTECT), `message` (≤280), `created_at` — written by `services.request_changes` |
 | `projects.Dispute` | `task` (1-1, `related_name="dispute"`), `opened_by` (FK WalletUser, PROTECT: the party who signed dispute-escrow), `reason` (≤280, database only: Trustless Work v1 has no reason field), `freelance_pct` (0–100, null until resolved), `created_at`, `resolved_at` — written by `mark_disputed` / `mark_resolved` |
 | `payments.Escrow` | `task` (1-1, `related_name="escrow"`), `mode` `escrow`/`direct` (frozen when the row is created), `amount` (= task price), `payer_address` (company), `payee_address` (freelance), `platform_address`, `resolver_address` (the `disputeResolver` fixed at deploy = `LOWBID_DISPUTE_RESOLVER`), `contract_id`, `engagement_id` (`taskvault-task-<pk>`), `deploy/fund/deliver/approve/release/payment/dispute/resolve_tx_hash`, `status` `created`/`deployed`/`funded`/`delivered`/`approved`/`released`/`paid`/`disputed`/`resolved`/`failed` (`failed` is never set), `delivery_note` (the evidence sent on chain, ≤280), `last_error`, `funded_at`, `delivered_at`, `released_at`, `disputed_at`, `resolved_at` |
 
@@ -190,7 +199,7 @@ def my_projects(request):
 ### Freelance: apply, then the company's live list
 1. `#apply-form` → `/taches/<pk>/postuler/` → `services.apply` → `scoring.score_application` stores the score → 201 with the score; the page shows `#my-application`.
 2. The task page polls `GET /taches/<pk>/candidats.json` every 5 s through `Lowbid.poll` (paused when the tab is hidden, backoff on errors) while the task is open. When `fingerprint` (status, count, assignee, ids and scores) changes, it swaps the `html` fragment (`projects/_candidates.html`), updates `[data-kpi-count]`, shows `[data-live-dot]` and calls `Lowbid.refreshUI`.
-3. Rows come from `views._candidate_rows`: rank, score parts (`scoring.score_parts`), `Validé` (`scoring.is_validated` on `company_history`), `Recommandé` (`scoring.recommended_pk`, open tasks only), matched tags.
+3. Rows come from `views._candidate_rows`: rank, score parts (`scoring.score_parts`), "Validated" (`scoring.is_validated` on `company_history`), "Recommended" (`scoring.recommended_pk`, open tasks only), matched tags.
 
 ### Company: choose
 `[data-choose]` → `Lowbid.confirm` → `/taches/<pk>/choisir/<app_pk>/` → `services.choose` (row lock, others `rejected`, task `taken`, `assigned_to`). Nothing touches the chain.
@@ -384,7 +393,7 @@ per project.
 - `lowbid/settings.py` → `STELLAR_NETWORK` (`testnet`), `STELLAR_NETWORK_PASSPHRASE`, `STELLAR_HORIZON_URL`,
   `STELLAR_SOROBAN_RPC_URL`, `STELLAR_ASSET_CODE` / `STELLAR_ASSET_ISSUER` (defaults to the legacy `STELLAR_USDC_CODE` /
   `STELLAR_USDC_ISSUER`, i.e. Circle testnet USDC), `TRUSTLESS_WORK_API_URL`, `TRUSTLESS_WORK_API_KEY`,
-  `LOWBID_PAYMENT_MODE`, `LOWBID_PLATFORM_ADDRESS`, `LOWBID_PLATFORM_FEE`.
+  `LOWBID_PAYMENT_MODE`, `LOWBID_PLATFORM_ADDRESS`, `LOWBID_PLATFORM_FEE`, `LOWBID_DISPUTE_RESOLVER`.
 - Python: `stellar-sdk` (login verification, XDR building and parsing); `requests` for Horizon and Trustless Work, never
   raising: Trustless Work calls return `{ok, status, data, error}`, `stellar.submit_xdr` the same plus `hash`, and the
   Horizon reads return `None` when Horizon is unreachable.

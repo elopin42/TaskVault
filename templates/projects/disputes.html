@@ -44,7 +44,7 @@ DOM contract (e2e / tests): #resolve-form-<task_pk> · [data-freelance-pct] · [
         <dl class="ui-facts">
           <dt>Company</dt><dd>{% include "components/wallet.html" with address=row.project.company.stellar_address name=row.project.company.display_name label="Company" %}</dd>
           <dt>Freelancer</dt><dd>{% include "components/wallet.html" with address=row.task.assigned_to.stellar_address name=row.task.assigned_to.display_name label="Freelancer" %}</dd>
-          <dt>Delivery link</dt><dd>{% if row.task.delivery_link %}<a href="{{ row.task.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-delivery-link>{{ row.task.delivery_link|truncatechars:48 }}</a>{% else %}<span class="ui-meta">none</span>{% endif %}</dd>
+          <dt>Delivery link</dt><dd>{% if row.delivery_link_info %}{% include "components/ext_link.html" with info=row.delivery_link_info attr="data-delivery-link" size="sm" %}{% else %}<span class="ui-meta">none</span>{% endif %}</dd>
           <dt>Fingerprint</dt><dd>{% if row.task.delivery_hash %}<code class="font-mono text-xs break-all" data-delivery-hash="{{ row.task.delivery_hash }}">{{ row.task.delivery_hash }}</code>{% else %}<span class="ui-meta">none declared</span>{% endif %}</dd>
           <dt>Revisions requested</dt><dd class="ui-num">{{ row.task.revision_count }}</dd>
           {% for l in row.links %}
@@ -61,7 +61,8 @@ DOM contract (e2e / tests): #resolve-form-<task_pk> · [data-freelance-pct] · [
                 <li class="ui-timeline-item is-brand" data-kind="delivery">
                   <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-truck-fast"></i></span>
                   <div class="ui-timeline-body">
-                    <span class="ui-timeline-title">Delivery declared</span> — <a href="{{ h.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer">{{ h.delivery_link|truncatechars:60 }}</a>{% if h.delivery_hash %} <code class="font-mono text-xs" title="{{ h.delivery_hash }}">{{ h.delivery_hash|short_addr:8 }}</code>{% endif %}{% if h.tx_hash %} · <a href="{{ h.explorer_url }}" class="ui-link font-mono" target="_blank" rel="noopener" title="{{ h.tx_hash }}">on Stellar <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% endif %}
+                    <span class="ui-timeline-title">Delivery declared</span>{% if h.delivery_hash %} <code class="font-mono text-xs" title="{{ h.delivery_hash }}">{{ h.delivery_hash|short_addr:8 }}</code>{% endif %}{% if h.tx_hash %} · <a href="{{ h.explorer_url }}" class="ui-link font-mono" target="_blank" rel="noopener" title="{{ h.tx_hash }}">on Stellar <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% endif %}
+                    <div class="mt-1">{% include "components/ext_link.html" with info=h.info size="sm" %}</div>
                     <div class="ui-timeline-time"><span data-time-ago="{{ h.when|date:'c' }}">{{ h.when|date:"M j, Y H:i" }}</span></div>
                   </div>
                 </li>

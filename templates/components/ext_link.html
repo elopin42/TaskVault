@@ -1,0 +1,18 @@
+{% comment %}
+An external, user-supplied link (delivery link, full deliverable): the domain large and bold (.ui-link-host),
+the full URL smaller and truncated under it, opened in a new tab with rel="noopener noreferrer nofollow ugc",
+and an inline "Unknown domain — open with care" warning ([data-untrusted-host]) when the host is not in
+LOWBID_TRUSTED_LINK_HOSTS. The template decides nothing: the trust verdict comes from the view / inclusion
+tag / delivery_history row as `info`.
+
+  {% include "components/ext_link.html" with info=delivery_link_info attr="data-delivery-link" %}
+
+Parameters:
+  info   required — the dict of projects.services.link_info(url): url, href, host, display, trusted.
+         `info.href` is the anchor's href (the URL itself; "" for a non-http(s) / host-less value, which then
+         renders as plain text, never as a link). `url` = info.url.
+  label  optional — a short text before the link ("Full deliverable").
+  attr   optional — a data attribute name put on the <a> (e.g. "data-delivery-link", "data-source-link"); the
+         e2e asserts on it and on the href.
+  size   optional — "sm" for the compact variant (timelines, receipt rows); default is the full size.
+{% endcomment %}<span class="ui-ext-link{% if size == 'sm' %} is-sm{% endif %}{% if not info.trusted %} is-untrusted{% endif %}">{% if label %}<span class="ui-ext-label">{{ label }}</span>{% endif %}{% if info.href %}<a href="{{ info.href }}" class="ui-ext-anchor" target="_blank" rel="noopener noreferrer nofollow ugc" title="{{ info.url }}"{% if attr %} {{ attr }}{% endif %}><span class="ui-link-host"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> {{ info.host }}</span><span class="ui-link-url">{{ info.display }}</span></a>{% else %}<span class="ui-link-url" title="{{ info.url }}">{{ info.display|default:"—" }}</span>{% endif %}{% if not info.trusted %}<span class="ui-link-warn" role="note" data-untrusted-host><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Unknown domain — open with care</span>{% endif %}</span>

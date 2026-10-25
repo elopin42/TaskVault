@@ -67,6 +67,7 @@ def escrow_panel(context, task, wallet=None):
         "delivered_at": escrow.delivered_at if escrow is not None else task.delivered_at,
         "source_visible": visible,
         "source_pending": role == "company" and bool(task.source_link) and not visible,
+        "source_link_info": projects.link_info(task.source_link) if visible and task.source_link else None,
         "validate_url": reverse("projects:task_validate", kwargs={"pk": task.pk}),
         "trustline_url": reverse("payments:trustline_prepare"),
         # Review window + change requests (projects.services decides; the template reads booleans / numbers).

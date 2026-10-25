@@ -6,7 +6,8 @@ escrow (may be None), mode, is_direct, status, steps, action (next_action(): a p
 role (company|freelance|other|anonymous), is_party, rated, amount, payee, payer, links (each with its `at` time),
 last_error, pending_hash, asset_code, asset_native, validate_url, trustline_url, the two-step delivery:
 delivery_hash, hash_kind, deliver_tx_hash, deliver_tx_url, delivered_at, source_visible (this viewer may see
-task.source_link), source_pending (the company, before payment), and the review window: review_deadline,
+task.source_link), source_pending (the company, before payment), source_link_info (link_info of task.source_link,
+only when visible; rendered by components/ext_link.html), and the review window: review_deadline,
 review_overdue, can_request_changes, revision_count, max_revisions, revisions_left, latest_revision,
 request_changes_url, and the dispute: can_dispute, dispute_why, dispute_for_no_response (the freelance's "no response"
 case), dispute_prepare_url, dispute (the Dispute row or None), dispute_by_company, dispute_tx_url, resolve_tx_url,
@@ -95,7 +96,7 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
         <dt>Full deliverable</dt>
         <dd>
           {% if source_visible %}
-            <a href="{{ task.source_link }}" target="_blank" rel="noopener noreferrer" class="ui-link break-all" data-source-link>{{ task.source_link|truncatechars:48 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>
+            {% include "components/ext_link.html" with info=source_link_info attr="data-source-link" size="sm" %}
           {% elif source_pending %}
             <span class="ui-meta" data-source-pending><i class="fa-solid fa-lock text-[10px]" aria-hidden="true"></i> revealed once the task is paid or resolved</span>
           {% else %}

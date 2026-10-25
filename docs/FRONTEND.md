@@ -53,7 +53,7 @@ Golden rules: components only read `var(--*)` (never a hardcoded colour); any ne
 
 ### Text
 
-`.ui-meta` (12px muted) · `.ui-label` (11px uppercase label) · `.ui-link` (text-coloured, `--border-strong` underline that turns `--text` on hover) · `.ui-num` (**mono**, tabular figures) · `.text-muted` · `.text-strong` (+ `.hover:text-strong`) · `.ui-price` + `.ui-price-unit` (mono amount on a 5px `--surface-soft` chip, faint decimals via `\|usdc_parts`, `components/price.html`; inside `.ui-kpi-value` it is a bare figure) · `.font-mono` (also `code`, `kbd`).
+`.ui-meta` (12px muted) · `.ui-label` (11px uppercase label) · `.ui-link` (text-coloured, `--border-strong` underline that turns `--text` on hover) · `.ui-num` (**mono**, tabular figures) · `.text-muted` · `.text-strong` (+ `.hover:text-strong`) · `.ui-price` + `.ui-price-unit` (mono amount on a 5px `--surface-soft` chip, faint decimals via `\|usdc_parts`, `components/price.html`; inside `.ui-kpi-value` it is a bare figure) · `.ui-link-host` + `.ui-link-url` + `.ui-link-warn` (user-supplied external link: domain large, URL small, unknown-domain warning — `components/ext_link.html`) · `.font-mono` (also `code`, `kbd`).
 
 ### Forms
 
@@ -280,6 +280,7 @@ The identicon is a **mirrored 5×5 pixel grid** (one hue from the address + Sign
 | `components/pager.html` | `page` (Django `Page`) | Pagination keeping the query string (`{% qs %}`), elided range (`.ui-pager-gap`, hidden with the page numbers under 480px), nothing when one page |
 | `components/next_card.html` | `tone="act\|wait\|done"` (default `wait`), `kicker`, `headline`, `body`, `href`, `cta`, `icon` | "What's next" card (primary CTA only for `act`) |
 | `components/section_head.html` | `title`, `sub`, `icon`, `link_href`, `link_label` (default « View all ») | Section title + link |
+| `components/ext_link.html` | `info` (required: `projects.services.link_info(url)` computed by the view / inclusion tag / `delivery_history` row — `{url, href, host, display, trusted}`), `label` (text before the link, e.g. "Full deliverable"), `attr` (a data attribute put on the `<a>`, e.g. `"data-delivery-link"`, `"data-source-link"`), `size="sm"` (compact: timelines, receipt rows) | Every user-supplied link (delivery link, full deliverable): `.ui-ext-link` › `a.ui-ext-anchor` (`target="_blank"`, exactly `rel="noopener noreferrer nofollow ugc"`) with the domain in `.ui-link-host` (bold, large) and the full URL in `.ui-link-url` (mono, muted, one line, ellipsis), then `.ui-link-warn[data-untrusted-host]` "Unknown domain — open with care" when `info.trusted` is false (`LOWBID_TRUSTED_LINK_HOSTS`, docs/PRODUCT.md R43–R44). No `href` (non-http(s) value) → plain text. Never write a raw `<a href="{{ task.delivery_link }}">` |
 | `partials/page_header.html` | `title`, `subtitle`, `actions` (safe HTML) | Page header (the title goes through `\|underline_last`) |
 | `partials/navbar.html` / `partials/toasts.html` / `partials/modal.html` | — | Included once by `base.html`; `partials/tabbar.html` only when `wallet_address` |
 

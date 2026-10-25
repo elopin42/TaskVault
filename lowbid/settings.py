@@ -180,7 +180,7 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 30
 
 # Bump whenever css/lowbid-*.css or js/lowbid-*.js changes (30-day static cache).
-LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-dispute"
+LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-links"
 
 # --- Stellar ------------------------------------------------------------------
 
@@ -218,6 +218,12 @@ LOWBID_DISPUTE_RESOLVER = os.environ.get("LOWBID_DISPUTE_RESOLVER", "").strip() 
 LOWBID_REVIEW_DAYS = _int("LOWBID_REVIEW_DAYS", 7)
 # How many times the company may send a delivery back for changes (projects.services.request_changes).
 LOWBID_MAX_REVISIONS = _int("LOWBID_MAX_REVISIONS", 2)
+# Hosts whose delivery / full-deliverable links render without the "Unknown domain" warning
+# (projects.services.link_info): an entry matches itself and its subdomains, case-insensitive.
+# An empty variable means the default list.
+LOWBID_TRUSTED_LINK_HOSTS = _csv(
+    "LOWBID_TRUSTED_LINK_HOSTS", ""
+) or ["github.com", "gitlab.com", "vercel.app", "netlify.app"]
 
 # --- Logging ------------------------------------------------------------------
 # Structured key=value lines on stdout; level from DJANGO_LOG_LEVEL (default INFO).

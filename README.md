@@ -49,6 +49,19 @@ Fallback (LOWBID_PAYMENT_MODE=direct): no escrow; delivery is a declaration and 
 8. The freelance delivers: a link to the PR, the demo or the repository. In escrow mode, **« Declare the delivery »** marks the milestone done on chain with the link as evidence (one signature by the freelance).
 9. The company checks the delivery, gives a **rating from 1 to 5** (« Validate and release »), and signs the approval then the **release**. The escrow pays the freelance (minus fees) and the task becomes « Paid ». When every task is paid, the project is « Closed ».
 
+### Anti-scam guarantees
+
+TaskVault protects both sides of a task, not just the payment:
+
+- **Fingerprint on chain** — the freelance can declare a git commit SHA or a SHA-256 of the work; in escrow mode it goes into the Trustless Work milestone evidence, so the delivered work cannot be swapped later.
+- **Review window** — the company has `LOWBID_REVIEW_DAYS` (default 7) to validate or react; the deadline is shown to both sides and computed at read time (no timer).
+- **Change requests** — the company can send a delivery back with a message (at most `LOWBID_MAX_REVISIONS`, default 2) while the money stays locked; every delivery and request is kept in a public history.
+- **On-chain dispute** — in escrow mode the company (before validating) or the freelance (once the review window is over, "no response") freezes the escrow on chain; an arbiter wallet (`LOWBID_DISPUTE_RESOLVER`) splits it from `/litiges/`.
+- **Source revealed on payment** — the full deliverable link stays hidden from the company until the task is paid (or resolved); the public preview link and the fingerprint are enough to judge it.
+- **Link warnings** — every delivery link shows its real domain in large type, opens with `rel="noopener noreferrer nofollow ugc"`, and carries "Unknown domain — open with care" outside `LOWBID_TRUSTED_LINK_HOSTS`.
+
+Direct mode (no escrow) keeps the fingerprint, the review window, change requests and link warnings, but has no dispute: the panel says "unprotected payment".
+
 The next task gets easier: a freelance who has delivered well for a company climbs to the top of that company's next candidate list, with « Validated » and « Recommended ».
 
 Around the flow: a **dashboard** (`/tableau-de-bord/`, the signed-in home) lists what the wallet has to do next (candidates to choose, tasks to fund, deliveries to validate, payments to sign, tasks to deliver, empty projects), with KPIs as company and as freelance and the recent activity; every wallet has a **public profile** (`/profil/<address>/`: identicon, display name, ratings received). The project list has text search, tag chips, sorting and pagination. Dark theme only, responsive from 320 px to wide screens (stacked cards, bottom tab bar), no horizontal scroll. The landing tells the flow with a CSS 3D project cube scrubbed on scroll by anime.js.
@@ -78,14 +91,14 @@ Maximum 100, stored with one decimal and refreshed after every rating and every 
 Prerequisites: **Python 3.13** (3.14 works too, auto-detected), **Node 22+** (Tailwind build and the Playwright e2e, both run by a bare `make`; `make dev` needs Python only), the **Freighter** browser extension set to **TESTNET** with a funded account.
 
 ```bash
-make        # installs everything (venv, npm, Chromium), creates .env, migrates, runs lint + 268 tests + Tailwind-in-sync + e2e, then starts the server
+make        # installs everything (venv, npm, Chromium), creates .env, migrates, runs lint + 315 tests + Tailwind-in-sync + e2e, then starts the server
 # open http://localhost:8000
-make seed   # optional: demo data (3 wallets, a project at the pitch state, a draft project)
+make seed   # optional: demo data (4 wallets incl. the arbiter, the pitch-state project, a draft, a food-truck project with a change request and a dispute)
 ```
 
 `.env` is read once at startup: after any change (API key, `LOWBID_PAYMENT_MODE`, asset, demo wallets…) stop the server and run `make run` again. Without `TRUSTLESS_WORK_API_KEY` the app runs in direct-payment mode.
 
-Tests: `make test` (268 Django tests: rules, scoring, payment flow in both modes, network mocked) and `make e2e` (Playwright, the full task-board scenario in a real browser with a simulated Freighter and a fake Horizon, on a throwaway SQLite; screenshots land in `docs/screenshots/`; the e2e run by a bare `make` / `make verify` writes them to `data/e2e-shots/` instead). `make check` = lint + tests + Tailwind-in-sync (run it before every commit).
+Tests: `make test` (315 Django tests: rules, scoring, payment flow in both modes, revisions, disputes, link safety, the demo seed, network mocked) and `make e2e` (Playwright, the full task-board scenario in a real browser with a simulated Freighter and a fake Horizon, on a throwaway SQLite; screenshots land in `docs/screenshots/`; the e2e run by a bare `make` / `make verify` writes them to `data/e2e-shots/` instead). `make check` = lint + tests + Tailwind-in-sync (run it before every commit).
 
 ## Where Stellar lives in the code
 

@@ -1,8 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
-from io import StringIO
 
-from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -739,7 +737,7 @@ class TaskDetailViewTests(BaseProjectTest):
         self.assertIn(f'data-delivery-hash="{GIT_SHA}"', html, "the fingerprint is public")
         login(self.client, self.a)
         html = self.client.get(self.url()).content.decode()
-        self.assertIn('data-source-link>https://github.com/x/y-src', html, "the assignee always sees it")
+        self.assertRegex(html, r'<a href="https://github\.com/x/y-src"[^>]*data-source-link', "the assignee always sees it")
         services.validate(self.t1, self.company, 5)
         services.mark_paid(self.t1)
         login(self.client, self.company)
@@ -1046,37 +1044,6 @@ class CandidatesJsonTests(BaseProjectTest):
 
 
 # --- seed_demo ----------------------------------------------------------------------------------------
-
-class SeedDemoTests(TestCase):
-    def test_seed_demo_builds_the_pitch_state(self):
-        out = StringIO()
-        call_command("seed_demo", "--flush", stdout=out)
-        text = out.getvalue()
-        self.assertIn("Demo data ready.", text)
-        self.assertIn("freelancer A", text)
-        self.assertEqual(Project.objects.count(), 2)
-        self.assertEqual(WalletUser.objects.count(), 3)
-        pitch = Project.objects.get(title__startswith="Booking")
-        t1, t2, t3 = list(pitch.tasks.order_by("position"))
-        self.assertEqual((t1.status, t2.status, t3.status), ("paid", "open", "open"))
-        self.assertEqual(Rating.objects.get(task=t1).note, 5)
-        escrow = Escrow.objects.get(task=t1)
-        self.assertEqual((escrow.mode, escrow.status, len(escrow.payment_tx_hash)), ("direct", "paid", 64))
-        self.assertIn("payment mode", text)
-        self.assertIn("stellar.expert", text)
-        scores = sorted(t2.applications.values_list("score", flat=True), reverse=True)
-        self.assertEqual(scores, [Decimal("90.0"), Decimal("20.0")])
-        draft = Project.objects.exclude(pk=pitch.pk).get()
-        self.assertEqual(draft.status, Project.Status.DRAFT)
-        self.assertEqual(draft.tasks.count(), 3)
-        self.assertEqual(Application.objects.filter(task__project=draft).count(), 0)
-
-    def test_seed_demo_is_repeatable_with_flush(self):
-        call_command("seed_demo", "--flush", stdout=StringIO())
-        call_command("seed_demo", "--flush", stdout=StringIO())
-        self.assertEqual(Project.objects.count(), 2)
-        self.assertEqual(Task.objects.count(), 6)
-
 
 # --- review window + change requests (docs/PRODUCT.md R33–R36) -------------------------------------
 

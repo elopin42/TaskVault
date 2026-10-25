@@ -3,6 +3,7 @@ is mocked in both payments.trustless_work and payments.stellar). Complements pay
 (unit tests of the two clients). One Trustless Work escrow PER TASK; direct payment fallback."""
 
 import json
+import re
 from decimal import Decimal
 from unittest.mock import Mock, patch
 
@@ -1263,7 +1264,7 @@ class PanelTests(BasePayTest):
         self.assertIn(f"/tx/{esc.deliver_tx_hash}", html)
         self.assertIn("in the delivery declaration", html)
         self.assertIn(timezone.localtime(esc.delivered_at).strftime("%b %-d, %Y %H:%M"), html, "the date is the transaction's time")
-        self.assertIn(f'data-source-link>{SOURCE[:45]}', html)
+        self.assertRegex(html, rf'<a href="{re.escape(SOURCE)}"[^>]*data-source-link')
         self.assertNotIn("data-hash-db-only", html)
         login(self.client, self.company)
         html = self.detail().content.decode()

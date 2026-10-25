@@ -52,13 +52,13 @@
           <p class="ui-meta text-end whitespace-nowrap" data-review-deadline data-deadline="{{ review_deadline|date:'c' }}"{% if review_overdue %} data-overdue{% endif %} title="The company validates or requests changes within this window"><i class="fa-regular fa-clock text-[10px]" aria-hidden="true"></i> Review until {{ review_deadline|date:"M j, Y H:i" }} <span data-countdown>{% if review_overdue %}· Review window over{% endif %}</span></p>
         {% endif %}
       </div>
-      <a href="{{ task.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-delivery-link><i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i> {{ task.delivery_link }}</a>
+      {% include "components/ext_link.html" with info=delivery_link_info attr="data-delivery-link" %}
       {% if task.delivery_hash %}
         <p class="ui-meta mt-3 flex flex-wrap items-center gap-1.5"><i class="fa-solid fa-fingerprint text-[10px]" aria-hidden="true"></i> Fingerprint <code class="font-mono text-xs break-all" data-delivery-hash="{{ task.delivery_hash }}">{{ task.delivery_hash }}</code> <button type="button" class="ui-copy-btn shrink-0" data-copy="{{ task.delivery_hash }}" title="Copy the fingerprint" aria-label="Copy the delivery fingerprint"><i class="fa-regular fa-copy" aria-hidden="true"></i></button></p>
       {% endif %}
       {% if task.source_link %}
         {% if source_visible %}
-          <p class="mt-3 text-sm"><i class="fa-solid fa-box-archive text-[10px]" style="color: var(--icon-accent)" aria-hidden="true"></i> Full deliverable: <a href="{{ task.source_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-source-link>{{ task.source_link }}</a></p>
+          <div class="mt-3">{% include "components/ext_link.html" with info=source_link_info label="Full deliverable" attr="data-source-link" %}</div>
         {% elif viewer_is_company %}
           <div class="ui-alert ui-alert-info mt-3" data-source-pending><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Full deliverable revealed once the task is paid or resolved{% if task.delivery_hash %} — the fingerprint above lets you check it is the same work{% endif %}.</span></div>
         {% endif %}
@@ -78,9 +78,9 @@
             <li class="ui-timeline-item is-brand" data-kind="delivery">
               <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-truck-fast"></i></span>
               <div class="ui-timeline-body">
-                <span class="ui-timeline-title">Delivery declared</span> by {{ h.who.display_name|default:h.who.short_address }} — <a href="{{ h.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer">{{ h.delivery_link|truncatechars:60 }}</a>
+                <span class="ui-timeline-title">Delivery declared</span> by {{ h.who.display_name|default:h.who.short_address }} — <div class="mt-1">{% include "components/ext_link.html" with info=h.info size="sm" %}</div>
                 {% if h.delivery_hash %}<p class="ui-meta mt-1 flex flex-wrap items-center gap-1.5"><i class="fa-solid fa-fingerprint text-[10px]" aria-hidden="true"></i> <code class="font-mono text-xs" data-history-hash="{{ h.delivery_hash }}" title="{{ h.delivery_hash }}">{{ h.delivery_hash|short_addr:8 }}</code> <button type="button" class="ui-copy-btn shrink-0" data-copy="{{ h.delivery_hash }}" title="Copy the fingerprint" aria-label="Copy the delivery fingerprint"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>{% if h.tx_hash %} · <a href="{{ h.explorer_url }}" class="ui-link font-mono" target="_blank" rel="noopener" title="{{ h.tx_hash }}">on Stellar {{ h.tx_hash|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% endif %}</p>{% endif %}
-                {% if h.source_link %}<p class="ui-meta mt-1"><i class="fa-solid fa-box-archive text-[10px]" aria-hidden="true"></i> Full deliverable: <a href="{{ h.source_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-source-link>{{ h.source_link|truncatechars:60 }}</a></p>{% endif %}
+                {% if h.source_info %}<div class="mt-1">{% include "components/ext_link.html" with info=h.source_info label="Full deliverable" attr="data-source-link" size="sm" %}</div>{% endif %}
                 <div class="ui-timeline-time"><span data-time-ago="{{ h.when|date:'c' }}">{{ h.when|date:"M j, Y H:i" }}</span></div>
               </div>
             </li>

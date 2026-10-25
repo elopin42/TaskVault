@@ -317,6 +317,9 @@ def task_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "can_apply": wallet is not None and not is_company and task.is_open and my_app is None,
             "is_assignee": task.is_assignee(wallet),
             "source_visible": source_visible,
+            # Link rendering (projects.services.link_info decides trust; components/ext_link.html renders it).
+            "delivery_link_info": services.link_info(task.delivery_link) if task.delivery_link else None,
+            "source_link_info": services.link_info(task.source_link) if source_visible and task.source_link else None,
             "rating": rating,
             # Review window + revisions (projects.services decides; the template reads the values).
             "review_deadline": services.review_deadline(task),
@@ -442,6 +445,7 @@ def disputes(request: HttpRequest) -> HttpResponse:
                 "escrow": escrow,
                 "amount": escrow.amount if escrow is not None else task.price,
                 "links": escrow.explorer_links() if escrow is not None else [],
+                "delivery_link_info": services.link_info(task.delivery_link) if task.delivery_link else None,
                 "history": services.delivery_history(task, source_visible=False),
                 "by_company": dispute.opened_by_id == task.project.company_id,
                 "open": task.status == Task.Status.DISPUTED,

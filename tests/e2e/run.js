@@ -418,6 +418,10 @@ async function main() {
       await acceptConfirm(pa, "deliver");
       await pa.locator("[data-status-badge]", { hasText: "Delivered" }).waitFor({ timeout: 15000 });
       assert(await pa.locator("[data-delivery-link]").count() === 1, "delivery link displayed");
+      const deliveryAnchor = pa.locator("#delivery-panel [data-delivery-link]");
+      assert((await deliveryAnchor.getAttribute("rel")) === "noopener noreferrer nofollow ugc" && (await deliveryAnchor.getAttribute("target")) === "_blank", "delivery link: new tab, rel noopener noreferrer nofollow ugc");
+      assert((await deliveryAnchor.locator(".ui-link-host").innerText()).trim() === "github.com", "delivery link shows its domain in .ui-link-host");
+      assert(await pa.locator("#delivery-panel [data-untrusted-host]").count() === 0, "github.com is a trusted host: no warning");
       assert((await pa.locator("[data-delivery-hash]").first().getAttribute("data-delivery-hash")) === DELIVERY_HASH, "fingerprint displayed, lowercased");
       assert(await pa.locator("[data-source-link]").count() >= 1, "the assignee sees the full deliverable");
       assert(await pa.locator("#deliver-panel").count() === 0, "deliver form is gone");
@@ -483,7 +487,7 @@ async function main() {
       await pa.goto("/taches/");
       assert(await pa.locator(`.kanban-col[data-col="taken"] .kanban-card[data-task-id="${taskIds[0]}"] [data-revisions="1"]`).count() === 1, "kanban card carries rev. 1");
       await pa.goto(`/taches/${taskIds[0]}/`);
-      await pa.fill("#deliver-link", "https://github.com/studio-nova/booking/pull/2");
+      await pa.fill("#deliver-link", "https://booking-preview.example.net/pull/2"); // an unknown domain: the page warns
       await pa.fill("#deliver-hash", DELIVERY_HASH_2);
       await pa.fill("#deliver-source", SOURCE_LINK);
       await pa.click("[data-deliver]");
@@ -497,6 +501,8 @@ async function main() {
       await cp.goto(`/taches/${taskIds[0]}/`);
       await cp.locator("#validate-panel").waitFor();
       assert(await cp.locator("[data-review-deadline]").count() >= 1, "company sees the review window again");
+      assert(await cp.locator("#delivery-panel [data-untrusted-host]").count() === 1, "unknown-domain delivery link carries [data-untrusted-host]");
+      assert((await cp.locator("#delivery-panel [data-delivery-link]").getAttribute("href")) === "https://booking-preview.example.net/pull/2", "the delivery link keeps its href");
       assert(await cp.locator('[data-delivery-history] [data-kind="delivery"]').count() === 2 && await cp.locator('[data-delivery-history] [data-kind="revision"]').count() === 1, "history: 2 deliveries + 1 request");
       assert(await cp.locator(`[data-history-hash="${DELIVERY_HASH_2}"]`).count() === 1 && await cp.locator(`[data-history-hash="${DELIVERY_HASH}"]`).count() === 1, "both fingerprints in the history");
       assert(/1\/2/.test(await cp.locator("#escrow-panel [data-revisions]").innerText()), "panel: Revisions requested 1/2");

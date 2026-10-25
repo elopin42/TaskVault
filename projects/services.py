@@ -39,6 +39,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
@@ -59,6 +60,7 @@ HASH_LENGTHS = (40, 64)  # git commit SHA-1 / SHA-256, lowercase hex
 USDC_PLACES = 7
 TITLE_MIN = 3
 TITLE_MAX = 120
+LINK_DISPLAY_MAX = 120
 
 __all__ = [
     "ProjectError",
@@ -79,6 +81,7 @@ __all__ = [
     "deliver",
     "delivery_history",
     "is_review_overdue",
+    "link_info",
     "mark_disputed",
     "mark_paid",
     "mark_resolved",
@@ -191,6 +194,42 @@ def clean_source_link(raw) -> str:
     if not link:
         return ""
     return _check_url(link, "full deliverable link")
+
+
+def _host_matches(host: str, entry: str) -> bool:
+    entry = entry.strip().lower().rstrip(".")
+    return bool(entry) and (host == entry or host.endswith("." + entry))
+
+
+def link_info(url) -> dict:
+    """How a user-supplied link (delivery link, full deliverable) is rendered — the one rule, read by
+    `templates/components/ext_link.html` through the view / inclusion tag / history rows:
+    {url, href, host, display, trusted}. `host` is the lowercase ASCII host (an IDN shows as its
+    punycode, so a look-alike domain cannot pass for a known one); `trusted` is True when it equals a
+    `LOWBID_TRUSTED_LINK_HOSTS` entry or is a subdomain of one. `href` is "" for anything that is not
+    an http(s) URL with a host (`clean_link` already refuses those upstream; this never raises), and
+    the include then renders no anchor. `display` is the full URL, cut at LINK_DISPLAY_MAX characters."""
+    raw = str(url or "").strip()
+    display = raw if len(raw) <= LINK_DISPLAY_MAX else raw[: LINK_DISPLAY_MAX - 1] + "…"
+    info = {"url": raw, "href": "", "host": "", "display": display, "trusted": False}
+    try:
+        parts = urlsplit(raw)
+        host = (parts.hostname or "").rstrip(".")
+    except ValueError:  # e.g. an unbalanced IPv6 bracket
+        return info
+    if parts.scheme.lower() not in ("http", "https") or not host:
+        return info
+    try:
+        host = host.encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        host = host.lower()  # not encodable: shown as typed, never trusted unless it is plain ASCII
+    trusted_hosts = getattr(settings, "LOWBID_TRUSTED_LINK_HOSTS", []) or []
+    info.update(
+        href=raw,
+        host=host,
+        trusted=host.isascii() and any(_host_matches(host, entry) for entry in trusted_hosts),
+    )
+    return info
 
 
 def clean_hash(raw) -> str:
@@ -471,8 +510,9 @@ def _escrow_hashes(task: Task) -> dict:
 def delivery_history(task: Task, *, source_visible: bool = False) -> list[dict]:
     """Every Delivery, RevisionRequest and the Dispute (opening + resolution) of the task, newest
     first, as plain dicts for the templates: {kind: "delivery" | "revision" | "dispute" | "resolution",
-    when, who, ...}. `source_link` is included only when the caller may see it (`source_visible`), so it
-    never reaches the markup otherwise."""
+    when, who, ...}. `source_link` (and its `source_info`) is included only when the caller may see it
+    (`source_visible`), so it never reaches the markup otherwise; a delivery row carries `info` =
+    `link_info(delivery_link)` for the link component."""
     rows: list[dict] = []
     for d in task.deliveries.select_related("freelancer"):
         rows.append(
@@ -481,8 +521,10 @@ def delivery_history(task: Task, *, source_visible: bool = False) -> list[dict]:
                 "when": d.created_at,
                 "who": d.freelancer,
                 "delivery_link": d.delivery_link,
+                "info": link_info(d.delivery_link),
                 "delivery_hash": d.delivery_hash,
                 "source_link": d.source_link if source_visible else "",
+                "source_info": link_info(d.source_link) if source_visible and d.source_link else None,
                 "tx_hash": d.tx_hash,
             }
         )

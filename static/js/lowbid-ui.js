@@ -4,7 +4,7 @@
  *       Accessible replacement for window.confirm(), backed by <dialog id="lb-confirm"> (partials/modal.html).
  *   Lowbid.modal.open(el | "#id") / Lowbid.modal.close(el)
  *   Lowbid.identicon(address) -> {hue, cells}  mirrored 5×5 pixel grid; painted on every [data-identicon] as an SVG background
- *   Lowbid.timeAgo(isoOrDate) -> "il y a 3 min"; every [data-time-ago="ISO"] is refreshed each minute
+ *   Lowbid.timeAgo(isoOrDate) -> "3 min ago" / "in 3 min" / "just now"; every [data-time-ago="ISO"] is refreshed each minute
  *   Lowbid.sparkline(el)      builds the SVG of <svg class="ui-sparkline" data-points="500,450,400" [data-cap="500"]>
  *   Lowbid.poll(fn, {interval, maxInterval}) -> {stop, now}   visibility-aware polling with backoff on errors
  *   Lowbid.refreshUI(root)    re-run identicons / sparklines / time-ago inside a freshly swapped fragment
@@ -62,19 +62,19 @@
     opts = typeof opts === "string" ? { message: opts } : (opts || {});
     var dlg = document.getElementById("lb-confirm");
     if (!dlg || typeof dlg.showModal !== "function") {
-      return Promise.resolve(window.confirm(opts.message || "Confirmer ?"));
+      return Promise.resolve(window.confirm(opts.message || "Confirm?"));
     }
     if (pending) pending(false);
     return new Promise(function (resolve) {
       pending = resolve;
       dlg.classList.toggle("is-danger", !!opts.danger);
-      dlg.querySelector("[data-modal-title]").textContent = opts.title || (opts.danger ? "Confirmer l’action" : "Confirmer");
+      dlg.querySelector("[data-modal-title]").textContent = opts.title || (opts.danger ? "Confirm the action" : "Confirm");
       dlg.querySelector("[data-modal-body]").textContent = opts.message || "";
       dlg.querySelector("[data-modal-icon] i").className = "fa-solid " + (opts.icon || (opts.danger ? ICONS.danger : ICONS.info));
       var ok = dlg.querySelector("[data-modal-ok]");
-      ok.textContent = opts.confirmLabel || "Confirmer";
+      ok.textContent = opts.confirmLabel || "Confirm";
       ok.className = "ui-btn " + (opts.danger ? "ui-btn-danger-solid" : "ui-btn-primary");
-      dlg.querySelector("[data-modal-cancel]").textContent = opts.cancelLabel || "Annuler";
+      dlg.querySelector("[data-modal-cancel]").textContent = opts.cancelLabel || "Cancel";
       dlg.returnValue = "";
       var onClose = function () {
         dlg.removeEventListener("close", onClose);
@@ -125,19 +125,19 @@
     var diff = Math.round((Date.now() - t) / 1000);
     var future = diff < 0; diff = Math.abs(diff);
     var out;
-    if (diff < 45) out = "quelques secondes";
-    else if (diff < 3600) out = Math.max(1, Math.round(diff / 60)) + " min";
+    if (diff < 45) return future ? "in a few seconds" : "just now";
+    if (diff < 3600) out = Math.max(1, Math.round(diff / 60)) + " min";
     else if (diff < 86400) out = Math.round(diff / 3600) + " h";
-    else if (diff < 86400 * 30) out = Math.round(diff / 86400) + " j";
-    else out = Math.round(diff / (86400 * 30)) + " mois";
-    return future ? "dans " + out : "il y a " + out;
+    else if (diff < 86400 * 30) out = Math.round(diff / 86400) + " d";
+    else out = Math.round(diff / (86400 * 30)) + " mo";
+    return future ? "in " + out : out + " ago";
   };
   function tickTimeAgo(root) {
     (root || document).querySelectorAll("[data-time-ago]").forEach(function (el) {
       el.textContent = Lowbid.timeAgo(el.getAttribute("data-time-ago"));
       if (!el.getAttribute("title")) {
         var d = new Date(el.getAttribute("data-time-ago"));
-        if (!isNaN(d.getTime())) el.setAttribute("title", d.toLocaleString("fr-FR"));
+        if (!isNaN(d.getTime())) el.setAttribute("title", d.toLocaleString("en-US"));
       }
     });
   }
@@ -206,7 +206,7 @@
       if (navigator.share) {
         navigator.share({ title: document.title, url: url }).catch(function () { /* cancelled */ });
       } else if (navigator.clipboard) {
-        navigator.clipboard.writeText(url).then(function () { Lowbid.toast("Lien copié.", "success"); });
+        navigator.clipboard.writeText(url).then(function () { Lowbid.toast("Link copied.", "success"); });
       }
       return;
     }

@@ -40,18 +40,18 @@ def profile(request: HttpRequest, address: str) -> HttpResponse:
     """Public page for a wallet (no login). The owner can edit their display name here (POST)."""
     wallet = WalletUser.objects.filter(stellar_address=address).first()
     if wallet is None:
-        raise Http404("wallet inconnu")
+        raise Http404("unknown wallet")
     viewer = get_wallet(request)
     is_me = viewer is not None and viewer.pk == wallet.pk
 
     if request.method == "POST":
         if not is_me:
-            return HttpResponseForbidden("Seul le propriétaire du wallet peut modifier ce profil.")
+            return HttpResponseForbidden("Only the wallet owner can edit this profile.")
         name = (request.POST.get("display_name") or "").strip()[:MAX_DISPLAY_NAME]
         wallet.display_name = name
         wallet.save(update_fields=["display_name"])
         logger.info("profile renamed wallet=%s", wallet.pk)
-        messages.success(request, "Nom affiché mis à jour." if name else "Nom affiché effacé.")
+        messages.success(request, "Display name updated." if name else "Display name cleared.")
         return redirect("dashboard:profile", address=wallet.stellar_address)
 
     return render(

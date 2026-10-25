@@ -9,7 +9,7 @@ result. Role and state gates run in BOTH halves, pinned to the session wallet.
 Why one escrow PER TASK (SPEC §7bis): Trustless Work v1 fixes the receiver of an escrow at
 deploy and freezes it once funded, so a project-wide escrow funded before the freelances are
 chosen could not pay them. The company deploys + funds a single-release escrow for each task
-once a freelance is chosen; "Financer le projet" simply chains those steps task after task.
+once a freelance is chosen; "Fund the project" simply chains those steps task after task.
 
 State table — Escrow.status (payments) and Task.status (projects):
 
@@ -37,7 +37,7 @@ State table — Escrow.status (payments) and Task.status (projects):
 
 The validate view saves the Rating FIRST (DB), then the page chains the signatures (approve →
 release, or direct_pay) from the `next` it gets back; stopping half-way is fine, the panel
-shows the remaining step ("Libérer les fonds"). `mark_paid` is the ONLY way a task becomes paid.
+shows the remaining step ("Release the funds"). `mark_paid` is the ONLY way a task becomes paid.
 
 The mode is frozen on the Escrow row at the first prepare (`stellar.payment_mode()`), but may be
 re-frozen while the row is still `created` (nothing is on chain yet), so flipping
@@ -68,7 +68,7 @@ from projects.models import Project, Rating, Task
 logger = logging.getLogger(__name__)
 
 EVIDENCE_MAX = 280
-PENDING_MESSAGE = "Transaction envoyée, confirmation en attente — vérifiez sur l’explorateur."
+PENDING_MESSAGE = "Transaction sent, confirmation pending — check the explorer."
 ZERO = Decimal("0")
 
 S = Escrow.Status
@@ -77,7 +77,7 @@ T = Task.Status
 
 
 class PaymentError(Exception):
-    """A refused payment action. `code` is stable (JS/tests), `message` is French UI copy."""
+    """A refused payment action. `code` is stable (JS/tests), `message` is English UI copy."""
 
     def __init__(self, code: str, message: str, *, persist: bool = False):
         super().__init__(message)
@@ -99,30 +99,30 @@ FLOW = {
             "who": "company",
             "allowed": (S.CREATED,),
             "task": (T.TAKEN,),
-            "label": "Créer l’escrow",
+            "label": "Create the escrow",
             "icon": "fa-file-signature",
-            "hint": "Déploie le contrat Trustless Work de cette tâche (une signature Freighter).",
-            "waiting": "En attente de la création de l’escrow par l’entreprise.",
+            "hint": "Deploys this task's Trustless Work contract (one Freighter signature).",
+            "waiting": "Waiting for the company to create the escrow.",
         },
         {
             "step": "fund",
             "who": "company",
             "allowed": (S.DEPLOYED,),
             "task": (T.TAKEN,),
-            "label": "Bloquer les fonds",
+            "label": "Lock the funds",
             "icon": "fa-lock",
-            "hint": "Transfère le prix de la tâche dans l’escrow.",
-            "waiting": "En attente du blocage des fonds par l’entreprise.",
+            "hint": "Moves the task's price into the escrow.",
+            "waiting": "Waiting for the company to lock the funds.",
         },
         {
             "step": "deliver",
             "who": "freelance",
             "allowed": (S.FUNDED,),
             "task": (T.TAKEN,),
-            "label": "Déclarer la livraison",
+            "label": "Declare the delivery",
             "icon": "fa-truck-fast",
-            "hint": "Marque le jalon comme livré sur Stellar (le lien est enregistré comme preuve).",
-            "waiting": "En attente de la livraison du freelance.",
+            "hint": "Marks the milestone as delivered on Stellar (the link is recorded as evidence).",
+            "waiting": "Waiting for the freelancer's delivery.",
             "evidence": True,
         },
         {
@@ -131,10 +131,10 @@ FLOW = {
             "allowed": (S.DELIVERED,),
             "task": (T.DELIVERED,),
             "rated": True,
-            "label": "Valider la livraison",
+            "label": "Validate the delivery",
             "icon": "fa-check-double",
-            "hint": "Approuve le jalon — les fonds restent bloqués jusqu’à la libération.",
-            "waiting": "En attente de la validation on-chain par l’entreprise.",
+            "hint": "Approves the milestone — the funds stay locked until the release.",
+            "waiting": "Waiting for the company's on-chain validation.",
         },
         {
             "step": "release",
@@ -142,10 +142,10 @@ FLOW = {
             "allowed": (S.APPROVED,),
             "task": (T.DELIVERED,),
             "rated": True,
-            "label": "Libérer les fonds",
+            "label": "Release the funds",
             "icon": "fa-money-bill-transfer",
-            "hint": "L’escrow verse le montant au freelance (moins les frais).",
-            "waiting": "En attente de la libération des fonds par l’entreprise.",
+            "hint": "The escrow pays the amount to the freelancer (minus fees).",
+            "waiting": "Waiting for the company to release the funds.",
         },
     ],
     M.DIRECT: [
@@ -154,10 +154,10 @@ FLOW = {
             "who": "freelance",
             "allowed": (S.CREATED,),
             "task": (T.TAKEN,),
-            "label": "Déclarer la livraison",
+            "label": "Declare the delivery",
             "icon": "fa-truck-fast",
-            "hint": "Sans escrow : une simple déclaration, aucune transaction.",
-            "waiting": "En attente de la livraison du freelance.",
+            "hint": "No escrow: a simple declaration, no transaction.",
+            "waiting": "Waiting for the freelancer's delivery.",
             "evidence": True,
             "no_tx": True,
         },
@@ -167,10 +167,10 @@ FLOW = {
             "allowed": (S.CREATED, S.DELIVERED),
             "task": (T.DELIVERED,),
             "rated": True,
-            "label": "Payer le freelance",
+            "label": "Pay the freelancer",
             "icon": "fa-money-bill-transfer",
-            "hint": "Un paiement direct signé dans Freighter (sans escrow).",
-            "waiting": "En attente du paiement par l’entreprise.",
+            "hint": "A direct payment signed in Freighter (no escrow).",
+            "waiting": "Waiting for the company's payment.",
         },
     ],
 }
@@ -180,23 +180,23 @@ FLOW = {
 VALIDATE = {
     "step": "validate",
     "who": "company",
-    "label": "Valider + noter",
+    "label": "Validate + rate",
     "icon": "fa-star",
-    "hint": "Vérifiez la livraison et notez le freelance : la note enregistrée, le paiement s’enchaîne.",
-    "waiting": "En attente de la validation de l’entreprise.",
+    "hint": "Check the delivery and rate the freelancer: once the rating is saved, the payment follows.",
+    "waiting": "Waiting for the company's validation.",
 }
 
 # Stepper milestones per mode (status that marks each one as reached, in order).
 STEPPER = {
     M.ESCROW: [
-        (S.DEPLOYED, "Escrow créé"),
-        (S.FUNDED, "Fonds bloqués"),
-        (S.DELIVERED, "Livré"),
-        (S.RELEASED, "Fonds libérés"),
+        (S.DEPLOYED, "Escrow created"),
+        (S.FUNDED, "Funds locked"),
+        (S.DELIVERED, "Delivered"),
+        (S.RELEASED, "Funds released"),
     ],
     M.DIRECT: [
-        (S.DELIVERED, "Livré"),
-        (S.PAID, "Payé"),
+        (S.DELIVERED, "Delivered"),
+        (S.PAID, "Paid"),
     ],
 }
 STATUS_ORDER = {
@@ -246,7 +246,7 @@ def is_rated(task: Task) -> bool:
 
 def _require_chosen(task: Task) -> None:
     if task.status not in (T.TAKEN, T.DELIVERED, T.PAID) or task.assigned_to_id is None:
-        raise PaymentError("not_chosen", "Le paiement n’est possible qu’une fois un freelance choisi pour la tâche.")
+        raise PaymentError("not_chosen", "Payment is only possible once a freelancer has been chosen for the task.")
 
 
 def _platform_address(task: Task) -> str:
@@ -300,22 +300,22 @@ def _gate(task: Task, wallet, step: str) -> tuple[Escrow, dict]:
     """Role + mode + state check shared by prepare and confirm. Returns (escrow, flow entry)."""
     escrow = ensure_escrow(task)
     if step not in STEPS:
-        raise PaymentError("unknown_step", "Étape de paiement inconnue.")
+        raise PaymentError("unknown_step", "Unknown payment step.")
     entry = _flow_entry(escrow.mode, step)
     if entry is None:
         label = "direct" if escrow.mode == M.DIRECT else "escrow"
-        raise PaymentError("wrong_mode", f"Cette étape n’existe pas en mode {label}.")
+        raise PaymentError("wrong_mode", f"This step does not exist in {label} mode.")
     role = viewer_role(task, wallet)
     if role != entry["who"]:
-        who = "l’entreprise" if entry["who"] == "company" else "le freelance choisi"
-        raise PaymentError("forbidden", f"Seul {who} peut faire cette action.")
+        who = "the company" if entry["who"] == "company" else "the chosen freelancer"
+        raise PaymentError("forbidden", f"Only {who} can do this.")
     if escrow.status not in entry["allowed"] or task.status not in entry["task"]:
         raise PaymentError(
             "wrong_state",
-            f"Étape « {entry['label']} » impossible à ce stade ({escrow.status_label}, tâche {task.status_label.lower()}).",
+            f"Step \"{entry['label']}\" is not possible at this stage ({escrow.status_label}, task {task.status_label.lower()}).",
         )
     if entry.get("rated") and not is_rated(task):
-        raise PaymentError("wrong_state", "Validez et notez la livraison avant le paiement.")
+        raise PaymentError("wrong_state", "Validate and rate the delivery before the payment.")
     return escrow, entry
 
 
@@ -376,7 +376,7 @@ def _begin(task: Task, wallet, step: str, signed_xdr: str) -> tuple[Escrow, str 
     tx_hash = _xdr_hash(signed_xdr)
     entry = _flow_entry(escrow.mode, step)
     if entry is not None and viewer_role(task, wallet) == entry["who"] and _already_done(escrow, task, step, tx_hash):
-        return escrow, tx_hash, _result(escrow, step, tx_hash, "Étape déjà confirmée.")
+        return escrow, tx_hash, _result(escrow, step, tx_hash, "Step already confirmed.")
     escrow, _ = _gate(task, wallet, step)
     return escrow, tx_hash, None
 
@@ -459,7 +459,7 @@ def prepare_deploy(task: Task, wallet, data: dict | None = None) -> dict:
         dispute_resolver=escrow.platform_address,
         platform_address=escrow.platform_address,
         platform_fee=settings.LOWBID_PLATFORM_FEE,
-        milestone_description=f"Livraison de la tâche #{task.pk} — {task.title}"[:200],
+        milestone_description=f"Delivery of task #{task.pk} — {task.title}"[:200],
     )
     try:
         return _prepared(_unsigned_xdr(env))
@@ -478,14 +478,14 @@ def confirm_deploy(task: Task, wallet, signed_xdr: str) -> dict:
         contract_id = data.get("contractId") or (data.get("escrow") or {}).get("contractId") or ""
         if not contract_id:
             logger.error("payments: deploy sent but no contractId task=%s hash=%s keys=%s", task.pk, tx_hash, list(data))
-            raise PaymentError("provider", "Escrow envoyé mais identifiant de contrat manquant — contactez le support.", persist=True)
+            raise PaymentError("provider", "Escrow sent but the contract id is missing — contact support.", persist=True)
         escrow.contract_id = contract_id
         escrow.deploy_tx_hash = tx_hash
         escrow.status = S.DEPLOYED
         escrow.last_error = ""
         escrow.save(update_fields=["contract_id", "deploy_tx_hash", "status", "last_error", "updated_at"])
     _log_confirm(task, "deploy", wallet, tx_hash, f" contract={contract_id}")
-    return _result(escrow, "deploy", tx_hash, "Escrow créé sur Stellar.")
+    return _result(escrow, "deploy", tx_hash, "Escrow created on Stellar.")
 
 
 def prepare_fund(task: Task, wallet, data: dict | None = None) -> dict:
@@ -512,7 +512,7 @@ def confirm_fund(task: Task, wallet, signed_xdr: str) -> dict:
         escrow.save(update_fields=["fund_tx_hash", "status", "funded_at", "last_error", "updated_at"])
         sync_project_status(task.project)
     _log_confirm(task, "fund", wallet, tx_hash)
-    return _result(escrow, "fund", tx_hash, "Fonds bloqués dans l’escrow.")
+    return _result(escrow, "fund", tx_hash, "Funds locked in the escrow.")
 
 
 def _delivery_link(data: dict | None) -> str:
@@ -530,8 +530,8 @@ def check_db_deliver(task: Task) -> None:
     if effective_mode(escrow) == M.ESCROW:
         raise PaymentError(
             "wrong_state",
-            "Tâche en escrow : déclarez la livraison depuis le panneau de paiement (signature Freighter), "
-            "une fois les fonds bloqués par l’entreprise.",
+            "Escrow task: declare the delivery from the payment panel (Freighter signature), "
+            "once the company has locked the funds.",
         )
 
 
@@ -550,7 +550,7 @@ def prepare_deliver(task: Task, wallet, data: dict | None = None) -> dict:
                 escrow.last_error = ""
                 escrow.save(update_fields=["status", "delivered_at", "delivery_note", "last_error", "updated_at"])
                 _log_confirm(task, "deliver", wallet, None, " (direct, no tx)")
-                return _prepared(None, message="Livraison déclarée. L’entreprise valide, note et paie.")
+                return _prepared(None, message="Delivery declared. The company validates, rates and pays.")
             link = projects.clean_link(link)
         except projects.ProjectError as exc:
             raise _project_error(exc) from None
@@ -586,7 +586,7 @@ def confirm_deliver(task: Task, wallet, signed_xdr: str, data: dict | None = Non
         escrow.last_error = ""
         escrow.save(update_fields=["deliver_tx_hash", "status", "delivered_at", "delivery_note", "last_error", "updated_at"])
     _log_confirm(task, "deliver", wallet, tx_hash)
-    return _result(escrow, "deliver", tx_hash, "Livraison déclarée sur Stellar. L’entreprise valide et note.")
+    return _result(escrow, "deliver", tx_hash, "Delivery declared on Stellar. The company validates and rates.")
 
 
 def prepare_approve(task: Task, wallet, data: dict | None = None) -> dict:
@@ -611,7 +611,7 @@ def confirm_approve(task: Task, wallet, signed_xdr: str) -> dict:
         escrow.last_error = ""
         escrow.save(update_fields=["approve_tx_hash", "status", "last_error", "updated_at"])
     _log_confirm(task, "approve", wallet, tx_hash)
-    return _result(escrow, "approve", tx_hash, "Livraison validée on-chain. Libérez maintenant les fonds.")
+    return _result(escrow, "approve", tx_hash, "Delivery validated on-chain. Now release the funds.")
 
 
 def prepare_release(task: Task, wallet, data: dict | None = None) -> dict:
@@ -639,7 +639,7 @@ def confirm_release(task: Task, wallet, signed_xdr: str) -> dict:
         projects.mark_paid(task)
         sync_project_status(task.project)
     _log_confirm(task, "release", wallet, tx_hash)
-    return _result(escrow, "release", tx_hash, "Fonds libérés vers le freelance. Tâche payée.")
+    return _result(escrow, "release", tx_hash, "Funds released to the freelancer. Task paid.")
 
 
 # --- direct mode: direct_pay -------------------------------------------------------------
@@ -664,7 +664,7 @@ def prepare_direct_pay(task: Task, wallet, data: dict | None = None) -> dict:
             with transaction.atomic():
                 _finalize_direct_pay(task, escrow, escrow.payment_tx_hash)
             _log_confirm(task, "direct_pay", wallet, escrow.payment_tx_hash, " (reconciled)")
-            return _prepared(None, message="Paiement confirmé sur le réseau.")
+            return _prepared(None, message="Payment confirmed on the network.")
         if applied is None:
             raise PaymentError("provider", stellar.ERR_HORIZON_UNREACHABLE)
         logger.info("payments: pending hash not on chain, rebuilding task=%s hash=%s", task.pk, escrow.payment_tx_hash)
@@ -696,7 +696,7 @@ def _check_payment_xdr(escrow: Escrow, signed_xdr: str) -> dict:
         or Decimal(info["amount"]) != Decimal(escrow.amount)
     ):
         logger.warning("payments: tampered payment xdr task=%s parsed=%s", escrow.task_id, info)
-        raise PaymentError("tampered", "La transaction signée ne correspond pas au paiement attendu.")
+        raise PaymentError("tampered", "The signed transaction does not match the expected payment.")
     return info
 
 
@@ -711,7 +711,7 @@ def confirm_direct_pay(task: Task, wallet, signed_xdr: str) -> dict:
         if env.get("ok"):
             _finalize_direct_pay(task, escrow, env.get("hash") or tx_hash)
             _log_confirm(task, "direct_pay", wallet, escrow.payment_tx_hash)
-            return _result(escrow, "direct_pay", escrow.payment_tx_hash, f"Paiement {stellar.asset_code()} confirmé. Tâche payée.")
+            return _result(escrow, "direct_pay", escrow.payment_tx_hash, f"{stellar.asset_code()} payment confirmed. Task paid.")
         if env.get("status") == 504 and env.get("hash"):
             escrow.payment_tx_hash = env["hash"]
             escrow.last_error = PENDING_MESSAGE
@@ -727,12 +727,12 @@ def confirm_direct_pay(task: Task, wallet, signed_xdr: str) -> dict:
 
 
 def trustline_present_message() -> str:
-    return f"Trustline {stellar.asset_code()} déjà présente."
+    return f"{stellar.asset_code()} trustline already present."
 
 
 def prepare_trustline(address: str) -> dict:
     if stellar.is_native():
-        return _prepared(None, message="L’actif natif XLM n’a pas besoin de trustline.")
+        return _prepared(None, message="The native XLM asset needs no trustline.")
     present = stellar.has_trustline(address)
     if present is True:
         return _prepared(None, message=trustline_present_message())
@@ -751,12 +751,12 @@ def confirm_trustline(address: str, signed_xdr: str) -> dict:
         or info.get("source") != address
         or info.get("asset_issuer") != asset.issuer
     ):
-        raise PaymentError("tampered", "La transaction signée n’est pas la trustline attendue.")
+        raise PaymentError("tampered", "The signed transaction is not the expected trustline.")
     env = stellar.submit_xdr(signed_xdr)
     tx_hash = env.get("hash") or info["hash"]
     if env.get("ok"):
         logger.info("payments: trustline added wallet=%s hash=%s", address, tx_hash)
-        return {"tx_hash": tx_hash, "explorer_url": stellar.explorer_tx_url(tx_hash), "message": f"Trustline {asset.code} ajoutée.", "pending": False}
+        return {"tx_hash": tx_hash, "explorer_url": stellar.explorer_tx_url(tx_hash), "message": f"{asset.code} trustline added.", "pending": False}
     if env.get("status") == 504:
         return {"tx_hash": tx_hash, "explorer_url": stellar.explorer_tx_url(tx_hash), "message": PENDING_MESSAGE, "pending": True}
     raise PaymentError("provider", env.get("error") or stellar.ERR_HORIZON_UNREACHABLE)
@@ -801,15 +801,15 @@ CONFIRM = {
 
 def prepare(task: Task, wallet, step: str, data: dict | None = None) -> dict:
     if step not in PREPARE:
-        raise PaymentError("unknown_step", "Étape de paiement inconnue.")
+        raise PaymentError("unknown_step", "Unknown payment step.")
     return PREPARE[step](task, wallet, data or {})
 
 
 def confirm(task: Task, wallet, step: str, signed_xdr: str, data: dict | None = None) -> dict:
     if step not in CONFIRM:
-        raise PaymentError("unknown_step", "Étape de paiement inconnue.")
+        raise PaymentError("unknown_step", "Unknown payment step.")
     if not signed_xdr:
-        raise PaymentError("tampered", "Transaction signée manquante.")
+        raise PaymentError("tampered", "Signed transaction missing.")
     if step == "deliver":
         return confirm_deliver(task, wallet, signed_xdr, data or {})
     return CONFIRM[step](task, wallet, signed_xdr)
@@ -900,7 +900,7 @@ def stepper(mode: str, status: str) -> list[dict]:
 
 
 def project_funding(project: Project, wallet=None) -> dict:
-    """View-model of the project banner + the "Financer le projet" button.
+    """View-model of the project banner + the "Fund the project" button.
 
     total: sum of task prices · funded: prices of tasks whose escrow holds the money (escrow
     mode: funded or later; direct: paid) · paid: prices of paid tasks · pending: the assigned
@@ -946,19 +946,19 @@ def project_funding(project: Project, wallet=None) -> dict:
         )
     if mode == M.DIRECT:
         can_fund, hint = False, (
-            "Mode paiement direct : chaque validation déclenche un paiement "
-            f"{stellar.asset_code()} signé dans Freighter — rien à bloquer à l’avance."
+            "Direct payment mode: each validation triggers a "
+            f"{stellar.asset_code()} payment signed in Freighter — nothing to lock in advance."
         )
     elif pending:
         n = len(pending)
-        can_fund, hint = True, f"{n} tâche{'s' if n > 1 else ''} attribuée{'s' if n > 1 else ''} à financer (deux signatures Freighter par tâche : créer l’escrow, bloquer les fonds)."
+        can_fund, hint = True, f"{n} assigned task{'s' if n > 1 else ''} to fund (two Freighter signatures per task: create the escrow, lock the funds)."
     elif assigned == 0:
         can_fund, hint = False, (
-            "Choisissez d’abord un freelance : Trustless Work fixe le destinataire de l’escrow au déploiement, "
-            "une tâche ouverte ne peut pas encore être financée."
+            "Choose a freelancer first: Trustless Work fixes the escrow recipient at deploy, "
+            "so an open task cannot be funded yet."
         )
     else:
-        can_fund, hint = False, "Toutes les tâches attribuées sont financées. Les tâches ouvertes le seront après le choix d’un freelance."
+        can_fund, hint = False, "Every assigned task is funded. Open tasks will be funded once a freelancer is chosen."
     return {
         "mode": mode,
         "is_direct": mode == M.DIRECT,

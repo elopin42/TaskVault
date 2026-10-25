@@ -8,16 +8,16 @@ class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
         fields = ["title", "description"]
-        labels = {"title": "Titre du projet", "description": "Description"}
+        labels = {"title": "Project title", "description": "Description"}
         widgets = {
             "title": forms.TextInput(
-                attrs={"class": "ui-input", "placeholder": "Site vitrine + paiement Stellar", "maxlength": 120, "autofocus": True}
+                attrs={"class": "ui-input", "placeholder": "Showcase website + Stellar payment", "maxlength": 120, "autofocus": True}
             ),
             "description": forms.Textarea(
                 attrs={
                     "class": "ui-textarea",
                     "rows": 6,
-                    "placeholder": "Le contexte, l’objectif, ce que vous attendez au final. Vous découperez ensuite en tâches à prix fixe.",
+                    "placeholder": "The context, the goal, what you expect in the end. You will then split it into fixed-price tasks.",
                 }
             ),
         }
@@ -25,13 +25,13 @@ class ProjectForm(forms.ModelForm):
     def clean_title(self):
         title = self.cleaned_data["title"].strip()
         if len(title) < TITLE_MIN:
-            raise forms.ValidationError("Le titre est trop court.")
+            raise forms.ValidationError("The title is too short.")
         return title
 
     def clean_description(self):
         description = self.cleaned_data["description"].strip()
         if not description:
-            raise forms.ValidationError("Décrivez le projet en quelques lignes.")
+            raise forms.ValidationError("Describe the project in a few lines.")
         return description
 
     def save(self, company, commit: bool = True) -> Project:

@@ -1,8 +1,8 @@
 """Seed the demo dataset (SPEC §8): 3 wallets, 2 projects.
 
-  1. "Plateforme de réservation" at the pitch state — T1 "Landing page" paid to freelance A
+  1. "Booking platform" at the pitch state — T1 "Landing page" paid to freelance A
      (note 5, with its Escrow row: a direct payment and a demo tx hash so the explorer links render),
-     T2 "Intégration Freighter" open with A + B applying (A is Validé + Recommandé:
+     T2 "Freighter integration" open with A + B applying (A is Validated + Recommended:
      40 + 5·8 + 20·(1/2) = 90 vs B 0 + 0 + 20·(2/2) = 20), T3 "Dashboard" open, no candidate.
   2. A draft project with open tasks and no application.
 
@@ -59,33 +59,33 @@ class Command(BaseCommand):
             projects, _ = Project.objects.all().delete()
             self.stdout.write(f"flushed projects={projects} tasks={tasks} applications={apps} ratings={ratings} escrows={escrows}")
 
-        company = _wallet("LOWBID_DEMO_CLIENT", "Studio Nova (entreprise)")
-        a = _wallet("LOWBID_DEMO_FREELANCE1", "Yanis (freelance A)")
-        b = _wallet("LOWBID_DEMO_FREELANCE2", "Nora (freelance B)")
+        company = _wallet("LOWBID_DEMO_CLIENT", "Studio Nova (company)")
+        a = _wallet("LOWBID_DEMO_FREELANCE1", "Yanis (freelancer A)")
+        b = _wallet("LOWBID_DEMO_FREELANCE2", "Nora (freelancer B)")
         mode = stellar.payment_mode()
 
         # 1. The pitch project: T1 paid to A, T2 open with A + B, T3 open.
         p1 = services.create_project(
             company,
-            "Plateforme de réservation pour un studio de yoga",
-            "Site de réservation de cours (planning, abonnements, paiement USDC via Freighter) pour un studio "
-            "de 3 salles. Maquettes Figma fournies, déploiement sur notre VPS. Découpé en trois tâches à prix fixe.",
+            "Booking platform for a yoga studio",
+            "Class booking website (schedule, memberships, USDC payment via Freighter) for a studio "
+            "with 3 rooms. Figma mockups provided, deployment on our VPS. Split into three fixed-price tasks.",
         )
         t1 = services.add_task(
-            p1, company, "Landing page", "Page d’accueil responsive (Django + Tailwind) depuis la maquette, formulaire de contact.",
+            p1, company, "Landing page", "Responsive home page (Django + Tailwind) from the mockup, contact form.",
             "300", ["django", "ui"],
         )
         t2 = services.add_task(
-            p1, company, "Intégration Freighter",
-            "Connexion wallet, signature SEP-53 et paiement USDC d’un abonnement depuis le navigateur.",
+            p1, company, "Freighter integration",
+            "Wallet connection, SEP-53 signature and USDC payment of a membership from the browser.",
             "500", ["stellar", "js"],
         )
         t3 = services.add_task(
-            p1, company, "Dashboard", "Tableau de bord du studio : taux de remplissage, revenus USDC, export CSV.",
+            p1, company, "Dashboard", "Studio dashboard: occupancy rate, USDC revenue, CSV export.",
             "400", ["django", "charts"],
         )
-        services.apply(t1, a, "Django + Tailwind au quotidien, je livre en 5 jours avec le déploiement.", ["django", "ui"])
-        services.apply(t1, b, "Intégration propre depuis Figma, 2 itérations comprises.", ["django"])
+        services.apply(t1, a, "Django + Tailwind every day, I deliver in 5 days including deployment.", ["django", "ui"])
+        services.apply(t1, b, "Clean build from Figma, 2 iterations included.", ["django"])
         app_a = Application.objects.get(task=t1, freelancer=a)
         services.choose(t1, app_a, company)
         # T1 is settled as a DIRECT payment whatever the configured mode: the seed cannot sign anything
@@ -99,30 +99,30 @@ class Command(BaseCommand):
             delivery_note=link, delivered_at=now,
         )
         services.deliver(t1, a, link)
-        services.validate(t1, company, 5, "Impeccable, pixel-perfect et en avance.")  # Rating only: payments pays
+        services.validate(t1, company, 5, "Flawless, pixel-perfect and ahead of schedule.")  # Rating only: payments pays
         Escrow.objects.filter(pk=escrow.pk).update(status=Escrow.Status.PAID, payment_tx_hash=_demo_hash(f"t1-{t1.pk}"), released_at=now)
         services.mark_paid(t1)
         payment_services.sync_project_status(t1.project)  # what confirm_direct_pay / confirm_release do live
-        services.apply(t2, a, "J’ai déjà branché Freighter et Horizon sur un back-office Django.", ["stellar"])
-        services.apply(t2, b, "Spécialiste Stellar/JS : SEP-53, trustlines, Soroban.", ["stellar", "js"])
+        services.apply(t2, a, "I have already wired Freighter and Horizon into a Django back office.", ["stellar"])
+        services.apply(t2, b, "Stellar/JS specialist: SEP-53, trustlines, Soroban.", ["stellar", "js"])
 
         # 2. A draft project with open tasks and no candidate.
         p2 = services.create_project(
             company,
-            "Refonte de la charte et du site vitrine d’une boulangerie",
-            "Logo vectoriel, mini charte (couleurs, typos) et site vitrine 5 pages avec horaires et carte. "
-            "Photos à retoucher légèrement, hébergement déjà en place.",
+            "Brand and showcase website redesign for a bakery",
+            "Vector logo, mini brand guide (colors, fonts) and a 5-page showcase website with opening hours and menu. "
+            "Photos need light retouching, hosting already in place.",
         )
-        services.add_task(p2, company, "Logo et charte", "Logo vectoriel, 2 déclinaisons, mini charte. Fichiers Figma + exports.", "250", ["design", "figma"])
-        services.add_task(p2, company, "Site vitrine WordPress", "5 pages, thème sur mesure, Core Web Vitals verts.", "600", ["wordpress", "seo"])
-        services.add_task(p2, company, "Retouche photos", "30 photos produits : détourage, colorimétrie, exports web.", "120", ["photo"])
+        services.add_task(p2, company, "Logo and brand guide", "Vector logo, 2 variants, mini brand guide. Figma files + exports.", "250", ["design", "figma"])
+        services.add_task(p2, company, "WordPress showcase website", "5 pages, custom theme, green Core Web Vitals.", "600", ["wordpress", "seo"])
+        services.add_task(p2, company, "Photo retouching", "30 product photos: cutouts, color grading, web exports.", "120", ["photo"])
 
         scores = {app.freelancer.display_name: f"{app.score:.1f}" for app in t2.applications.select_related("freelancer")}
         self.stdout.write(self.style.SUCCESS("Demo data ready."))
         self.stdout.write(f"  payment mode {mode} (LOWBID_PAYMENT_MODE={os.environ.get('LOWBID_PAYMENT_MODE', '') or 'auto'}), asset {stellar.asset_code()}")
-        self.stdout.write(f"  entreprise  {company.stellar_address}")
-        self.stdout.write(f"  freelance A {a.stellar_address}")
-        self.stdout.write(f"  freelance B {b.stellar_address}")
+        self.stdout.write(f"  company      {company.stellar_address}")
+        self.stdout.write(f"  freelancer A {a.stellar_address}")
+        self.stdout.write(f"  freelancer B {b.stellar_address}")
         self.stdout.write(f"  projects: pitch=#{p1.pk} (T1 #{t1.pk} paid, T2 #{t2.pk} open A+B, T3 #{t3.pk} open)  draft=#{p2.pk}")
         self.stdout.write(f"  T1 payment: direct, demo hash {_demo_hash(f't1-{t1.pk}')[:12]}… → {stellar.explorer_tx_url(_demo_hash(f't1-{t1.pk}'))}")
         self.stdout.write(f"  T2 scores: {scores}")

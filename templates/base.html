@@ -1,16 +1,16 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="fr" dir="ltr" data-theme="dark">
+<html lang="en" dir="ltr" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {# Read by Lowbid.csrf() (lowbid-base.js) for every unsafe fetch(); rendering it also sets the csrftoken cookie. #}
     <meta name="csrf-token" content="{{ csrf_token }}">
-    <meta name="description" content="{% block meta_description %}Lowbid — des projets découpés en tâches à prix fixe pour freelances, payées en USDC sur Stellar.{% endblock %}">
+    <meta name="description" content="{% block meta_description %}Lowbid — projects split into fixed-price tasks for freelancers, paid in USDC on Stellar.{% endblock %}">
     <title>{% block title %}Lowbid{% endblock %}</title>
     <link rel="icon" href="{% static 'img/favicon.svg' %}?v={{ LOWBID_ASSET_VERSION }}" type="image/svg+xml">
 
-    {# The site is dark only: html[data-theme="dark"] applies the « Coffre » palette on every page. #}
+    {# The site is dark only: html[data-theme="dark"] applies the "Coffre" palette on every page. #}
     <style>html { color-scheme: dark; }</style>
 
     <!-- window.LOWBID — the only per-request values the static JS needs. -->
@@ -74,9 +74,9 @@
     {% if wallet_address %}{% include "partials/tabbar.html" %}{% endif %}
 
     <footer class="px-6 py-4 text-xs text-center border-t border-[color:var(--soft-border)] text-[color:var(--muted)]">
-        <span>Lowbid · Hack Meridian · réseau <strong class="font-semibold">{{ STELLAR_NETWORK }}</strong></span>
+        <span>Lowbid · Hack Meridian · network <strong class="font-semibold">{{ STELLAR_NETWORK }}</strong></span>
         <span class="mx-2" aria-hidden="true">·</span>
-        <a href="https://www.freighter.app/" target="_blank" rel="noopener" class="ui-link">Installer Freighter</a>
+        <a href="https://www.freighter.app/" target="_blank" rel="noopener" class="ui-link">Install Freighter</a>
     </footer>
 
     <!-- Shared JS: lowbid-base.js (theme, toasts, Lowbid.api) then lowbid-ui.js (confirm modal,

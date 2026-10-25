@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}400 — Requête incorrecte · Lowbid{% endblock %}
+{% block title %}400 — Bad request · Lowbid{% endblock %}
 {% block content %}
 <div class="empty-state glass-card max-w-lg mx-auto mt-10">
   <div class="empty-state-icon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></div>
-  <div class="empty-state-title">400 · Requête incorrecte</div>
-  <p class="empty-state-desc">Le serveur n’a pas compris la requête.</p>
-  <a href="{% url 'core:landing' %}" class="ui-btn ui-btn-primary mt-4"><i class="fa-solid fa-house" aria-hidden="true"></i> Retour à l’accueil</a>
+  <div class="empty-state-title">400 · Bad request</div>
+  <p class="empty-state-desc">The server could not understand the request.</p>
+  <a href="{% url 'core:landing' %}" class="ui-btn ui-btn-primary mt-4"><i class="fa-solid fa-house" aria-hidden="true"></i> Back to home</a>
 </div>
 {% endblock %}

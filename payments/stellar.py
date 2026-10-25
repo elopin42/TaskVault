@@ -37,30 +37,30 @@ MEMO_MAX_BYTES = 28
 HORIZON_TIMEOUT = 8.0
 USDC_DECIMALS = 7
 
-ERR_HORIZON_UNREACHABLE = "Horizon est injoignable, réessayez dans un instant."
-ERR_ACCOUNT_NOT_FOUND = "Compte Stellar introuvable sur le réseau : financez-le d’abord (friendbot sur testnet)."
-ERR_BAD_XDR = "Transaction signée illisible."
-ERR_TIMEOUT = "Horizon n’a pas confirmé à temps — vérifiez la transaction sur l’explorateur avant de réessayer."
+ERR_HORIZON_UNREACHABLE = "Horizon is unreachable, try again in a moment."
+ERR_ACCOUNT_NOT_FOUND = "Stellar account not found on the network: fund it first (friendbot on testnet)."
+ERR_BAD_XDR = "Unreadable signed transaction."
+ERR_TIMEOUT = "Horizon did not confirm in time — check the transaction on the explorer before retrying."
 
-# Horizon `extras.result_codes` → French user message (`{code}` = the configured asset code).
+# Horizon `extras.result_codes` → English user message (`{code}` = the configured asset code).
 # Operation codes win over the transaction code (`tx_failed` alone says nothing useful).
 RESULT_CODE_MESSAGES = {
-    "op_no_trust": "Le destinataire n’a pas de trustline {code}.",
-    "op_underfunded": "Solde {code} insuffisant.",
-    "op_no_destination": "Le compte destinataire n’existe pas encore sur le réseau (financez-le via friendbot).",
-    "op_line_full": "La trustline du destinataire est pleine.",
-    "op_not_authorized": "Le destinataire n’est pas autorisé à détenir cet actif.",
-    "op_no_issuer": "Émetteur {code} introuvable (mauvais réseau ?).",
-    "op_low_reserve": "Réserve XLM insuffisante pour ajouter la trustline (≈ 0,5 XLM).",
-    "op_malformed": "Opération mal formée.",
-    "tx_bad_seq": "Réessayez (numéro de séquence dépassé).",
-    "tx_bad_auth": "Transaction signée par une autre adresse que le compte source.",
-    "tx_insufficient_fee": "Frais réseau insuffisants, réessayez.",
-    "tx_insufficient_balance": "Solde XLM insuffisant pour payer les frais réseau.",
-    "tx_too_late": "La transaction a expiré, recommencez la signature.",
-    "tx_too_early": "La transaction n’est pas encore valide, réessayez.",
-    "tx_no_source_account": "Le compte source n’existe pas sur le réseau.",
-    "tx_failed": "La transaction a été rejetée par le réseau.",
+    "op_no_trust": "The recipient has no {code} trustline.",
+    "op_underfunded": "Insufficient {code} balance.",
+    "op_no_destination": "The recipient account does not exist on the network yet (fund it via friendbot).",
+    "op_line_full": "The recipient's trustline is full.",
+    "op_not_authorized": "The recipient is not authorized to hold this asset.",
+    "op_no_issuer": "{code} issuer not found (wrong network?).",
+    "op_low_reserve": "Not enough XLM reserve to add the trustline (≈ 0.5 XLM).",
+    "op_malformed": "Malformed operation.",
+    "tx_bad_seq": "Try again (sequence number out of date).",
+    "tx_bad_auth": "Transaction signed by an address other than the source account.",
+    "tx_insufficient_fee": "Network fee too low, try again.",
+    "tx_insufficient_balance": "Not enough XLM to pay the network fees.",
+    "tx_too_late": "The transaction expired, sign it again.",
+    "tx_too_early": "The transaction is not valid yet, try again.",
+    "tx_no_source_account": "The source account does not exist on the network.",
+    "tx_failed": "The transaction was rejected by the network.",
 }
 
 Envelope = dict[str, Any]
@@ -266,12 +266,12 @@ def _amount_str(amount: Decimal | int | str) -> str:
     try:
         d = Decimal(str(amount))
     except InvalidOperation as exc:
-        raise StellarError("Montant invalide.") from exc
+        raise StellarError("Invalid amount.") from exc
     if d <= 0:
-        raise StellarError("Le montant doit être supérieur à zéro.")
+        raise StellarError("The amount must be greater than zero.")
     q = d.quantize(Decimal(1).scaleb(-USDC_DECIMALS))
     if q != d:
-        raise StellarError("Le montant ne peut pas avoir plus de 7 décimales.")
+        raise StellarError("The amount cannot have more than 7 decimal places.")
     text = format(q, "f")
     return text.rstrip("0").rstrip(".") if "." in text else text
 
@@ -337,7 +337,7 @@ def build_payment_xdr(
         raise
     except Exception as exc:
         logger.exception("stellar: build_payment_xdr failed source=%s destination=%s", source, destination)
-        raise StellarError("Impossible de préparer la transaction de paiement.") from exc
+        raise StellarError("Could not prepare the payment transaction.") from exc
     return tx.to_xdr()
 
 
@@ -345,7 +345,7 @@ def build_change_trust_xdr(*, source: str, sequence: int | None = None, base_fee
     """Unsigned XDR adding the asset trustline on `source` (limit = max). Raises StellarError
     (the native asset has no trustline)."""
     if is_native():
-        raise StellarError("L’actif natif XLM n’a pas besoin de trustline.")
+        raise StellarError("The native XLM asset needs no trustline.")
     try:
         builder = _builder(source, sequence, base_fee)
         tx = builder.append_change_trust_op(asset=asset()).set_timeout(TX_TIMEOUT_SECONDS).build()
@@ -353,7 +353,7 @@ def build_change_trust_xdr(*, source: str, sequence: int | None = None, base_fee
         raise
     except Exception as exc:
         logger.exception("stellar: build_change_trust_xdr failed source=%s", source)
-        raise StellarError("Impossible de préparer la transaction de trustline.") from exc
+        raise StellarError("Could not prepare the trustline transaction.") from exc
     return tx.to_xdr()
 
 
@@ -405,10 +405,10 @@ def explain_result_codes(codes: dict | None) -> str:
     code = asset_code()
     for op_code in codes.get("operations") or []:
         if op_code and op_code != "op_success":
-            return RESULT_CODE_MESSAGES.get(op_code, f"Opération rejetée ({op_code}).").format(code=code)
+            return RESULT_CODE_MESSAGES.get(op_code, f"Operation rejected ({op_code}).").format(code=code)
     tx_code = codes.get("transaction")
     if tx_code:
-        return RESULT_CODE_MESSAGES.get(tx_code, f"Transaction rejetée ({tx_code}).").format(code=code)
+        return RESULT_CODE_MESSAGES.get(tx_code, f"Transaction rejected ({tx_code}).").format(code=code)
     return RESULT_CODE_MESSAGES["tx_failed"]
 
 
@@ -453,7 +453,7 @@ def submit_xdr(signed_xdr: str, timeout: float = 30.0) -> Envelope:
     elif extras.get("result_codes"):
         error = explain_result_codes(extras.get("result_codes"))
     else:
-        error = data.get("detail") or data.get("title") or f"Horizon a répondu {status}."
+        error = data.get("detail") or data.get("title") or f"Horizon answered {status}."
     logger.warning("stellar: horizon rejected hash=%s status=%s codes=%s", tx_hash, status, extras.get("result_codes"))
     return {"ok": False, "status": status, "data": data, "error": error, "hash": tx_hash}
 

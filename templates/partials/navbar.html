@@ -1,13 +1,13 @@
 {% load static lowbid_extras %}
 <header class="lb-nav" role="banner">
   <div class="lb-nav-inner">
-    <a href="{% url 'core:landing' %}" class="lb-brand" aria-label="Lowbid — accueil">
+    <a href="{% url 'core:landing' %}" class="lb-brand" aria-label="Lowbid — home">
       <span class="lb-brand-mark" aria-hidden="true"></span>
       <span class="lb-brand-name">lowbid</span>
       <span class="ui-badge ui-badge-neutral font-mono hidden sm:inline-flex">{{ STELLAR_NETWORK }}</span>
     </a>
 
-    <nav class="lb-nav-links" aria-label="Navigation principale">
+    <nav class="lb-nav-links" aria-label="Main navigation">
       {# Links that need a session are only shown to a signed-in wallet. #}
       {% for link in nav_links %}{% if wallet_address or not link.wallet %}
         <a href="{{ link.href }}"
@@ -30,19 +30,19 @@
           <div class="lb-wallet-dropdown glass-card">
             <div class="px-3 py-2 flex items-center gap-2 min-w-0" data-identicon="{{ wallet_address }}">
               <span class="ui-identicon is-lg" aria-hidden="true"></span>
-              <div class="min-w-0"><div class="text-sm font-semibold">{{ wallet_user.display_name|default:"Mon wallet" }}</div><div class="ui-meta font-mono break-all">{{ wallet_address }}</div></div>
+              <div class="min-w-0"><div class="text-sm font-semibold">{{ wallet_user.display_name|default:"My wallet" }}</div><div class="ui-meta font-mono break-all">{{ wallet_address }}</div></div>
             </div>
             <div class="ui-menu-sep"></div>
-            <a href="{% url 'dashboard:home' %}" class="lb-dropdown-item"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Tableau de bord</a>
-            <a href="{% url 'dashboard:profile' wallet_address %}" class="lb-dropdown-item"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Mon profil public</a>
+            <a href="{% url 'dashboard:home' %}" class="lb-dropdown-item"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Dashboard</a>
+            <a href="{% url 'dashboard:profile' wallet_address %}" class="lb-dropdown-item"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> My public profile</a>
             <button type="button" class="lb-dropdown-item" data-copy="{{ wallet_address }}">
-              <i class="fa-regular fa-copy" aria-hidden="true"></i> Copier l’adresse
+              <i class="fa-regular fa-copy" aria-hidden="true"></i> Copy address
             </button>
             <div class="ui-menu-sep"></div>
             <form method="post" action="{% url 'accounts:logout' %}">
               {% csrf_token %}
               <button type="submit" class="lb-dropdown-item text-[color:var(--error)]">
-                <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Déconnexion
+                <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Log out
               </button>
             </form>
           </div>
@@ -50,7 +50,7 @@
       {% else %}
         <button type="button" class="lb-wallet-btn" data-wallet-connect data-next="{{ next_url|default:'' }}">
           <i class="fa-solid fa-wallet" aria-hidden="true"></i>
-          <span>Connecter<span class="hidden sm:inline"> le wallet</span></span>
+          <span>Connect<span class="hidden sm:inline"> wallet</span></span>
         </button>
       {% endif %}
 
@@ -60,7 +60,7 @@
     </div>
   </div>
 
-  <nav id="lb-mobile-nav" class="lb-mobile-nav" aria-label="Navigation mobile" hidden>
+  <nav id="lb-mobile-nav" class="lb-mobile-nav" aria-label="Mobile navigation" hidden>
     {% for link in nav_links %}{% if wallet_address or not link.wallet %}
       <a href="{{ link.href }}"
          class="lb-nav-link{% if link.active %} is-active{% endif %}">

@@ -9,13 +9,13 @@ project has an assigned task (or always in direct mode, as the honest "no escrow
 <section class="ui-panel" id="funding-panel" data-pay-summary data-mode="{{ funding.mode }}">
   <div class="ui-panel-head">
     <div>
-      <h2 class="ui-panel-title"><i class="fa-solid {% if funding.is_direct %}fa-bolt{% else %}fa-shield-halved{% endif %}" style="color: var(--icon-accent)" aria-hidden="true"></i> {% if funding.is_direct %}Paiement direct {{ asset_code }}{% else %}Financement en escrow{% endif %}</h2>
+      <h2 class="ui-panel-title"><i class="fa-solid {% if funding.is_direct %}fa-bolt{% else %}fa-shield-halved{% endif %}" style="color: var(--icon-accent)" aria-hidden="true"></i> {% if funding.is_direct %}Direct payment {{ asset_code }}{% else %}Escrow funding{% endif %}</h2>
     </div>
   </div>
   <dl class="ui-facts">
-    <dt>Total des tâches</dt><dd class="ui-num" data-pay-total>{{ funding.total|usdc:asset_code }}</dd>
-    <dt>{% if funding.is_direct %}Versés{% else %}Bloqués ou versés{% endif %}</dt><dd class="ui-num" data-pay-funded>{{ funding.funded|usdc:asset_code }}</dd>
-    <dt>Payés aux freelances</dt><dd class="ui-num" data-pay-paid>{{ funding.paid|usdc:asset_code }}</dd>
+    <dt>Tasks total</dt><dd class="ui-num" data-pay-total>{{ funding.total|usdc:asset_code }}</dd>
+    <dt>{% if funding.is_direct %}Paid out{% else %}Locked or paid out{% endif %}</dt><dd class="ui-num" data-pay-funded>{{ funding.funded|usdc:asset_code }}</dd>
+    <dt>Paid to freelancers</dt><dd class="ui-num" data-pay-paid>{{ funding.paid|usdc:asset_code }}</dd>
   </dl>
   {% if funding.rows %}
     <ul class="ui-list mt-4 border-t pt-3" style="border-color: var(--divider)" data-pay-rows>

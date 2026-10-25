@@ -33,7 +33,7 @@
   function fail(err) {
     // Freighter returns {error: {message, code}} or {error: "string"}; normalise to Error.
     if (err instanceof Error) return err;
-    var msg = (err && (err.message || err.error)) || String(err || "Erreur wallet");
+    var msg = (err && (err.message || err.error)) || String(err || "Wallet error");
     if (msg && msg.message) msg = msg.message;
     var e = new Error(msg);
     e.cause = err;
@@ -71,7 +71,7 @@
       if (!f) return Promise.reject(new Error("freighter_missing"));
       return f.requestAccess().then(function (r) {
         if (!r || r.error) throw fail(r && r.error);
-        if (!r.address) throw new Error("Accès refusé dans Freighter.");
+        if (!r.address) throw new Error("Access denied in Freighter.");
         return r.address;
       });
     },
@@ -82,7 +82,7 @@
       return f.getNetwork().then(function (r) {
         if (!r || r.error) throw fail(r && r.error);
         if (CFG.networkPassphrase && r.networkPassphrase !== CFG.networkPassphrase) {
-          var e = new Error("Freighter est sur « " + r.network + " » ; passez sur " + (CFG.network || "testnet").toUpperCase() + ".");
+          var e = new Error("Freighter is on \"" + r.network + "\"; switch to " + (CFG.network || "testnet").toUpperCase() + ".");
           e.code = "network_mismatch"; e.details = r;
           throw e;
         }
@@ -95,7 +95,7 @@
       return f.signMessage(message, { address: address, networkPassphrase: CFG.networkPassphrase }).then(function (r) {
         if (!r || r.error) throw fail(r && r.error);
         var sig = toBase64(r.signedMessage);
-        if (!sig) throw new Error("Signature vide renvoyée par Freighter.");
+        if (!sig) throw new Error("Empty signature returned by Freighter.");
         return { signature: sig, signerAddress: r.signerAddress || address };
       });
     },
@@ -105,7 +105,7 @@
       var self = this;
       return self.isInstalled().then(function (installed) {
         if (!installed) {
-          var e = new Error("Freighter n’est pas installé."); e.code = "freighter_missing"; throw e;
+          var e = new Error("Freighter is not installed."); e.code = "freighter_missing"; throw e;
         }
         return self.ensureNetwork();
       }).then(function () {
@@ -145,7 +145,7 @@
       address: opts.address || CFG.walletAddress || undefined
     }).then(function (r) {
       if (!r || r.error) throw fail(r && r.error);
-      if (!r.signedTxXdr) throw new Error("Transaction non signée.");
+      if (!r.signedTxXdr) throw new Error("Transaction not signed.");
       return r.signedTxXdr;
     });
   };
@@ -156,7 +156,7 @@
     if (on) {
       btn.dataset.label = btn.innerHTML;
       btn.classList.add("is-loading"); btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-spinner" aria-hidden="true"></i> <span>Signature…</span>';
+      btn.innerHTML = '<i class="fa-solid fa-spinner" aria-hidden="true"></i> <span>Signing…</span>';
     } else {
       btn.classList.remove("is-loading"); btn.disabled = false;
       if (btn.dataset.label) btn.innerHTML = btn.dataset.label;
@@ -164,23 +164,23 @@
   }
 
   function explain(err) {
-    var msg = (err && err.message) || "Connexion impossible.";
+    var msg = (err && err.message) || "Could not connect.";
     if (err && err.code === "freighter_missing") {
-      Lowbid.toast("Installez l’extension Freighter puis rechargez la page.", "warning", { title: "Freighter manquant", duration: 8000 });
+      Lowbid.toast("Install the Freighter extension, then reload the page.", "warning", { title: "Freighter missing", duration: 8000 });
       window.open(FREIGHTER_URL, "_blank", "noopener");
       return;
     }
     if (err && err.status === 400 && err.data) {
       var map = {
-        bad_signature: "La signature ne correspond pas à l’adresse.",
-        challenge_expired: "Le défi a expiré, réessayez.",
-        no_challenge: "Session expirée, réessayez.",
-        invalid_address: "Adresse Stellar invalide.",
-        invalid_signature_encoding: "Signature illisible renvoyée par le wallet."
+        bad_signature: "The signature does not match the address.",
+        challenge_expired: "The challenge expired, try again.",
+        no_challenge: "Session expired, try again.",
+        invalid_address: "Invalid Stellar address.",
+        invalid_signature_encoding: "Unreadable signature returned by the wallet."
       };
       msg = map[err.data.error] || msg;
     }
-    if (/User declined|rejected|refus/i.test(msg)) msg = "Signature refusée dans Freighter.";
+    if (/User declined|rejected|denied|refus/i.test(msg)) msg = "Signature declined in Freighter.";
     Lowbid.toast(msg, "error", { title: "Wallet" });
   }
 
@@ -191,7 +191,7 @@
       var next = connectBtn.getAttribute("data-next") || new URLSearchParams(location.search).get("next") || "";
       setLoading(connectBtn, true);
       wallet.connect(next).then(function (address) {
-        Lowbid.toast("Connecté en tant que " + Lowbid.shortAddr(address) + ".", "success", { title: "Wallet" });
+        Lowbid.toast("Connected as " + Lowbid.shortAddr(address) + ".", "success", { title: "Wallet" });
         var target = wallet.lastNext || window.location.pathname;
         setTimeout(function () { window.location.href = target; }, 350);
       }).catch(function (err) {
@@ -216,7 +216,7 @@
       watcher.watch(function (r) {
         if (r && r.address && r.address !== CFG.walletAddress && !watchAccount.warned) {
           watchAccount.warned = true;
-          Lowbid.toast("Freighter utilise maintenant " + Lowbid.shortAddr(r.address) + " — déconnectez-vous pour changer de compte.", "warning", { duration: 8000 });
+          Lowbid.toast("Freighter now uses " + Lowbid.shortAddr(r.address) + " — log out to switch accounts.", "warning", { duration: 8000 });
         }
       });
     } catch (e) { /* older API without watcher */ }

@@ -232,7 +232,7 @@ class EscrowHappyPathTests(BasePayTest):
             self.assertEqual(body["platformFee"], 1)
             self.assertEqual(body["title"], "Logo vectoriel")
             self.assertEqual(body["engagementId"], f"lowbid-task-{self.task.pk}")
-            self.assertEqual(body["milestones"], [{"description": f"Livraison de la tâche #{self.task.pk} — Logo vectoriel"}])
+            self.assertEqual(body["milestones"], [{"description": f"Delivery of task #{self.task.pk} — Logo vectoriel"}])
             self.assertEqual(body["trustline"], {"address": USDC_ISSUER, "symbol": "USDC"})
 
             # 2. company funds → the task holds its money; the project is NOT funded yet (T2 is open… but
@@ -325,7 +325,7 @@ class EscrowHappyPathTests(BasePayTest):
             second = self.send("fund", signed).json()
         self.assertTrue(first["ok"])
         self.assertTrue(second["ok"], second)
-        self.assertIn("déjà", second["message"])
+        self.assertIn("already", second["message"])
         self.assertEqual(router.count(tw.PATH_SEND), sends_before)  # no second submit
         self.assertEqual(self.escrow().status, Escrow.Status.FUNDED)
 
@@ -346,7 +346,7 @@ class EscrowHappyPathTests(BasePayTest):
             paid_at = Task.objects.get(pk=self.task.pk).paid_at
             again = self.send("release", signed).json()
         self.assertTrue(again["ok"], again)
-        self.assertIn("déjà", again["message"])
+        self.assertIn("already", again["message"])
         self.assertEqual(Task.objects.get(pk=self.task.pk).paid_at, paid_at)
 
     def test_platform_address_falls_back_to_company_with_a_warning(self):
@@ -371,7 +371,7 @@ class EscrowHappyPathTests(BasePayTest):
         self.assertEqual(sent["error"], "provider")
         esc = self.escrow()
         self.assertEqual(esc.status, Escrow.Status.CREATED)
-        self.assertIn("contrat", esc.last_error)
+        self.assertIn("contract", esc.last_error)
 
     def test_confirm_logs_task_step_and_hash(self):
         router = TWRouter(self.unsigned)
@@ -403,7 +403,7 @@ class EscrowGuardTests(BasePayTest):
                     resp = self.prepare(step)
                     self.assertEqual(resp.status_code, 200)
                     self.assertEqual(resp.json()["error"], "forbidden", step)
-                    self.assertIn("entreprise", resp.json()["message"])
+                    self.assertIn("company", resp.json()["message"])
             post.assert_not_called()
 
     def test_non_assignee_cannot_deliver(self):
@@ -427,11 +427,11 @@ class EscrowGuardTests(BasePayTest):
             login(self.client, self.freelance)
             resp = self.prepare("deliver", {"delivery_link": LINK}).json()
             self.assertEqual(resp["error"], "wrong_state", "nothing deployed: the freelance must wait for the funding")
-            self.assertEqual(next_action(self.task, self.freelance)["waiting"], "En attente de la création de l’escrow par l’entreprise.")
+            self.assertEqual(next_action(self.task, self.freelance)["waiting"], "Waiting for the company to create the escrow.")
             # the DB-only endpoint is refused too in escrow mode
             r = self.client.post(reverse("projects:task_deliver", args=[self.task.pk]), data=json.dumps({"delivery_link": LINK}), content_type="application/json", **JSON)
             self.assertEqual((r.status_code, r.json()["error"]), (409, "wrong_state"))
-            self.assertIn("escrow", r.json()["message"])
+            self.assertIn("Escrow task", r.json()["message"])
             login(self.client, self.company)
             self.run_step("deploy", self.company_kp)
             self.run_step("fund", self.company_kp)
@@ -453,7 +453,7 @@ class EscrowGuardTests(BasePayTest):
             self.run_step("deploy", self.company_kp)
             resp = self.prepare("release").json()
             self.assertEqual(resp["error"], "wrong_state")
-            self.assertIn("Escrow créé", resp["message"])
+            self.assertIn("Escrow created", resp["message"])
             resp = self.send("release", sign(self.unsigned, self.company_kp)).json()
             self.assertEqual(resp["error"], "wrong_state")
         self.assertEqual(self.escrow().status, Escrow.Status.DEPLOYED)
@@ -510,7 +510,7 @@ class EscrowGuardTests(BasePayTest):
             resp = self.prepare("deploy").json()
         post.assert_not_called()
         self.assertEqual(resp["error"], "provider")
-        self.assertIn("clé API", resp["message"])
+        self.assertIn("API key", resp["message"])
 
     def test_garbage_signed_xdr_is_tampered(self):
         router = TWRouter(self.unsigned)
@@ -542,7 +542,7 @@ class EscrowGuardTests(BasePayTest):
         self.assertEqual(sent["error"], "provider")
         self.assertEqual(self.escrow().status, Escrow.Status.APPROVED)
         self.assertEqual(self.task_status(), "delivered")
-        self.assertEqual(next_action(self.fresh(), self.company)["label"], "Libérer les fonds", "the panel offers to resume")
+        self.assertEqual(next_action(self.fresh(), self.company)["label"], "Release the funds", "the panel offers to resume")
 
 
 # =============================== project funding ==================================
@@ -571,7 +571,7 @@ class ProjectFundingTests(BasePayTest):
         data = self.client.get(self.pending_url(), **JSON).json()
         self.assertEqual(data["tasks"], [])
         self.assertEqual((data["funded"], data["can_fund"]), ("120", False))
-        self.assertIn("financées", data["hint"])
+        self.assertIn("is funded", data["hint"])
 
     def test_pending_list_is_company_only(self):
         for wallet in (self.freelance, self.other):
@@ -586,12 +586,12 @@ class ProjectFundingTests(BasePayTest):
         self.assertEqual((funding["total"], funding["funded"], funding["paid"]), (Decimal("200"), Decimal("0"), Decimal("0")))
         self.assertTrue(funding["can_fund"])
         self.assertEqual([p["task"].pk for p in funding["pending"]], [self.task.pk])
-        self.assertEqual([r["status_label"] for r in funding["rows"]], ["En préparation", ""])
+        self.assertEqual([r["status_label"] for r in funding["rows"]], ["Preparing", ""])
         login(self.client, self.company)
         html = self.client.get(reverse("projects:project_detail", args=[self.project.pk])).content.decode()
         self.assertIn('data-fund data-pending-url="%s"' % self.pending_url(), html)
         self.assertIn('id="funding-panel"', html)
-        self.assertIn("Financement en escrow", html)
+        self.assertIn("Escrow funding", html)
         router = TWRouter(self.unsigned)
         with patch("payments.trustless_work.requests.post", side_effect=router):
             self.run_step("deploy", self.company_kp)
@@ -599,20 +599,20 @@ class ProjectFundingTests(BasePayTest):
         html = self.client.get(reverse("projects:project_detail", args=[self.project.pk])).content.decode()
         self.assertIn(f"/contract/{CONTRACT}", html, "explorer link of the contract in the banner")
         self.assertIn(f"/tx/{self.escrow().fund_tx_hash}", html)
-        self.assertIn("Fonds bloqués", html)
-        self.assertIn("Financé", html, "project badge")
+        self.assertIn("Funds locked", html)
+        self.assertIn("Funded", html, "project badge")
         funding = project_funding(self.project)
         self.assertEqual(funding["funded"], Decimal("120"))
         self.assertFalse(funding["can_fund"])
-        self.assertIn("Toutes les tâches attribuées sont financées", funding["fund_hint"])
+        self.assertIn("Every assigned task is funded", funding["fund_hint"])
 
     def test_no_chosen_freelance_explains_why(self):
         empty = projects.create_project(self.company, "Nouveau", "Rien d’attribué.")
         projects.add_task(empty, self.company, "Tâche", "", "10", [])
         funding = project_funding(empty)
         self.assertFalse(funding["can_fund"])
-        self.assertIn("Choisissez d’abord un freelance", funding["fund_hint"])
-        self.assertIn("destinataire", funding["fund_hint"])
+        self.assertIn("Choose a freelancer first", funding["fund_hint"])
+        self.assertIn("recipient", funding["fund_hint"])
 
     def test_project_funded_only_when_every_assigned_task_holds_funds(self):
         """Two assigned tasks: funding one of them is not enough."""
@@ -688,7 +688,7 @@ class DirectModeTests(BasePayTest):
             self.deliver_db()
             resp = self.prepare("direct_pay").json()
             self.assertEqual(resp["error"], "wrong_state", "delivered but not rated")
-            self.assertIn("notez", resp["message"])
+            self.assertIn("rate", resp["message"])
         get.assert_not_called()
         self.assertEqual(next_action(self.fresh(), self.company)["step"], "validate")
 
@@ -699,7 +699,7 @@ class DirectModeTests(BasePayTest):
         self.assertTrue(data["ok"], data)
         self.assertEqual(data["status"], "delivered")
         self.assertEqual((data["next"]["step"], data["next"]["mine"], data["next"]["prepare_url"]), ("direct_pay", True, self.prepare_url("direct_pay")))
-        self.assertIn("Payer le freelance", data["message"])
+        self.assertIn("Pay the freelancer", data["message"])
         self.assertEqual(self.task_status(), "delivered", "rated, not paid")
         with patch("payments.stellar.requests.get", side_effect=self.horizon), patch("payments.stellar.requests.post", side_effect=submit_ok):
             prep, sent = self.run_step("direct_pay", self.company_kp)
@@ -760,7 +760,7 @@ class DirectModeTests(BasePayTest):
             prep = self.prepare("direct_pay").json()
             sent = self.send("direct_pay", sign(prep["xdr"], self.company_kp)).json()
         self.assertEqual(sent["error"], "provider")
-        self.assertEqual(sent["message"], "Le destinataire n’a pas de trustline USDC.")
+        self.assertEqual(sent["message"], "The recipient has no USDC trustline.")
         esc = self.escrow()
         self.assertEqual(esc.status, Escrow.Status.DELIVERED)
         self.assertEqual(esc.payment_tx_hash, "")
@@ -799,7 +799,7 @@ class DirectModeTests(BasePayTest):
             prep = self.prepare("direct_pay").json()
         self.assertTrue(prep["ok"])
         self.assertNotIn("xdr", prep)
-        self.assertIn("confirmé", prep["message"])
+        self.assertIn("confirmed", prep["message"])
         self.assertIsNone(prep["next"])
         esc = self.escrow()
         self.assertEqual(esc.status, Escrow.Status.PAID)
@@ -837,7 +837,7 @@ class DirectModeTests(BasePayTest):
         login(self.client, self.company)
         html = self.detail().content.decode()
         self.assertIn('id="validate-panel"', html)
-        self.assertIn("Livré", html)  # display_status: delivered without a row
+        self.assertIn("Delivered", html)  # display_status: delivered without a row
         data = self.validate().json()
         self.assertEqual((data["status"], data["next"]["step"]), ("delivered", "direct_pay"))
         esc = self.escrow()  # created by on_task_validated
@@ -859,12 +859,12 @@ class NativeAssetTests(BasePayTest):
         op = TransactionEnvelope.from_xdr(prep["xdr"], TESTNET).transaction.operations[0]
         self.assertTrue(op.asset.is_native())
         self.assertEqual(self.task_status(), "paid")
-        self.assertIn("Paiement XLM confirmé", sent["message"])
+        self.assertIn("XLM payment confirmed", sent["message"])
         # trustline helper: nothing to do
         resp = self.client.post(reverse("payments:trustline_prepare"), **JSON).json()
         self.assertEqual(resp["ok"], True)
         self.assertNotIn("xdr", resp)
-        self.assertIn("natif", resp["message"])
+        self.assertIn("native", resp["message"])
         html = self.detail().content.decode()
         self.assertNotIn("data-pay-trustline", html)
         self.assertIn("XLM", html)
@@ -891,7 +891,7 @@ class TrustlineTests(BasePayTest):
         horizon = HorizonGet(accounts={self.freelance.stellar_address: horizon_account(self.freelance.stellar_address, with_usdc=True)})
         with patch("payments.stellar.requests.get", side_effect=horizon):
             resp = self.client.post(reverse("payments:trustline_prepare"), **JSON).json()
-        self.assertEqual(resp, {"ok": True, "message": "Trustline USDC déjà présente."})
+        self.assertEqual(resp, {"ok": True, "message": "USDC trustline already present."})
 
     def test_missing_trustline_builds_change_trust_then_submits(self):
         login(self.client, self.freelance)
@@ -913,7 +913,7 @@ class TrustlineTests(BasePayTest):
                 **JSON,
             ).json()
         self.assertTrue(sent["ok"], sent)
-        self.assertEqual(sent["message"], "Trustline USDC ajoutée.")
+        self.assertEqual(sent["message"], "USDC trustline added.")
         self.assertIn(sent["tx_hash"], sent["explorer_url"])
 
     def test_trustline_for_another_wallet_is_tampered(self):
@@ -938,11 +938,11 @@ class PanelTests(BasePayTest):
     def test_anonymous_panel_is_read_only(self):
         html = self.detail().content.decode()
         self.assertIn('id="escrow-panel"', html)
-        self.assertIn("Paiement en escrow", html)
+        self.assertIn("Escrow payment", html)
         self.assertNotIn("data-prepare-url", html)
         self.assertNotIn("data-pay-trustline", html)
         self.assertIn(f'data-usdc-balance="{self.freelance.stellar_address}" data-watch', html)
-        self.assertIn("En attente de la création de l’escrow", html)
+        self.assertIn("Waiting for the company to create the escrow", html)
         self.assertIn(f'data-copy="{self.freelance.stellar_address}"', html)
         self.assertNotIn('id="escrow-panel"', self.detail(self.open_task).content.decode(), "no panel on an open task")
 
@@ -950,13 +950,13 @@ class PanelTests(BasePayTest):
         login(self.client, self.company)
         html = self.detail().content.decode()
         self.assertIn(f'data-pay-step="deploy" data-prepare-url="{self.prepare_url("deploy")}"', html)
-        self.assertIn("Créer l’escrow", html)
+        self.assertIn("Create the escrow", html)
         self.assertIn("data-pay-trustline", html)
         self.assertIn("data-pay-error", html)
         login(self.client, self.freelance)
         html = self.detail().content.decode()
         self.assertNotIn("data-prepare-url=", html.replace("data-pay-trustline data-prepare-url", ""))
-        self.assertIn("En attente de la création de l’escrow", html)
+        self.assertIn("Waiting for the company to create the escrow", html)
         self.assertIn("data-pay-trustline", html)
 
     def test_freelance_sees_deliver_form_once_funded(self):
@@ -972,10 +972,10 @@ class PanelTests(BasePayTest):
         self.assertIn("data-pay-form", html)
         self.assertNotIn("data-confirm-message", html, "escrow mode: Freighter is the confirmation")
         self.assertIn(f"/contract/{CONTRACT}", html)  # explorer link for the contract id
-        self.assertIn("Fonds bloqués", html)
+        self.assertIn("Funds locked", html)
         login(self.client, self.company)
         html = self.detail().content.decode()
-        self.assertIn("En attente de la livraison", html)
+        self.assertIn("Waiting for the freelancer", html)
         self.assertNotIn('data-pay-step="deliver"', html)
 
     def test_company_sees_the_rating_form_then_the_resume_button(self):
@@ -989,21 +989,21 @@ class PanelTests(BasePayTest):
             html = self.detail().content.decode()
             self.assertIn('id="validate-panel"', html)
             self.assertIn("form[data-validate]".replace("form[", "<form id=\"validate-form\" class=\"ui-form-grid\" novalidate ").split("]")[0], html)
-            self.assertIn("Valider et libérer 120.00 USDC", html)
+            self.assertIn("Validate and release 120.00 USDC", html)
             self.assertNotIn('data-pay-step="approve"', html)
             self.validate()
             html = self.detail().content.decode()
             self.assertNotIn('id="validate-panel"', html)
             self.assertIn(f'data-pay-step="approve" data-prepare-url="{self.prepare_url("approve")}"', html)
-            self.assertIn("La libération des fonds s’enchaîne", html)
+            self.assertIn("The release of the funds follows", html)
             self.run_step("approve", self.company_kp)
             html = self.detail().content.decode()
             self.assertIn(f'data-pay-step="release" data-prepare-url="{self.prepare_url("release")}"', html)
-            self.assertIn("Libérer les fonds", html)
+            self.assertIn("Release the funds", html)
             self.run_step("release", self.company_kp)
         html = self.detail().content.decode()
-        self.assertIn("Tâche payée", html)
-        self.assertIn("Fonds libérés vers le freelance", html)
+        self.assertIn("Task paid", html)
+        self.assertIn("Funds released to the freelancer", html)
         self.assertNotIn("data-pay-step=", html)
         self.assertEqual(html.count("stellar.expert/explorer/testnet/tx/"), 5, "every hash has its explorer link")
 
@@ -1012,7 +1012,7 @@ class PanelTests(BasePayTest):
             login(self.client, self.company)
             html = self.detail().content.decode()
             self.assertIn("data-platform-fallback", html)
-            self.assertIn("Adresse plateforme non configurée", html)
+            self.assertIn("Platform address not configured", html)
             login(self.client, self.freelance)
             self.assertNotIn("data-platform-fallback", self.detail().content.decode())
         login(self.client, self.company)
@@ -1024,10 +1024,10 @@ class PanelTests(BasePayTest):
     def test_direct_mode_panel(self):
         login(self.client, self.company)
         html = self.detail().content.decode()
-        self.assertIn("Paiement direct USDC", html)
-        self.assertIn("sans escrow", html)
-        self.assertNotIn("Fonds bloqués", html)  # two-step stepper
-        self.assertIn("En attente de la livraison du freelance", html)
+        self.assertIn("Direct payment USDC", html)
+        self.assertIn("no escrow", html)
+        self.assertNotIn("Funds locked", html)  # two-step stepper
+        self.assertIn("Waiting for the freelancer", html)
         login(self.client, self.freelance)
         html = self.detail().content.decode()
         self.assertIn(f'data-pay-step="deliver" data-prepare-url="{self.prepare_url("deliver")}" data-deliver', html)
@@ -1068,34 +1068,34 @@ class PanelTests(BasePayTest):
             self.run_step("deploy", self.company_kp)
         html = self.client.get(reverse("projects:project_detail", args=[self.project.pk])).content.decode()
         self.assertIn("data-pay-badge", html)
-        self.assertIn("Escrow créé", html)
+        self.assertIn("Escrow created", html)
 
     def test_dashboard_todo_follows_the_payment_step(self):
         from dashboard.services import todo_items
 
         company = todo_items(self.company)
-        fund = next(it for it in company if it["kicker"] == "Financement")
+        fund = next(it for it in company if it["kicker"] == "Funding")
         self.assertEqual(fund["tone"], "act")
-        self.assertIn("Financer « Logo vectoriel »", fund["headline"])
+        self.assertIn('Fund "Logo vectoriel"', fund["headline"])
         self.assertTrue(fund["href"].endswith("#funding-panel"))
-        wait = next(it for it in todo_items(self.freelance) if it["kicker"] == "Financement attendu")
+        wait = next(it for it in todo_items(self.freelance) if it["kicker"] == "Funding awaited")
         self.assertEqual(wait["tone"], "wait")
         self.assertIn("120.00 USDC", wait["body"])
         with patch("payments.trustless_work.requests.post", side_effect=TWRouter(self.unsigned)):
             login(self.client, self.company)
             self.run_step("deploy", self.company_kp)
             self.run_step("fund", self.company_kp)
-            self.assertTrue(any(it["kicker"] == "Tâche prise" and it["tone"] == "act" for it in todo_items(self.freelance)))
-            self.assertFalse(any(it["kicker"] == "Financement" for it in todo_items(self.company)))
+            self.assertTrue(any(it["kicker"] == "Task taken" and it["tone"] == "act" for it in todo_items(self.freelance)))
+            self.assertFalse(any(it["kicker"] == "Funding" for it in todo_items(self.company)))
             login(self.client, self.freelance)
             self.run_step("deliver", self.freelance_kp, {"delivery_link": LINK})
-            self.assertTrue(any("Valider et noter" in it["headline"] for it in todo_items(self.company)))
+            self.assertTrue(any("Validate and rate" in it["headline"] for it in todo_items(self.company)))
             login(self.client, self.company)
             self.validate()
-            release = next(it for it in todo_items(self.company) if it["kicker"] == "Paiement")
-            self.assertIn("Libérer les fonds", release["headline"])
+            release = next(it for it in todo_items(self.company) if it["kicker"] == "Payment")
+            self.assertIn("Release the funds", release["headline"])
             self.assertTrue(release["href"].endswith("#paiement"))
-            self.assertTrue(any(it["kicker"] == "Paiement en cours" for it in todo_items(self.freelance)))
+            self.assertTrue(any(it["kicker"] == "Payment in progress" for it in todo_items(self.freelance)))
             self.run_step("approve", self.company_kp)
             self.run_step("release", self.company_kp)
         self.assertFalse(any("Logo vectoriel" in it["headline"] for it in todo_items(self.company)), "paid: nothing to do")

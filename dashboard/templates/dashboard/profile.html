@@ -1,77 +1,77 @@
 {% extends "base.html" %}
 {% load static lowbid_extras %}
-{% block title %}{{ profile.display_name|default:profile.short_address }} · Profil · Lowbid{% endblock %}
-{% block meta_description %}Profil public du wallet {{ profile.short_address }} sur Lowbid : projets publiés, tâches réalisées, note moyenne.{% endblock %}
+{% block title %}{{ profile.display_name|default:profile.short_address }} · Profile · Lowbid{% endblock %}
+{% block meta_description %}Public profile of wallet {{ profile.short_address }} on Lowbid: projects posted, tasks completed, average rating.{% endblock %}
 
 {% block content %}
 <div class="ui-page-header">
   <div class="min-w-0">
-    <p class="ui-meta mb-2"><a href="{% url 'projects:project_list' %}" class="ui-link"><i class="fa-solid fa-arrow-left text-[10px]" aria-hidden="true"></i> Projets</a> · Profil public</p>
+    <p class="ui-meta mb-2"><a href="{% url 'projects:project_list' %}" class="ui-link"><i class="fa-solid fa-arrow-left text-[10px]" aria-hidden="true"></i> Projects</a> · Public profile</p>
     <h1 class="ui-page-title flex flex-wrap items-center gap-3">
-      {% include "components/wallet.html" with address=profile.stellar_address name=profile.display_name|default:"Wallet anonyme" size="xl" copy=True nolink=True keep=6 you=is_me %}
+      {% include "components/wallet.html" with address=profile.stellar_address name=profile.display_name|default:"Anonymous wallet" size="xl" copy=True nolink=True keep=6 you=is_me %}
     </h1>
     <p class="ui-page-sub flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> membre depuis le {{ stats.member_since|date:"d/m/Y" }}</span>
-      {% if stats.last_login %}<span><i class="fa-regular fa-clock" aria-hidden="true"></i> dernière connexion <span data-time-ago="{{ stats.last_login|date:'c' }}">{{ stats.last_login|date:"d/m H:i" }}</span></span>{% endif %}
-      {% if stats.avg_note is not None %}<span class="ui-badge ui-badge-ok" data-avg-note="{{ stats.avg_note|stringformat:".1f" }}"><i class="fa-solid fa-star" aria-hidden="true"></i> {{ stats.avg_note|stringformat:".1f" }}/5 · {{ stats.ratings_count }} note{{ stats.ratings_count|pluralize }}</span>{% endif %}
+      <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> member since {{ stats.member_since|date:"M j, Y" }}</span>
+      {% if stats.last_login %}<span><i class="fa-regular fa-clock" aria-hidden="true"></i> last login <span data-time-ago="{{ stats.last_login|date:'c' }}">{{ stats.last_login|date:"M j H:i" }}</span></span>{% endif %}
+      {% if stats.avg_note is not None %}<span class="ui-badge ui-badge-ok" data-avg-note="{{ stats.avg_note|stringformat:".1f" }}"><i class="fa-solid fa-star" aria-hidden="true"></i> {{ stats.avg_note|stringformat:".1f" }}/5 · {{ stats.ratings_count }} rating{{ stats.ratings_count|pluralize }}</span>{% endif %}
     </p>
   </div>
   <div class="ui-page-actions">
-    <button type="button" class="ui-btn" data-share="{{ request.build_absolute_uri }}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Partager</button>
-    {% if is_me %}<a href="{% url 'dashboard:home' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Tableau de bord</a>{% endif %}
+    <button type="button" class="ui-btn" data-share="{{ request.build_absolute_uri }}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Share</button>
+    {% if is_me %}<a href="{% url 'dashboard:home' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Dashboard</a>{% endif %}
   </div>
 </div>
 
 {% if is_me %}
 <section class="ui-panel mb-6" id="edit-name" aria-labelledby="edit-name-title">
-  <div class="ui-panel-head"><div><h2 class="ui-panel-title" id="edit-name-title">Éditer mon nom</h2></div></div>
+  <div class="ui-panel-head"><div><h2 class="ui-panel-title" id="edit-name-title">Edit my name</h2></div></div>
   <form method="post" class="flex flex-wrap items-end gap-3" data-submit-once>
     {% csrf_token %}
     <div class="ui-field flex-1 min-w-[200px]">
-      <label for="display_name" class="ui-label">Nom affiché</label>
+      <label for="display_name" class="ui-label">Display name</label>
       <input id="display_name" name="display_name" class="ui-input" type="text" maxlength="{{ max_name }}" value="{{ profile.display_name }}" placeholder="Claire, Studio Nova…" autocomplete="nickname">
     </div>
-    <button type="submit" class="ui-btn ui-btn-primary"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Enregistrer</button>
+    <button type="submit" class="ui-btn ui-btn-primary"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save</button>
   </form>
 </section>
 {% endif %}
 
-<section class="ui-kpi-band mb-6" aria-label="Chiffres publics">
-  {% include "components/kpi.html" with label="Projets publiés" value=stats.projects_posted hint="en tant qu’entreprise" icon="fa-diagram-project" %}
-  {% include "components/kpi.html" with label="Tâches réalisées" value=stats.tasks_paid hint="validées et payées" icon="fa-circle-check" %}
-  {% include "components/kpi.html" with label="Encaissé" value=stats.earned_usdc|usdc:"" unit="USDC" hint="en tant que freelance" icon="fa-money-bill-transfer" %}
+<section class="ui-kpi-band mb-6" aria-label="Public figures">
+  {% include "components/kpi.html" with label="Projects posted" value=stats.projects_posted hint="as a company" icon="fa-diagram-project" %}
+  {% include "components/kpi.html" with label="Tasks completed" value=stats.tasks_paid hint="validated and paid" icon="fa-circle-check" %}
+  {% include "components/kpi.html" with label="Earned" value=stats.earned_usdc|usdc:"" unit="USDC" hint="as a freelancer" icon="fa-money-bill-transfer" %}
   {% if stats.avg_note is not None %}
-    {% include "components/kpi.html" with label="Note moyenne" value=stats.avg_note|stringformat:".1f" unit="/ 5" hint=stats.ratings_count|stringformat:"s"|add:" note(s) reçue(s)" icon="fa-star" attr="data-kpi-note" %}
+    {% include "components/kpi.html" with label="Average rating" value=stats.avg_note|stringformat:".1f" unit="/ 5" hint=stats.ratings_count|stringformat:"s"|add:" rating(s) received" icon="fa-star" attr="data-kpi-note" %}
   {% else %}
-    {% include "components/kpi.html" with label="Note moyenne" value="—" hint="aucune note reçue" icon="fa-star" attr="data-kpi-note" %}
+    {% include "components/kpi.html" with label="Average rating" value="—" hint="no ratings received" icon="fa-star" attr="data-kpi-note" %}
   {% endif %}
 </section>
 
 <section class="ui-section !mt-0" aria-labelledby="projects-title">
-  {% include "components/section_head.html" with title="Projets publiés" icon="fa-diagram-project" %}
+  {% include "components/section_head.html" with title="Projects posted" icon="fa-diagram-project" %}
   {% if stats.projects %}
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {% for project in stats.projects %}{% include "projects/_project_card.html" with project=project %}{% endfor %}
     </div>
   {% else %}
-    {% include "components/empty_state.html" with icon="fa-diagram-project" title="Aucun projet publié" desc="Ce wallet n’a pas encore publié de projet." %}
+    {% include "components/empty_state.html" with icon="fa-diagram-project" title="No projects posted" desc="This wallet has not posted a project yet." %}
   {% endif %}
 </section>
 
 <section class="ui-section" aria-labelledby="tasks-title">
-  {% include "components/section_head.html" with title="Tâches réalisées" icon="fa-user-check" %}
+  {% include "components/section_head.html" with title="Tasks completed" icon="fa-user-check" %}
   {% if stats.tasks %}
     <div class="ui-panel">
       <div class="rcard">
         <table>
-          <thead><tr><th style="width: 40%">Tâche</th><th>Entreprise</th><th class="ui-col-end">Prix</th><th>Statut</th></tr></thead>
+          <thead><tr><th style="width: 40%">Task</th><th>Company</th><th class="ui-col-end">Price</th><th>Status</th></tr></thead>
           <tbody>
             {% for task in stats.tasks %}
               <tr>
-                <td data-label="Tâche"><a href="{% url 'projects:task_detail' task.pk %}" class="ui-link font-semibold">{{ task.title }}</a><div class="ui-meta">{{ task.project.title }}{% if task.tags %} · {{ task.tags|join:", " }}{% endif %}</div></td>
-                <td data-label="Entreprise">{% include "components/wallet.html" with address=task.project.company.stellar_address %}</td>
-                <td data-label="Prix" class="ui-col-end ui-num">{% include "components/price.html" with amount=task.price %}</td>
-                <td data-label="Statut">{% include "components/status_badge.html" with obj=task %}</td>
+                <td data-label="Task"><a href="{% url 'projects:task_detail' task.pk %}" class="ui-link font-semibold">{{ task.title }}</a><div class="ui-meta">{{ task.project.title }}{% if task.tags %} · {{ task.tags|join:", " }}{% endif %}</div></td>
+                <td data-label="Company">{% include "components/wallet.html" with address=task.project.company.stellar_address %}</td>
+                <td data-label="Price" class="ui-col-end ui-num">{% include "components/price.html" with amount=task.price %}</td>
+                <td data-label="Status">{% include "components/status_badge.html" with obj=task %}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -79,21 +79,21 @@
       </div>
     </div>
   {% else %}
-    {% include "components/empty_state.html" with icon="fa-user-check" title="Aucune tâche réalisée" desc="Ce wallet n’a pas encore été choisi pour une tâche." %}
+    {% include "components/empty_state.html" with icon="fa-user-check" title="No tasks completed" desc="This wallet has not been chosen for a task yet." %}
   {% endif %}
 </section>
 
 {% if stats.ratings %}
 <section class="ui-section" aria-labelledby="ratings-title">
-  {% include "components/section_head.html" with title="Notes reçues" icon="fa-star" %}
+  {% include "components/section_head.html" with title="Ratings received" icon="fa-star" %}
   <div class="ui-panel">
     <ol class="ui-timeline">
       {% for r in stats.ratings %}
         <li class="ui-timeline-item is-ok">
           <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
           <div class="ui-timeline-body">
-            <p class="ui-timeline-title"><strong class="text-strong">{{ r.note }}/5</strong> sur <a href="{% url 'projects:task_detail' r.task.pk %}" class="ui-link">{{ r.task.title }}</a>{% if r.comment %} — « {{ r.comment }} »{% endif %}</p>
-            <div class="ui-timeline-time flex flex-wrap items-center gap-x-2">{% include "components/wallet.html" with address=r.company.stellar_address label="Entreprise" %}<span data-time-ago="{{ r.created_at|date:'c' }}">{{ r.created_at|date:"d/m H:i" }}</span></div>
+            <p class="ui-timeline-title"><strong class="text-strong">{{ r.note }}/5</strong> on <a href="{% url 'projects:task_detail' r.task.pk %}" class="ui-link">{{ r.task.title }}</a>{% if r.comment %} — "{{ r.comment }}"{% endif %}</p>
+            <div class="ui-timeline-time flex flex-wrap items-center gap-x-2">{% include "components/wallet.html" with address=r.company.stellar_address label="Company" %}<span data-time-ago="{{ r.created_at|date:'c' }}">{{ r.created_at|date:"M j H:i" }}</span></div>
           </div>
         </li>
       {% endfor %}

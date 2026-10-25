@@ -4,8 +4,8 @@
           + 8 · avg_note given by THIS company (0 without rating)
           + 20 · (common tags / task tags)      (0 when the task has no tags)
 
-Max 100, stored rounded to 1 decimal. "Validé" = paid_count ≥ 1 AND avg_note ≥ 3 for the
-company looking at the candidate; "Recommandé" = the single best score among the task's
+Max 100, stored rounded to 1 decimal. "Validated" = paid_count ≥ 1 AND avg_note ≥ 3 for the
+company looking at the candidate; "Recommended" = the single best score among the task's
 pending applications (ties → the earliest application), only while the task is open.
 """
 
@@ -71,7 +71,7 @@ def score_application(task: Task, freelancer, tags, history: dict | None = None)
 
 
 def recommended_pk(applications) -> int | None:
-    """pk of the single "Recommandé" application among PENDING ones: best score, then earliest."""
+    """pk of the single "Recommended" application among PENDING ones: best score, then earliest."""
     best = None
     for app in applications:
         if app.status != app.Status.PENDING:

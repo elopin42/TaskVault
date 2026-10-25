@@ -69,7 +69,7 @@
 
   /* ---------- toasts ---------- */
   var ICONS = { success: "fa-circle-check", error: "fa-circle-xmark", warning: "fa-triangle-exclamation", info: "fa-circle-info" };
-  var TITLES = { success: "Succès", error: "Erreur", warning: "Attention", info: "Info" };
+  var TITLES = { success: "Success", error: "Error", warning: "Warning", info: "Info" };
 
   /* Lowbid.toast(message, type = "info", {title, duration = 4500}) — XSS-safe (textContent). */
   Lowbid.toast = function (message, type, opts) {
@@ -98,7 +98,7 @@
     body.appendChild(title); body.appendChild(msg);
 
     var close = document.createElement("button");
-    close.type = "button"; close.className = "lb-toast-close"; close.setAttribute("aria-label", "Fermer");
+    close.type = "button"; close.className = "lb-toast-close"; close.setAttribute("aria-label", "Close");
     close.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
 
     function dismiss() {
@@ -131,9 +131,9 @@
     var copy = ev.target.closest("[data-copy]");
     if (copy && navigator.clipboard) {
       navigator.clipboard.writeText(copy.getAttribute("data-copy")).then(function () {
-        Lowbid.toast("Adresse copiée dans le presse-papiers.", "success");
+        Lowbid.toast("Address copied to the clipboard.", "success");
       }, function () {
-        Lowbid.toast("Impossible de copier.", "error");
+        Lowbid.toast("Could not copy.", "error");
       });
     }
 

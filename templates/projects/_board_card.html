@@ -8,17 +8,17 @@
   <p class="ui-meta truncate" title="{{ task.project.title }}"><i class="fa-solid fa-diagram-project text-[10px]" aria-hidden="true"></i> <a href="{% url 'projects:project_detail' task.project.pk %}" class="hover:underline">{{ task.project.title }}</a></p>
   {% include "components/tags.html" with tags=task.tags %}
   <div class="flex flex-wrap items-center justify-between gap-2 mt-auto pt-1">
-    {% include "components/wallet.html" with address=task.project.company.stellar_address label="Entreprise" %}
+    {% include "components/wallet.html" with address=task.project.company.stellar_address label="Company" %}
     {% if col == 'open' %}
-      {% if task.applied %}<span class="ui-badge ui-badge-brand" data-applied><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Postulé</span>
-      {% else %}<a href="{% url 'projects:task_detail' task.pk %}#apply-panel" class="ui-btn ui-btn-sm ui-btn-primary">Postuler</a>{% endif %}
+      {% if task.applied %}<span class="ui-badge ui-badge-brand" data-applied><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Applied</span>
+      {% else %}<a href="{% url 'projects:task_detail' task.pk %}#apply-panel" class="ui-btn ui-btn-sm ui-btn-primary">Apply</a>{% endif %}
     {% elif col == 'taken' %}
-      <a href="{% url 'projects:task_detail' task.pk %}#deliver-panel" class="ui-btn ui-btn-sm ui-btn-primary"><i class="fa-solid fa-truck-fast" aria-hidden="true"></i> Livrer</a>
+      <a href="{% url 'projects:task_detail' task.pk %}#deliver-panel" class="ui-btn ui-btn-sm ui-btn-primary"><i class="fa-solid fa-truck-fast" aria-hidden="true"></i> Deliver</a>
     {% elif col == 'delivered' %}
-      <span class="ui-badge ui-badge-attn" title="En attente de validation"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> À valider</span>
+      <span class="ui-badge ui-badge-attn" title="Awaiting validation"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> To validate</span>
     {% else %}
-      <span class="ui-badge ui-badge-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> {% if task.paid_at %}{{ task.paid_at|date:"d/m" }}{% else %}Payé{% endif %}</span>
+      <span class="ui-badge ui-badge-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> {% if task.paid_at %}{{ task.paid_at|date:"M j" }}{% else %}Paid{% endif %}</span>
     {% endif %}
   </div>
-  {% if col == 'open' %}<p class="ui-meta">{{ task.app_count }} candidat{{ task.app_count|pluralize }} · <span data-time-ago="{{ task.created_at|date:'c' }}">{{ task.created_at|date:"d/m H:i" }}</span></p>{% endif %}
+  {% if col == 'open' %}<p class="ui-meta">{{ task.app_count }} candidate{{ task.app_count|pluralize }} · <span data-time-ago="{{ task.created_at|date:'c' }}">{{ task.created_at|date:"M j H:i" }}</span></p>{% endif %}
 </article>

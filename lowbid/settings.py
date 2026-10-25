@@ -134,7 +134,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # --- i18n ---------------------------------------------------------------------
 
-LANGUAGE_CODE = "fr"
+LANGUAGE_CODE = "en-us"
 TIME_ZONE = os.environ.get("DJANGO_TIME_ZONE", "Europe/Paris")
 USE_I18N = True
 USE_TZ = True
@@ -175,7 +175,7 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 30
 
 # Bump whenever css/lowbid-*.css or js/lowbid-*.js changes (30-day static cache).
-LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261030-dark"
+LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261030-english"
 
 # --- Stellar ------------------------------------------------------------------
 

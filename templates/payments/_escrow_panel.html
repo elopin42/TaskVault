@@ -14,13 +14,13 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
   {# The receipt: always in the Coffre palette, whatever the page theme #}
   <div class="ui-receipt theme-coffre">
     <div class="ui-receipt-head">
-      <h2 class="ui-receipt-title">{% if is_direct %}Paiement direct {{ asset_code }}{% else %}Paiement en escrow{% endif %} · tâche #{{ task.pk }}{% if is_direct %} <span class="ui-badge ui-badge-attn" title="Sans escrow : un paiement signé dans Freighter à la validation">sans escrow</span>{% endif %}</h2>
+      <h2 class="ui-receipt-title">{% if is_direct %}Direct payment {{ asset_code }}{% else %}Escrow payment{% endif %} · task #{{ task.pk }}{% if is_direct %} <span class="ui-badge ui-badge-attn" title="No escrow: a payment signed in Freighter on validation">no escrow</span>{% endif %}</h2>
       <span class="ui-badge {{ badge_class }} whitespace-nowrap" data-escrow-badge>{{ status_label }}</span>
     </div>
     <p class="ui-receipt-amount"><span>{{ amount|usdc_parts }}</span> <span class="ui-receipt-unit">{{ asset_code }}</span></p>
-    <p class="ui-receipt-sub">{% if is_direct %}Paiement {{ asset_code }} de wallet à wallet sur Stellar à la validation, sans escrow.{% else %}Le prix est bloqué dans un contrat Soroban (Trustless Work) jusqu’à la validation.{% endif %}</p>
+    <p class="ui-receipt-sub">{% if is_direct %}Wallet-to-wallet {{ asset_code }} payment on Stellar on validation, no escrow.{% else %}The price is locked in a Soroban contract (Trustless Work) until validation.{% endif %}</p>
 
-    <ol class="ui-stepper" aria-label="Avancement du paiement">
+    <ol class="ui-stepper" aria-label="Payment progress">
       {% for s in steps %}
         <li class="ui-step is-{{ s.state }}"{% if s.state == 'current' %} aria-current="step"{% endif %}>
           <span class="ui-step-dot">0{{ forloop.counter }}</span>
@@ -30,13 +30,13 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
     </ol>
 
     <dl class="ui-receipt-rows"{% if links %} data-explorer-links{% endif %}>
-      <dt>Freelance</dt>
+      <dt>Freelancer</dt>
       <dd class="flex items-center justify-end gap-1.5 min-w-0">
         <a href="{{ payee_explorer_url }}" target="_blank" rel="noopener" class="ui-link font-mono truncate" title="{{ payee }}">{{ payee|short_addr }}</a>
-        <button type="button" class="ui-copy-btn shrink-0" data-copy="{{ payee }}" title="Copier l’adresse" aria-label="Copier l’adresse du freelance"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
+        <button type="button" class="ui-copy-btn shrink-0" data-copy="{{ payee }}" title="Copy address" aria-label="Copy the freelancer's address"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
       </dd>
-      <dt>Solde {{ asset_code }} du freelance</dt>
-      <dd><span class="ui-num ui-balance" data-usdc-balance="{{ payee }}" data-watch title="Lu sur Horizon toutes les 5 s">…</span></dd>
+      <dt>Freelancer {{ asset_code }} balance</dt>
+      <dd><span class="ui-num ui-balance" data-usdc-balance="{{ payee }}" data-watch title="Read from Horizon every 5 s">…</span></dd>
       {% for l in links %}
         <dt>{{ l.label }}</dt>
         <dd><a href="{{ l.url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ l.value }}">{{ l.value|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a></dd>
@@ -48,7 +48,7 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
   {% if platform_fallback and role == 'company' and not is_done %}
     <div class="ui-alert ui-alert-attn mt-4" role="status" data-platform-fallback>
       <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
-      <span>Adresse plateforme non configurée : rôles fusionnés avec l’entreprise (<code class="font-mono">LOWBID_PLATFORM_ADDRESS</code> vide).</span>
+      <span>Platform address not configured: roles merged with the company (<code class="font-mono">LOWBID_PLATFORM_ADDRESS</code> empty).</span>
     </div>
   {% endif %}
 
@@ -62,56 +62,56 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
   {# Next action #}
   <div class="mt-4" data-pay-action>
     {% if is_done %}
-      <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>{% if is_direct %}Paiement envoyé au freelance.{% else %}Fonds libérés vers le freelance.{% endif %} Tâche payée{% if task.paid_at %} le {{ task.paid_at|date:"d/m/Y à H:i" }}{% endif %}.</span></div>
+      <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>{% if is_direct %}Payment sent to the freelancer.{% else %}Funds released to the freelancer.{% endif %} Task paid{% if task.paid_at %} on {{ task.paid_at|date:"M j, Y H:i" }}{% endif %}.</span></div>
     {% elif action and action.mine and action.step == 'validate' %}
       <div id="validate-panel" class="ui-form-scope">
-        <p class="text-sm mb-3"><i class="fa-solid fa-star" style="color: var(--icon-accent)" aria-hidden="true"></i> Notez la livraison de 1 à 5, puis signez le paiement de {{ amount|usdc:asset_code }}.</p>
+        <p class="text-sm mb-3"><i class="fa-solid fa-star" style="color: var(--icon-accent)" aria-hidden="true"></i> Rate the delivery from 1 to 5, then sign the {{ amount|usdc:asset_code }} payment.</p>
         <form id="validate-form" class="ui-form-grid" novalidate data-validate data-validate-url="{{ validate_url }}">
           <fieldset class="ui-field ui-field-wide">
-            <legend class="ui-label">Note</legend>
-            <div class="ui-stars" role="radiogroup" aria-label="Note de 1 à 5">
+            <legend class="ui-label">Rating</legend>
+            <div class="ui-stars" role="radiogroup" aria-label="Rating from 1 to 5">
               {% for n in "12345" %}
                 <input type="radio" name="note" id="rate-{{ n }}" value="{{ n }}" data-rate="{{ n }}"{% if n == "5" %} checked{% endif %}>
-                <label for="rate-{{ n }}" title="{{ n }}/5"><i class="fa-solid fa-star" aria-hidden="true"></i><span class="sr-only">{{ n }} sur 5</span></label>
+                <label for="rate-{{ n }}" title="{{ n }}/5"><i class="fa-solid fa-star" aria-hidden="true"></i><span class="sr-only">{{ n }} out of 5</span></label>
               {% endfor %}
             </div>
             <span class="ui-help" data-rate-help>5/5 — excellent</span>
             <span class="ui-error" data-error-for="note" hidden></span>
           </fieldset>
           <div class="ui-field ui-field-wide">
-            <label for="validate-comment" class="ui-label">Commentaire <span class="normal-case font-normal">(optionnel)</span></label>
-            <textarea id="validate-comment" name="comment" class="ui-textarea" rows="2" maxlength="280" placeholder="Un mot sur la collaboration…" style="min-height: 64px"></textarea>
+            <label for="validate-comment" class="ui-label">Comment <span class="normal-case font-normal">(optional)</span></label>
+            <textarea id="validate-comment" name="comment" class="ui-textarea" rows="2" maxlength="280" placeholder="A word about the collaboration…" style="min-height: 64px"></textarea>
           </div>
           <div class="ui-field-wide">
             <span class="ui-error" data-error-for="_" hidden></span>
             <p class="ui-error" data-pay-error hidden></p>
             <div class="ui-sticky-actions">
-              <button type="submit" class="ui-btn ui-btn-primary" data-validate-submit data-loading-label="Validation…"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> {% if is_direct %}Valider et payer {{ amount|usdc:asset_code }}{% else %}Valider et libérer {{ amount|usdc:asset_code }}{% endif %}</button>
+              <button type="submit" class="ui-btn ui-btn-primary" data-validate-submit data-loading-label="Validating…"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> {% if is_direct %}Validate and pay {{ amount|usdc:asset_code }}{% else %}Validate and release {{ amount|usdc:asset_code }}{% endif %}</button>
             </div>
           </div>
         </form>
       </div>
     {% elif action and action.mine and action.evidence %}
       <div id="deliver-panel" class="ui-form-scope">
-        <p class="text-sm mb-3"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> Vous êtes choisi : déposez le lien de votre livraison.</p>
+        <p class="text-sm mb-3"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> You've been chosen: submit the link to your delivery.</p>
         <form id="deliver-form" class="ui-form-grid" data-pay-form novalidate onsubmit="return false">
           <div class="ui-field ui-field-wide">
-            <label for="deliver-link" class="ui-label">Lien de la livraison</label>
+            <label for="deliver-link" class="ui-label">Delivery link</label>
             <input id="deliver-link" name="delivery_link" class="ui-input" type="url" inputmode="url" maxlength="500" required placeholder="https://github.com/…/pull/42" autocomplete="off">
             <span class="ui-help">{{ action.hint }}</span>
           </div>
           <div class="ui-field-wide">
             <p class="ui-error" data-pay-error hidden></p>
             <div class="ui-sticky-actions">
-              <button type="button" class="ui-btn ui-btn-primary" data-pay-step="{{ action.step }}" data-prepare-url="{{ action.prepare_url }}" data-deliver data-loading-label="{% if action.no_tx %}Envoi…{% else %}Signature…{% endif %}"{% if action.no_tx %} data-confirm-title="Déclarer la livraison ?" data-confirm-message="L’entreprise vérifie, valide et vous note : le paiement suit la validation." data-confirm-label="Déclarer la livraison"{% endif %}><i class="fa-solid {{ action.icon }}" aria-hidden="true"></i> {{ action.label }}</button>
+              <button type="button" class="ui-btn ui-btn-primary" data-pay-step="{{ action.step }}" data-prepare-url="{{ action.prepare_url }}" data-deliver data-loading-label="{% if action.no_tx %}Sending…{% else %}Signing…{% endif %}"{% if action.no_tx %} data-confirm-title="Declare the delivery?" data-confirm-message="The company checks, validates and rates you: payment follows validation." data-confirm-label="Declare delivery"{% endif %}><i class="fa-solid {{ action.icon }}" aria-hidden="true"></i> {{ action.label }}</button>
             </div>
           </div>
         </form>
       </div>
     {% elif action and action.mine %}
-      <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-pay-step="{{ action.step }}" data-prepare-url="{{ action.prepare_url }}" data-loading-label="Signature…"><i class="fa-solid {{ action.icon }}" aria-hidden="true"></i> {{ action.label }}</button>
+      <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-pay-step="{{ action.step }}" data-prepare-url="{{ action.prepare_url }}" data-loading-label="Signing…"><i class="fa-solid {{ action.icon }}" aria-hidden="true"></i> {{ action.label }}</button>
       <p class="ui-error mt-2" data-pay-error hidden></p>
-      <p class="ui-help mt-2">{{ action.hint }}{% if action.step == 'approve' %} La libération des fonds s’enchaîne juste après (deuxième signature).{% endif %}</p>
+      <p class="ui-help mt-2">{{ action.hint }}{% if action.step == 'approve' %} The release of the funds follows right after (second signature).{% endif %}</p>
     {% elif action %}
       <div class="ui-alert ui-alert-info"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>{{ action.waiting }}</span></div>
       
@@ -121,8 +121,8 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
   {# Trustline helper for the two parties (not needed for the native asset) #}
   {% if is_party and not is_done and not asset_native %}
     <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
-      <span class="ui-meta">Le wallet qui reçoit des {{ asset_code }} doit avoir la trustline.</span>
-      <button type="button" class="ui-btn ui-btn-ghost ui-btn-sm" data-pay-trustline data-prepare-url="{{ trustline_url }}" data-loading-label="Vérification…"><i class="fa-solid fa-link" aria-hidden="true"></i> Ajouter la trustline {{ asset_code }}</button>
+      <span class="ui-meta">The wallet receiving {{ asset_code }} needs the trustline.</span>
+      <button type="button" class="ui-btn ui-btn-ghost ui-btn-sm" data-pay-trustline data-prepare-url="{{ trustline_url }}" data-loading-label="Checking…"><i class="fa-solid fa-link" aria-hidden="true"></i> Add the {{ asset_code }} trustline</button>
     </div>
   {% endif %}
 

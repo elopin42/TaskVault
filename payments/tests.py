@@ -67,7 +67,7 @@ class TrustlessWorkClientTests(SimpleTestCase):
         post.assert_not_called()
         self.assertFalse(env["ok"])
         self.assertEqual(env["status"], 0)
-        self.assertIn("clé API", env["error"])
+        self.assertIn("API key", env["error"])
 
     def test_deploy_body_and_headers(self):
         with self._post_ok() as post:
@@ -271,12 +271,12 @@ class StellarBuildersTests(SimpleTestCase):
             get.assert_not_called()
             with patch("payments.stellar.requests.get", return_value=_resp(200, _horizon_account(with_usdc=False))):
                 self.assertEqual(stellar.asset_balance(CLIENT), Decimal("9999"))
-            self.assertEqual(stellar.explain_result_codes({"operations": ["op_underfunded"]}), "Solde XLM insuffisant.")
+            self.assertEqual(stellar.explain_result_codes({"operations": ["op_underfunded"]}), "Insufficient XLM balance.")
 
     def test_result_code_messages_carry_the_asset_code(self):
-        self.assertEqual(stellar.explain_result_codes({"operations": ["op_no_trust"]}), "Le destinataire n’a pas de trustline USDC.")
+        self.assertEqual(stellar.explain_result_codes({"operations": ["op_no_trust"]}), "The recipient has no USDC trustline.")
         with override_settings(STELLAR_ASSET_CODE="EURC", STELLAR_ASSET_ISSUER=PLATFORM):
-            self.assertEqual(stellar.explain_result_codes({"operations": ["op_no_trust"]}), "Le destinataire n’a pas de trustline EURC.")
+            self.assertEqual(stellar.explain_result_codes({"operations": ["op_no_trust"]}), "The recipient has no EURC trustline.")
 
     def test_build_payment_xdr_offline_roundtrip(self):
         with patch("payments.stellar.requests.get") as get:
@@ -340,7 +340,7 @@ class StellarBuildersTests(SimpleTestCase):
         self.assertIn("friendbot", str(ctx.exception))
 
     def test_build_payment_xdr_horizon_down_is_not_account_not_found(self):
-        """A proxy 403 / 5xx / transport error must say "Horizon injoignable", not "financez-le"."""
+        """A proxy 403 / 5xx / transport error must say "Horizon is unreachable", not "fund it first"."""
         for failing in (
             {"return_value": _resp(403, {"status": 403})},
             {"return_value": _resp(503, {})},
@@ -417,13 +417,13 @@ class StellarSubmitTests(SimpleTestCase):
             env = stellar.submit_xdr(self.signed_xdr)
         self.assertFalse(env["ok"])
         self.assertEqual(env["status"], 400)
-        self.assertEqual(env["error"], "Le destinataire n’a pas de trustline USDC.")
+        self.assertEqual(env["error"], "The recipient has no USDC trustline.")
         self.assertEqual(env["hash"], self.expected_hash)  # computed locally even on failure
 
     def test_submit_maps_tx_codes(self):
         cases = {
-            "op_underfunded": "Solde USDC insuffisant.",
-            "op_no_destination": "Le compte destinataire n’existe pas encore sur le réseau (financez-le via friendbot).",
+            "op_underfunded": "Insufficient USDC balance.",
+            "op_no_destination": "The recipient account does not exist on the network yet (fund it via friendbot).",
         }
         for code, message in cases.items():
             payload = {"extras": {"result_codes": {"transaction": "tx_failed", "operations": [code]}}}
@@ -431,13 +431,13 @@ class StellarSubmitTests(SimpleTestCase):
                 self.assertEqual(stellar.submit_xdr(self.signed_xdr)["error"], message)
         payload = {"extras": {"result_codes": {"transaction": "tx_bad_seq"}}}
         with patch("payments.stellar.requests.post", return_value=_resp(400, payload)):
-            self.assertEqual(stellar.submit_xdr(self.signed_xdr)["error"], "Réessayez (numéro de séquence dépassé).")
+            self.assertEqual(stellar.submit_xdr(self.signed_xdr)["error"], "Try again (sequence number out of date).")
         payload = {"extras": {"result_codes": {"transaction": "tx_bad_auth"}}}
         with patch("payments.stellar.requests.post", return_value=_resp(400, payload)):
-            self.assertIn("autre adresse", stellar.submit_xdr(self.signed_xdr)["error"])
+            self.assertIn("other than", stellar.submit_xdr(self.signed_xdr)["error"])
         payload = {"extras": {"result_codes": {"transaction": "tx_weird"}}}
         with patch("payments.stellar.requests.post", return_value=_resp(400, payload)):
-            self.assertEqual(stellar.submit_xdr(self.signed_xdr)["error"], "Transaction rejetée (tx_weird).")
+            self.assertEqual(stellar.submit_xdr(self.signed_xdr)["error"], "Transaction rejected (tx_weird).")
 
     def test_submit_timeout_504(self):
         with patch("payments.stellar.requests.post", return_value=_resp(504, {"status": 504, "title": "Timeout"})):
@@ -462,12 +462,12 @@ class StellarSubmitTests(SimpleTestCase):
         self.assertEqual(env["error"], stellar.ERR_BAD_XDR)
 
     def test_explain_result_codes(self):
-        self.assertEqual(stellar.explain_result_codes(None), "La transaction a été rejetée par le réseau.")
+        self.assertEqual(stellar.explain_result_codes(None), "The transaction was rejected by the network.")
         self.assertEqual(
             stellar.explain_result_codes({"transaction": "tx_failed", "operations": ["op_success", "op_line_full"]}),
-            "La trustline du destinataire est pleine.",
+            "The recipient's trustline is full.",
         )
-        self.assertEqual(stellar.explain_result_codes({"operations": ["op_xyz"]}), "Opération rejetée (op_xyz).")
+        self.assertEqual(stellar.explain_result_codes({"operations": ["op_xyz"]}), "Operation rejected (op_xyz).")
 
 
 @override_settings(

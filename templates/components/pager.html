@@ -3,11 +3,11 @@ Pagination for a django Page object: {% include "components/pager.html" with pag
 Keeps the other query parameters (tab, tag, q, sort) through the {% qs %} tag.
 {% endcomment %}{% if page.paginator.num_pages > 1 %}
 <nav class="ui-pager" aria-label="Pagination">
-  <span class="ui-pager-count">{{ page.start_index }}–{{ page.end_index }} sur {{ page.paginator.count }}</span>
+  <span class="ui-pager-count">{{ page.start_index }}–{{ page.end_index }} of {{ page.paginator.count }}</span>
   <div class="ui-pager-nav">
-    <a class="ui-pager-btn" href="{% if page.has_previous %}{% qs page=page.previous_page_number %}{% else %}#{% endif %}"{% if not page.has_previous %} aria-disabled="true"{% endif %} rel="prev"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span class="sr-only">Précédent</span></a>
+    <a class="ui-pager-btn" href="{% if page.has_previous %}{% qs page=page.previous_page_number %}{% else %}#{% endif %}"{% if not page.has_previous %} aria-disabled="true"{% endif %} rel="prev"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span class="sr-only">Previous</span></a>
     {% for n in page.paginator.get_elided_page_range %}{% if n == page.paginator.ELLIPSIS %}<span class="ui-pager-gap ui-meta">…</span>{% else %}<a class="ui-pager-num{% if n == page.number %} is-active{% endif %}" href="{% qs page=n %}"{% if n == page.number %} aria-current="page"{% endif %}>{{ n }}</a>{% endif %}{% endfor %}
-    <a class="ui-pager-btn" href="{% if page.has_next %}{% qs page=page.next_page_number %}{% else %}#{% endif %}"{% if not page.has_next %} aria-disabled="true"{% endif %} rel="next"><span class="sr-only">Suivant</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>
+    <a class="ui-pager-btn" href="{% if page.has_next %}{% qs page=page.next_page_number %}{% else %}#{% endif %}"{% if not page.has_next %} aria-disabled="true"{% endif %} rel="next"><span class="sr-only">Next</span><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></a>
   </div>
 </nav>
 {% endif %}

@@ -13,12 +13,12 @@
  *
  * Markup:
  *   <button data-pay-step="fund" data-prepare-url="/pay/prepare/<task>/fund/" [data-send-url] [data-pay-body='{"k":1}']
- *           [data-loading-label="Signature…"] [data-no-reload]
- *           [data-confirm-title data-confirm-message data-confirm-label]>Bloquer les fonds</button>
+ *           [data-loading-label="Signing…"] [data-no-reload]
+ *           [data-confirm-title data-confirm-message data-confirm-label]>Lock the funds</button>
  *   <form data-pay-form> … </form>                 (its fields join the prepare/send body, e.g. delivery_link)
  *   <p data-pay-error hidden></p>                       (nearest ancestor's one gets the server error)
- *   <button data-pay-trustline>Ajouter la trustline</button>      (uses LOWBID.urls.trustlinePrepare)
- *   <button data-fund data-pending-url="/pay/project/<pk>/pending.json">Financer le projet</button>
+ *   <button data-pay-trustline>Add the trustline</button>      (uses LOWBID.urls.trustlinePrepare)
+ *   <button data-fund data-pending-url="/pay/project/<pk>/pending.json">Fund the project</button>
  *   <span data-usdc-balance="G…" data-watch>…</span>     (polled from Horizon: 5 s for 2 min, then 15 s, up to 15 min)
  *
  * Public API:
@@ -57,15 +57,15 @@
   }
 
   function errorMessage(err) {
-    if (!err) return "Erreur inconnue.";
+    if (!err) return "Unknown error.";
     if (err.data && typeof err.data.message === "string" && err.data.message) return err.data.message;
     if (err.data && typeof err.data.error === "string" && err.data.error) return err.data.error;
     var msg = err.message || String(err);
-    if (msg === "freighter_missing") return "Installez l’extension Freighter puis rechargez la page.";
-    if (/^HTTP 401/.test(msg)) return "Connectez votre wallet pour continuer.";
-    if (/^HTTP 403/.test(msg)) return "Ce wallet n’est pas autorisé à faire cette action.";
-    if (/^HTTP 5\d\d/.test(msg)) return "Erreur serveur, réessayez dans un instant.";
-    if (/Failed to fetch|NetworkError/i.test(msg)) return "Réseau indisponible, réessayez.";
+    if (msg === "freighter_missing") return "Install the Freighter extension, then reload the page.";
+    if (/^HTTP 401/.test(msg)) return "Connect your wallet to continue.";
+    if (/^HTTP 403/.test(msg)) return "This wallet is not allowed to do this.";
+    if (/^HTTP 5\d\d/.test(msg)) return "Server error, try again in a moment.";
+    if (/Failed to fetch|NetworkError/i.test(msg)) return "Network unavailable, try again.";
     return msg;
   }
 
@@ -90,7 +90,7 @@
       btn.classList.add("is-loading");
       btn.disabled = true;
       btn.setAttribute("aria-busy", "true");
-      setLoadingLabel(btn, label || btn.getAttribute("data-loading-label") || "Signature…");
+      setLoadingLabel(btn, label || btn.getAttribute("data-loading-label") || "Signing…");
     } else {
       delete btn.dataset.busy;
       btn.classList.remove("is-loading");
@@ -169,13 +169,13 @@
 
     /* Success toast carrying the tx hash and its stellar.expert link (the toast body is text-only by design). */
     toastTx: function (message, hash, opts) {
-      var t = toast(message + (hash ? " (" + Lowbid.shortAddr(hash, 6) + ")" : ""), "success", Object.assign({ title: "Confirmé", duration: 9000 }, opts || {}));
+      var t = toast(message + (hash ? " (" + Lowbid.shortAddr(hash, 6) + ")" : ""), "success", Object.assign({ title: "Confirmed", duration: 9000 }, opts || {}));
       if (t && t.el && hash) {
         var body = t.el.querySelector(".lb-toast-message");
         if (body) {
           var a = document.createElement("a");
           a.href = pay.explorerTxUrl(hash); a.target = "_blank"; a.rel = "noopener"; a.className = "ui-link";
-          a.textContent = "voir sur stellar.expert";
+          a.textContent = "view on stellar.expert";
           body.appendChild(document.createTextNode(" — "));
           body.appendChild(a);
         }
@@ -188,28 +188,28 @@
        was already shown (user declined). */
     signAndSend: function (opts) {
       opts = opts || {};
-      if (!opts.xdr) return Promise.reject(new Error("Transaction à signer manquante."));
-      if (!opts.sendUrl) return Promise.reject(new Error("URL d’envoi manquante."));
+      if (!opts.xdr) return Promise.reject(new Error("Missing transaction to sign."));
+      if (!opts.sendUrl) return Promise.reject(new Error("Missing send URL."));
       if (typeof Lowbid.signTransaction !== "function") return Promise.reject(new Error("freighter_missing"));
 
-      toast("Confirmez la transaction dans Freighter.", "info", { title: "Signature demandée", duration: 6000 });
+      toast("Confirm the transaction in Freighter.", "info", { title: "Signature requested", duration: 6000 });
       return Lowbid.signTransaction(opts.xdr, {
         networkPassphrase: CFG.networkPassphrase,
         address: CFG.walletAddress || undefined
       }).catch(function (err) {
         if (isDeclined(err)) {
-          toast("Signature refusée dans Freighter — rien n’a été envoyé.", "warning", { title: "Annulé" });
+          toast("Signature declined in Freighter — nothing was sent.", "warning", { title: "Cancelled" });
           var e = new Error("declined"); e.code = "declined"; e.handled = true; e.cause = err;
           throw e;
         }
         throw err;
       }).then(function (signedXdr) {
-        toast("Envoi sur le réseau Stellar…", "info", { title: "Envoi", duration: 8000 });
+        toast("Sending to the Stellar network…", "info", { title: "Sending", duration: 8000 });
         var body = Object.assign({ signed_xdr: signedXdr }, opts.extra || {});
         return Lowbid.api(opts.sendUrl, { method: "POST", body: body });
       }).then(function (res) {
-        if (!res || res.ok === false) throw failed(res, "Transaction refusée par le réseau.");
-        pay.toastTx(res.message || "Transaction confirmée.", res.hash);
+        if (!res || res.ok === false) throw failed(res, "Transaction rejected by the network.");
+        pay.toastTx(res.message || "Transaction confirmed.", res.hash);
         return res;
       });
     },
@@ -218,13 +218,13 @@
        call (the prepare answer when the server completed the step itself, e.g. direct-mode deliver). */
     run: function (desc) {
       desc = desc || {};
-      if (!desc.prepareUrl) return Promise.reject(new Error("Bouton mal configuré (data-prepare-url manquant)."));
+      if (!desc.prepareUrl) return Promise.reject(new Error("Misconfigured button (data-prepare-url missing)."));
       var body = Object.assign({}, desc.body || {});
       body.step = desc.step || body.step || "";
       return Lowbid.api(desc.prepareUrl, { method: "POST", body: body }).then(function (prep) {
-        if (!prep || prep.ok === false) throw failed(prep, "Préparation impossible.");
+        if (!prep || prep.ok === false) throw failed(prep, "Could not prepare the transaction.");
         if (!prep.xdr) {
-          if (prep.message) toast(prep.message, "success", { title: "Enregistré" });
+          if (prep.message) toast(prep.message, "success", { title: "Saved" });
           return prep; // nothing to sign: the server completed the step itself
         }
         return pay.signAndSend({
@@ -265,15 +265,15 @@
       if (!btn || btn.dataset.busy === "1" || btn.dataset.pending === "1") return Promise.resolve();
       var prepareUrl = btn.getAttribute("data-prepare-url");
       if (!prepareUrl) {
-        showError(btn, "Bouton mal configuré (data-prepare-url manquant).");
+        showError(btn, "Misconfigured button (data-prepare-url missing).");
         return Promise.resolve();
       }
       var ask = Promise.resolve(true);
       if (btn.hasAttribute("data-confirm-message") && typeof Lowbid.confirm === "function") {
         ask = Lowbid.confirm({
-          title: btn.getAttribute("data-confirm-title") || "Confirmer ?",
+          title: btn.getAttribute("data-confirm-title") || "Confirm?",
           message: btn.getAttribute("data-confirm-message"),
-          confirmLabel: btn.getAttribute("data-confirm-label") || "Confirmer",
+          confirmLabel: btn.getAttribute("data-confirm-label") || "Confirm",
           icon: "fa-truck-fast"
         });
       }
@@ -298,26 +298,26 @@
           if (err && err.handled) { if (err.completed) finish(null, btn); return; }
           var msg = errorMessage(err);
           showError(btn, msg);
-          toast(msg, "error", { title: "Paiement" });
+          toast(msg, "error", { title: "Payment" });
           console.warn("lowbid-pay: step failed", err);
           if (err && err.completed) finish(null, btn); // a signature went through: refresh the panel
         });
       });
     },
 
-    /* "Financer le projet": deploy + fund every assigned, unfunded task, one after the other. */
+    /* "Fund the project": deploy + fund every assigned, unfunded task, one after the other. */
     fundProject: function (btn) {
       var url = (btn && btn.getAttribute("data-pending-url")) || (window.LOWBID_PROJECT && window.LOWBID_PROJECT.urls && window.LOWBID_PROJECT.urls.fund);
       if (!url) return Promise.resolve();
       if (btn && btn.dataset.busy === "1") return Promise.resolve();
       var status = document.querySelector("[data-pay-status]");
       function say(text) { if (status) status.textContent = text; }
-      if (btn) { showError(btn, ""); setLoading(btn, true, "Financement…"); }
+      if (btn) { showError(btn, ""); setLoading(btn, true, "Funding…"); }
       var done = 0;
       return Lowbid.api(url).then(function (data) {
-        if (!data || data.ok === false) throw failed(data, "Financement impossible.");
+        if (!data || data.ok === false) throw failed(data, "Could not fund the project.");
         var tasks = data.tasks || [];
-        if (!tasks.length) { toast(data.hint || "Rien à financer.", "info", { title: "Financement" }); if (btn) setLoading(btn, false); return null; }
+        if (!tasks.length) { toast(data.hint || "Nothing to fund.", "info", { title: "Funding" }); if (btn) setLoading(btn, false); return null; }
         var i = 0;
         function nextTask() {
           if (i >= tasks.length) return Promise.resolve();
@@ -325,14 +325,14 @@
           return pay.runChain(t.next, {
             stopAfter: ["fund"],
             onStep: function (step) {
-              var label = "Tâche " + i + "/" + tasks.length + " « " + t.title + " » : " + step.label + "…";
+              var label = "Task " + i + "/" + tasks.length + " \"" + t.title + "\": " + step.label + "…";
               say(label); if (btn) setLoading(btn, true, label);
             }
           }).then(function () { done += 1; return nextTask(); });
         }
         return nextTask().then(function () {
-          say(done + " tâche" + (done > 1 ? "s" : "") + " financée" + (done > 1 ? "s" : "") + ". Rechargement…");
-          toast("Projet financé : " + done + " escrow" + (done > 1 ? "s" : "") + " créé" + (done > 1 ? "s" : "") + " et alimenté" + (done > 1 ? "s" : "") + ".", "success", { title: "Financement" });
+          say(done + " task" + (done > 1 ? "s" : "") + " funded. Reloading…");
+          toast("Project funded: " + done + " escrow" + (done > 1 ? "s" : "") + " created and funded.", "success", { title: "Funding" });
           finish(null, btn);
         });
       }).catch(function (err) {
@@ -340,7 +340,7 @@
         var msg = errorMessage(err);
         if (!(err && err.handled)) {
           showError(btn || status, msg);
-          toast(msg, "error", { title: "Financement" });
+          toast(msg, "error", { title: "Funding" });
           console.warn("lowbid-pay: funding failed", err);
         }
         if (done || (err && err.completed)) finish(null, btn); // some signatures went through: refresh the banner
@@ -352,17 +352,17 @@
       var urls = CFG.urls || {};
       var prepareUrl = (btn && btn.getAttribute("data-prepare-url")) || urls.trustlinePrepare;
       if (!prepareUrl) {
-        var e = new Error("Trustline non disponible sur cette page.");
+        var e = new Error("Trustline not available on this page.");
         if (btn) showError(btn, e.message);
         return Promise.reject(e);
       }
       if (btn && btn.dataset.busy === "1") return Promise.resolve();
       if (btn) { showError(btn, ""); setLoading(btn, true); }
       return Lowbid.api(prepareUrl, { method: "POST", body: { address: CFG.walletAddress || "" } }).then(function (prep) {
-        if (!prep || prep.ok === false) throw failed(prep, "Préparation impossible.");
+        if (!prep || prep.ok === false) throw failed(prep, "Could not prepare the transaction.");
         if (!prep.xdr) {
           // Already has the trustline (or native asset): the server says so without an XDR.
-          toast(prep.message || "La trustline est déjà en place.", "info");
+          toast(prep.message || "The trustline is already in place.", "info");
           if (btn) setLoading(btn, false);
           return prep;
         }
@@ -433,7 +433,7 @@
         nodesFor().forEach(function (n) {
           if (n.getAttribute("data-balance")) return; // keep the last good value
           n.textContent = "—";
-          n.title = "Solde indisponible (Horizon injoignable).";
+          n.title = "Balance unavailable (Horizon unreachable).";
         });
       }
 

@@ -1,9 +1,9 @@
 {% load static %}<!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>500 — Erreur serveur · Lowbid</title>
+  <title>500 — Server error · Lowbid</title>
   {# Standalone on purpose (no base.html, no context processors): only the token sheet, so the palette stays the single source of colours. #}
   <link rel="stylesheet" href="{% static 'css/lowbid-tokens.css' %}">
   <style>
@@ -18,9 +18,9 @@
 </head>
 <body>
   <div class="card">
-    <h1>500 · Erreur serveur</h1>
-    <p>Quelque chose a cassé de notre côté. Réessayez dans un instant.</p>
-    <a href="/">Retour à l’accueil</a>
+    <h1>500 · Server error</h1>
+    <p>Something broke on our side. Try again in a moment.</p>
+    <a href="/">Back to home</a>
   </div>
 </body>
 </html>

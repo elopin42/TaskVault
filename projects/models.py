@@ -15,13 +15,13 @@ from django.db.models.functions import Coalesce
 
 ZERO = Decimal("0")
 
-PROJECT_STATUS_LABELS = {"draft": "Brouillon", "funded": "Financé", "closed": "Terminé"}
+PROJECT_STATUS_LABELS = {"draft": "Draft", "funded": "Funded", "closed": "Closed"}
 PROJECT_STATUS_BADGES = {"draft": "ui-badge-neutral", "funded": "ui-badge-ok", "closed": "ui-badge-brand"}
 
-STATUS_LABELS = {"open": "Ouvert", "taken": "Pris", "delivered": "Livré", "paid": "Payé"}
+STATUS_LABELS = {"open": "Open", "taken": "Taken", "delivered": "Delivered", "paid": "Paid"}
 STATUS_BADGES = {"open": "ui-badge-info", "taken": "ui-badge-brand", "delivered": "ui-badge-attn", "paid": "ui-badge-ok"}
 
-APPLICATION_LABELS = {"pending": "En attente", "chosen": "Choisi", "rejected": "Non retenu"}
+APPLICATION_LABELS = {"pending": "Pending", "chosen": "Chosen", "rejected": "Not selected"}
 APPLICATION_BADGES = {"pending": "ui-badge-neutral", "chosen": "ui-badge-ok", "rejected": "ui-badge-neutral"}
 
 
@@ -41,9 +41,9 @@ class ProjectQuerySet(models.QuerySet):
 
 class Project(models.Model):
     class Status(models.TextChoices):
-        DRAFT = "draft", "Brouillon"  # no task funded / paid yet
-        FUNDED = "funded", "Financé"  # every assigned task holds funds (escrow) / a first payment was made (direct)
-        CLOSED = "closed", "Terminé"  # every task paid
+        DRAFT = "draft", "Draft"  # no task funded / paid yet
+        FUNDED = "funded", "Funded"  # every assigned task holds funds (escrow) / a first payment was made (direct)
+        CLOSED = "closed", "Closed"  # every task paid
 
     company = models.ForeignKey("accounts.WalletUser", on_delete=models.PROTECT, related_name="projects")
     title = models.CharField(max_length=120)
@@ -113,10 +113,10 @@ class Project(models.Model):
 
 class Task(models.Model):
     class Status(models.TextChoices):
-        OPEN = "open", "Ouvert"
-        TAKEN = "taken", "Pris"
-        DELIVERED = "delivered", "Livré"
-        PAID = "paid", "Payé"
+        OPEN = "open", "Open"
+        TAKEN = "taken", "Taken"
+        DELIVERED = "delivered", "Delivered"
+        PAID = "paid", "Paid"
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tasks")
     title = models.CharField(max_length=120)
@@ -180,9 +180,9 @@ class Task(models.Model):
 
 class Application(models.Model):
     class Status(models.TextChoices):
-        PENDING = "pending", "En attente"
-        CHOSEN = "chosen", "Choisi"
-        REJECTED = "rejected", "Non retenu"
+        PENDING = "pending", "Pending"
+        CHOSEN = "chosen", "Chosen"
+        REJECTED = "rejected", "Not selected"
 
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="applications")
     freelancer = models.ForeignKey("accounts.WalletUser", on_delete=models.PROTECT, related_name="applications")

@@ -16,14 +16,14 @@ from django.db import models
 from payments import stellar
 
 STATUS_LABELS = {
-    "created": "En préparation",
-    "deployed": "Escrow créé",
-    "funded": "Fonds bloqués",
-    "delivered": "Livré",
-    "approved": "Livraison validée",
-    "released": "Fonds libérés",
-    "paid": "Payé",
-    "failed": "Échec",
+    "created": "Preparing",
+    "deployed": "Escrow created",
+    "funded": "Funds locked",
+    "delivered": "Delivered",
+    "approved": "Delivery validated",
+    "released": "Funds released",
+    "paid": "Paid",
+    "failed": "Failed",
 }
 STATUS_BADGES = {
     "created": "ui-badge-neutral",
@@ -39,18 +39,18 @@ STATUS_BADGES = {
 
 class Escrow(models.Model):
     class Mode(models.TextChoices):
-        ESCROW = "escrow", "Escrow Trustless Work"
-        DIRECT = "direct", "Paiement direct (sans escrow)"
+        ESCROW = "escrow", "Trustless Work escrow"
+        DIRECT = "direct", "Direct payment (no escrow)"
 
     class Status(models.TextChoices):
-        CREATED = "created", "En préparation"
-        DEPLOYED = "deployed", "Escrow créé"
-        FUNDED = "funded", "Fonds bloqués"
-        DELIVERED = "delivered", "Livré"
-        APPROVED = "approved", "Livraison validée"
-        RELEASED = "released", "Fonds libérés"
-        PAID = "paid", "Payé"  # direct mode terminal state
-        FAILED = "failed", "Échec"
+        CREATED = "created", "Preparing"
+        DEPLOYED = "deployed", "Escrow created"
+        FUNDED = "funded", "Funds locked"
+        DELIVERED = "delivered", "Delivered"
+        APPROVED = "approved", "Delivery validated"
+        RELEASED = "released", "Funds released"
+        PAID = "paid", "Paid"  # direct mode terminal state
+        FAILED = "failed", "Failed"
 
     task = models.OneToOneField("projects.Task", on_delete=models.CASCADE, related_name="escrow")
     mode = models.CharField(max_length=8, choices=Mode.choices)
@@ -115,18 +115,18 @@ class Escrow(models.Model):
             links.append(
                 {
                     "key": "contract",
-                    "label": "Contrat escrow",
+                    "label": "Escrow contract",
                     "url": stellar.explorer_contract_url(self.contract_id),
                     "value": self.contract_id,
                 }
             )
         labels = (
-            ("deploy_tx_hash", "Création de l’escrow"),
-            ("fund_tx_hash", "Blocage des fonds"),
-            ("deliver_tx_hash", "Déclaration de livraison"),
+            ("deploy_tx_hash", "Escrow creation"),
+            ("fund_tx_hash", "Funds locking"),
+            ("deliver_tx_hash", "Delivery declaration"),
             ("approve_tx_hash", "Validation"),
-            ("release_tx_hash", "Libération des fonds"),
-            ("payment_tx_hash", "Paiement direct"),
+            ("release_tx_hash", "Funds release"),
+            ("payment_tx_hash", "Direct payment"),
         )
         for field, label in labels:
             value = getattr(self, field)

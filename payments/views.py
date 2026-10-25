@@ -4,7 +4,7 @@
     POST /pay/send/<task_pk>/<step>/      {signed_xdr, ...extra} -> {ok, redirect, tx_hash, explorer_url, message, pending, next}
     POST /pay/trustline/prepare/          -> same prepare shape (no xdr + message when the trustline exists)
     POST /pay/trustline/send/             {signed_xdr} -> {ok, tx_hash, explorer_url, message}
-    GET  /pay/project/<pk>/pending.json   -> {ok, tasks: [{task, title, amount, next}]} (company; "Financer le projet")
+    GET  /pay/project/<pk>/pending.json   -> {ok, tasks: [{task, title, amount, next}]} (company; "Fund the project")
     GET  /pay/<task_pk>/                  -> 302 to the task detail #paiement
 
 `next` is the viewer's following step ({step, label, prepare_url, mine, …} or null) so the page
@@ -167,11 +167,11 @@ def trustline_send(request: HttpRequest) -> JsonResponse:
 @require_GET
 @wallet_required
 def project_pending(request: HttpRequest, pk: int) -> JsonResponse:
-    """What "Financer le projet" chains: the company's deploy/fund step of every assigned, unfunded task."""
+    """What "Fund the project" chains: the company's deploy/fund step of every assigned, unfunded task."""
     project = get_object_or_404(Project.objects.select_related("company"), pk=pk)
     wallet = get_wallet(request)
     if not project.is_company(wallet):
-        return _refused(PaymentError("forbidden", "Seule l’entreprise peut financer son projet."))
+        return _refused(PaymentError("forbidden", "Only the company can fund its project."))
     funding = services.project_funding(project, wallet)
     return JsonResponse(
         {

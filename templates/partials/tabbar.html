@@ -1,5 +1,5 @@
 {# Mobile bottom tab bar (< 1024px). Rendered only for a signed-in wallet; body gets .has-tabbar in base.html. #}
-<nav class="lb-tabbar" aria-label="Navigation mobile principale">
+<nav class="lb-tabbar" aria-label="Main mobile navigation">
   {% for link in nav_links %}
     <a href="{{ link.href }}" class="lb-tab{% if link.active %} is-active{% endif %}{% if link.primary %} is-primary{% endif %}"{% if link.active %} aria-current="page"{% endif %}>
       <i class="fa-solid {{ link.icon }}" aria-hidden="true"></i><span>{{ link.short|default:link.label }}</span>

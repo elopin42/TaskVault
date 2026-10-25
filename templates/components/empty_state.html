@@ -1,4 +1,4 @@
-{% comment %}{% include "components/empty_state.html" with icon="fa-inbox" title="Aucun projet" desc="…" cta_href=url cta_label="Créer" cta_icon="fa-plus" %}{% endcomment %}<div class="empty-state glass-card{% if class %} {{ class }}{% endif %}">
+{% comment %}{% include "components/empty_state.html" with icon="fa-inbox" title="No projects" desc="…" cta_href=url cta_label="Create" cta_icon="fa-plus" %}{% endcomment %}<div class="empty-state glass-card{% if class %} {{ class }}{% endif %}">
   <div class="empty-state-icon"><i class="fa-solid {{ icon|default:'fa-inbox' }}" aria-hidden="true"></i></div>
   <div class="empty-state-title">{{ title }}</div>
   {% if desc %}<p class="empty-state-desc">{{ desc }}</p>{% endif %}

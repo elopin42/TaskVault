@@ -7,72 +7,72 @@ banner (totals, per-task escrow status, every hash with its stellar.expert link)
 payments.services.project_funding().
 {% endcomment %}
 {% block title %}{{ project.title }} · Lowbid{% endblock %}
-{% block meta_description %}{{ project.title }} — {{ project.tasks_count }} tâche{{ project.tasks_count|pluralize }}, {{ project.total_amount|usdc }} au total.{% endblock %}
+{% block meta_description %}{{ project.title }} — {{ project.tasks_count }} task{{ project.tasks_count|pluralize }}, {{ project.total_amount|usdc }} in total.{% endblock %}
 
 {% block content %}
 <div class="ui-page-header">
   <div class="min-w-0">
-    <p class="ui-meta mb-1"><a href="{% url 'projects:project_list' %}" class="ui-link"><i class="fa-solid fa-arrow-left text-[10px]" aria-hidden="true"></i> Projets</a> · #{{ project.pk }}</p>
+    <p class="ui-meta mb-1"><a href="{% url 'projects:project_list' %}" class="ui-link"><i class="fa-solid fa-arrow-left text-[10px]" aria-hidden="true"></i> Projects</a> · #{{ project.pk }}</p>
     <h1 class="ui-page-title flex flex-wrap items-center gap-2">{{ project.title|underline_last }} {% include "components/status_badge.html" with obj=project live=True %}</h1>
     <p class="ui-page-sub flex flex-wrap items-center gap-x-3 gap-y-1">
-      {% include "components/wallet.html" with address=project.company.stellar_address name=project.company.display_name label="Entreprise" you=viewer_is_company %}
-      <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> créé <span data-time-ago="{{ project.created_at|date:'c' }}">le {{ project.created_at|date:"d/m/Y à H:i" }}</span></span>
+      {% include "components/wallet.html" with address=project.company.stellar_address name=project.company.display_name label="Company" you=viewer_is_company %}
+      <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> created <span data-time-ago="{{ project.created_at|date:'c' }}">{{ project.created_at|date:"M j, Y H:i" }}</span></span>
     </p>
     {% include "components/tags.html" with tags=tag_list linked=True class="mt-2" %}
   </div>
   <div class="ui-page-actions">
     {% if show_fund and not funding.is_direct %}
       {% if funding.can_fund %}
-        <button type="button" class="ui-btn ui-btn-primary" data-fund data-pending-url="{% url 'payments:project_pending' project.pk %}" data-loading-label="Financement…" title="{{ funding.fund_hint }}"><i class="fa-solid fa-lock" aria-hidden="true"></i> Financer le projet</button>
+        <button type="button" class="ui-btn ui-btn-primary" data-fund data-pending-url="{% url 'payments:project_pending' project.pk %}" data-loading-label="Funding…" title="{{ funding.fund_hint }}"><i class="fa-solid fa-lock" aria-hidden="true"></i> Fund the project</button>
       {% else %}
         <span class="inline-flex flex-col items-end gap-0.5 max-w-xs text-end">
-          <button type="button" class="ui-btn ui-btn-primary" data-fund disabled aria-disabled="true" title="{{ funding.fund_hint }}"><i class="fa-solid fa-lock" aria-hidden="true"></i> Financer le projet</button>
+          <button type="button" class="ui-btn ui-btn-primary" data-fund disabled aria-disabled="true" title="{{ funding.fund_hint }}"><i class="fa-solid fa-lock" aria-hidden="true"></i> Fund the project</button>
           <span class="ui-meta" data-pay-hint>{{ funding.fund_hint }}</span>
         </span>
       {% endif %}
     {% endif %}
     <details class="ui-menu">
-      <summary class="ui-btn" aria-label="Plus d’actions" title="Partager"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span class="hidden sm:inline"> Partager</span></summary>
+      <summary class="ui-btn" aria-label="More actions" title="Share"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span class="hidden sm:inline"> Share</span></summary>
       <div class="ui-menu-panel">
-        <button type="button" class="ui-menu-item" data-share="{{ request.build_absolute_uri }}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Partager ce projet</button>
-        <button type="button" class="ui-menu-item" data-copy="{{ request.build_absolute_uri }}"><i class="fa-regular fa-copy" aria-hidden="true"></i> Copier le lien</button>
+        <button type="button" class="ui-menu-item" data-share="{{ request.build_absolute_uri }}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i> Share this project</button>
+        <button type="button" class="ui-menu-item" data-copy="{{ request.build_absolute_uri }}"><i class="fa-regular fa-copy" aria-hidden="true"></i> Copy link</button>
         <div class="ui-menu-sep"></div>
-        <a href="{% url 'dashboard:profile' project.company.stellar_address %}" class="ui-menu-item"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Profil de l’entreprise</a>
+        <a href="{% url 'dashboard:profile' project.company.stellar_address %}" class="ui-menu-item"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Company profile</a>
       </div>
     </details>
   </div>
 </div>
 
-<section class="ui-kpi-band mb-6" aria-label="Chiffres clés">
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Budget total</span><span class="ui-kpi-value" data-kpi-total>{{ project.total_amount|usdc_parts }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if funding.is_direct %}payé à chaque validation{% else %}{{ funding.funded|usdc:asset_code }} bloqués ou versés{% endif %}</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Tâches</span><span class="ui-kpi-value" data-kpi-count>{{ tasks|length }}</span><span class="ui-kpi-hint ui-meta">{{ project.open_count }} ouverte{{ project.open_count|pluralize }}</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Candidatures</span><span class="ui-kpi-value">{{ pending_total }}</span><span class="ui-kpi-hint ui-meta">en attente de choix</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Payées</span><span class="ui-kpi-value">{{ project.paid_count }}<span class="ui-price-unit">/ {{ tasks|length }}</span></span><span class="ui-kpi-hint ui-meta">{{ project.progress_pct }} % du projet</span></div>
+<section class="ui-kpi-band mb-6" aria-label="Key figures">
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Total budget</span><span class="ui-kpi-value" data-kpi-total>{{ project.total_amount|usdc_parts }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if funding.is_direct %}paid on each validation{% else %}{{ funding.funded|usdc:asset_code }} locked or paid out{% endif %}</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Tasks</span><span class="ui-kpi-value" data-kpi-count>{{ tasks|length }}</span><span class="ui-kpi-hint ui-meta">{{ project.open_count }} open</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Applications</span><span class="ui-kpi-value">{{ pending_total }}</span><span class="ui-kpi-hint ui-meta">awaiting a choice</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Paid</span><span class="ui-kpi-value">{{ project.paid_count }}<span class="ui-price-unit">/ {{ tasks|length }}</span></span><span class="ui-kpi-hint ui-meta">{{ project.progress_pct }}% of the project</span></div>
 </section>
 
 <div class="ui-split">
   <div class="ui-stack">
     <section class="ui-panel">
-      <div class="ui-panel-head"><h2 class="ui-panel-title">Le projet</h2></div>
+      <div class="ui-panel-head"><h2 class="ui-panel-title">The project</h2></div>
       <p class="whitespace-pre-line leading-relaxed">{{ project.description }}</p>
     </section>
 
     <section class="ui-panel" id="tasks-panel">
       <div class="ui-panel-head">
         <div>
-          <h2 class="ui-panel-title">Tâches</h2>
+          <h2 class="ui-panel-title">Tasks</h2>
         </div>
-        {% if project.tasks_count %}<span class="ui-meta whitespace-nowrap">{{ project.paid_count }}/{{ project.tasks_count }} payée{{ project.paid_count|pluralize }}</span>{% endif %}
+        {% if project.tasks_count %}<span class="ui-meta whitespace-nowrap">{{ project.paid_count }}/{{ project.tasks_count }} paid</span>{% endif %}
       </div>
       {% if tasks %}
         <div class="rcard" data-tasks data-count="{{ tasks|length }}">
           <table>
             <thead>
               <tr>
-                <th style="width: 40%">Tâche</th>
-                <th class="ui-col-end">Prix</th>
-                <th>Statut</th>
-                <th>Freelance</th>
+                <th style="width: 40%">Task</th>
+                <th class="ui-col-end">Price</th>
+                <th>Status</th>
+                <th>Freelancer</th>
                 <th class="ui-col-end"><span class="sr-only">Action</span></th>
               </tr>
             </thead>
@@ -84,8 +84,8 @@ payments.services.project_funding().
       {% else %}
         <div class="empty-state" data-tasks data-count="0">
           <div class="empty-state-icon"><i class="fa-solid fa-list-check" aria-hidden="true"></i></div>
-          <div class="empty-state-title">Aucune tâche</div>
-          <p class="empty-state-desc">{% if can_add_task %}Ajoutez la première tâche avec le formulaire ci-contre.{% else %}L’entreprise n’a pas encore découpé ce projet.{% endif %}</p>
+          <div class="empty-state-title">No tasks</div>
+          <p class="empty-state-desc">{% if can_add_task %}Add the first task with the form alongside.{% else %}The company hasn't split this project into tasks yet.{% endif %}</p>
         </div>
       {% endif %}
     </section>
@@ -95,7 +95,7 @@ payments.services.project_funding().
         <section class="ui-panel" id="candidates-{{ block.task.pk }}" data-task-candidates="{{ block.task.pk }}">
           <div class="ui-panel-head">
             <div>
-              <h2 class="ui-panel-title">Candidats · <a href="{% url 'projects:task_detail' block.task.pk %}" class="ui-link">{{ block.task.title }}</a></h2>
+              <h2 class="ui-panel-title">Candidates · <a href="{% url 'projects:task_detail' block.task.pk %}" class="ui-link">{{ block.task.title }}</a></h2>
             </div>
             {% include "components/price.html" with amount=block.task.price %}
           </div>
@@ -115,33 +115,33 @@ payments.services.project_funding().
     {% if viewer_is_company %}
       {% if to_validate %}
         <section class="ui-panel" style="border-color: var(--icon-accent)">
-          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-star" style="color: var(--icon-accent)" aria-hidden="true"></i> À valider</h2></div></div>
+          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-star" style="color: var(--icon-accent)" aria-hidden="true"></i> To validate</h2></div></div>
           <div class="ui-next-list">
             {% for t in to_validate %}
               {% url 'projects:task_detail' t.pk as t_url %}
-              {% include "components/next_card.html" with tone="act" kicker="Livré" headline=t.title body=t.delivery_link href=t_url|add:"#validate-panel" cta="Valider + noter" icon="fa-star" %}
+              {% include "components/next_card.html" with tone="act" kicker="Delivered" headline=t.title body=t.delivery_link href=t_url|add:"#validate-panel" cta="Validate + rate" icon="fa-star" %}
             {% endfor %}
           </div>
         </section>
       {% endif %}
       {% if project.is_draft %}
-        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Projet en brouillon : aucun fonds engagé. Les freelances peuvent déjà postuler ; une tâche ouverte se supprime encore.</span></div>
+        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Draft project: no funds committed. Freelancers can already apply; an open task can still be deleted.</span></div>
       {% elif project.status == 'funded' %}
-        <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Projet financé : {% if funding.is_direct %}un premier paiement a été signé{% else %}le prix de chaque tâche attribuée est bloqué dans son escrow{% endif %}. Vous pouvez encore ajouter des tâches ; une tâche attribuée ne se supprime plus.</span></div>
+        <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Funded project: {% if funding.is_direct %}a first payment has been signed{% else %}the price of each assigned task is locked in its escrow{% endif %}. You can still add tasks; an assigned task can no longer be deleted.</span></div>
       {% elif project.status == 'closed' %}
-        <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Projet terminé : toutes les tâches sont payées.</span></div>
+        <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Project closed: every task is paid.</span></div>
       {% endif %}
     {% elif wallet %}
       <section class="ui-panel">
-        <div class="ui-panel-head"><div><h2 class="ui-panel-title">Postuler</h2></div></div>
-        <a href="{% url 'projects:board' %}" class="ui-btn ui-btn-block"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> Mon tableau des tâches</a>
+        <div class="ui-panel-head"><div><h2 class="ui-panel-title">Apply</h2></div></div>
+        <a href="{% url 'projects:board' %}" class="ui-btn ui-btn-block"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> My task board</a>
       </section>
     {% else %}
       <section class="ui-panel text-center">
         <div class="empty-state-icon"><i class="fa-solid fa-wallet" aria-hidden="true"></i></div>
-        <h2 class="ui-panel-title mb-1">Postuler à une tâche</h2>
-        <p class="ui-panel-sub mb-4">Connectez votre wallet pour postuler.</p>
-        <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-wallet-connect data-next="{{ request.path }}"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Connecter mon wallet</button>
+        <h2 class="ui-panel-title mb-1">Apply to a task</h2>
+        <p class="ui-panel-sub mb-4">Connect your wallet to apply.</p>
+        <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-wallet-connect data-next="{{ request.path }}"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Connect my wallet</button>
       </section>
     {% endif %}
   </aside>

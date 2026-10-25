@@ -105,7 +105,7 @@ class CreateProjectTests(TestCase):
         project = services.create_project(company, "  Mon projet ", "Une description.")
         self.assertEqual(project.status, Project.Status.DRAFT)
         self.assertEqual(project.title, "Mon projet")
-        self.assertEqual(project.status_label, "Brouillon")
+        self.assertEqual(project.status_label, "Draft")
         self.assertEqual(project.total_amount, Decimal("0"))
         self.assertEqual(project.tasks_count, 0)
         self.assertTrue(project.is_company(company))
@@ -192,7 +192,7 @@ class ApplyTests(BaseProjectTest):
         self.assertEqual(app.message, "Je prends.")
         self.assertEqual(app.tags, ["django", "ui"])
         self.assertEqual(app.score, Decimal("20.0"), "no history: only the tag ratio counts")
-        self.assertEqual(app.status_label, "En attente")
+        self.assertEqual(app.status_label, "Pending")
         self.assertEqual(self.t1.applications_count, 1)
         self.assertEqual(self.t1.application_for(self.a), app)
         self.assertIsNone(self.t1.application_for(self.b))
@@ -245,7 +245,7 @@ class ChooseTests(BaseProjectTest):
         self.assertEqual(task.assigned_to, self.b)
         self.assertEqual(app_of(self.t1, self.b).status, Application.Status.CHOSEN)
         self.assertEqual(app_of(self.t1, self.a).status, Application.Status.REJECTED)
-        self.assertEqual(task.status_label, "Pris")
+        self.assertEqual(task.status_label, "Taken")
         self.assertTrue(task.is_assignee(self.b))
 
     def test_any_candidate_may_be_chosen_not_only_the_recommended(self):
@@ -342,7 +342,7 @@ class ValidateTests(BaseProjectTest):
         with self.assertRaises(ProjectError) as ctx:
             services.deliver(self.t1, self.a, "https://x.y/pr")
         self.assertEqual(ctx.exception.code, "wrong_state")
-        self.assertIn("escrow", ctx.exception.message)
+        self.assertIn("escrow", ctx.exception.message.lower())
         self.assertEqual(Task.objects.get(pk=self.t1.pk).status, Task.Status.TAKEN)
         # payments confirms the on-chain milestone change with on_chain=True
         task = services.deliver(self.t1, self.a, "https://x.y/pr", on_chain=True)
@@ -468,11 +468,11 @@ class ProjectListViewTests(BaseProjectTest):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Plateforme de réservation")
         self.assertContains(r, "project-card")
-        self.assertContains(r, "Connecter pour publier")
+        self.assertContains(r, "Connect to post")
         self.assertEqual(r.context["total"], 1)
         self.assertEqual(r.context["popular_tags"][:1], ["django"])
         self.assertContains(self.client.get(reverse("projects:project_list") + "?q=freighter&tab=all"), "project-card")
-        self.assertContains(self.client.get(reverse("projects:project_list") + "?q=zzzz"), "Aucun projet")
+        self.assertContains(self.client.get(reverse("projects:project_list") + "?q=zzzz"), "No projects")
         self.assertEqual(self.client.get(reverse("projects:project_list") + "?tag=stellar").context["total"], 1)
         self.assertEqual(self.client.get(reverse("projects:project_list") + "?tag=rust").context["total"], 0)
         self.assertEqual(self.client.get(reverse("projects:project_list") + "?tab=closed").context["total"], 0)
@@ -505,7 +505,7 @@ class ProjectCreateViewTests(BaseProjectTest):
         login(self.client, self.company)
         r = self.client.post(reverse("projects:project_create"), {"title": "ab", "description": ""})
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Le titre est trop court.")
+        self.assertContains(r, "The title is too short.")
         self.assertEqual(Project.objects.count(), 1)
 
 
@@ -527,19 +527,19 @@ class ProjectDetailViewTests(BaseProjectTest):
         self.assertIn("data-task-add", html)
         self.assertEqual(html.count("data-task-delete="), 3)
         self.assertIn('id="candidates-%d"' % self.t1.pk, html)
-        self.assertEqual(html.count("data-choose="), 2, "a Choisir button on EVERY candidate")
+        self.assertEqual(html.count("data-choose="), 2, "a Choose button on EVERY candidate")
         self.assertIn("data-recommended", html)
         self.assertIn("window.LOWBID_PROJECT", html)
         self.assertIn(reverse("projects:task_add", args=[self.project.pk]), html)
         # direct mode (no Trustless Work key): no funding button, an honest note instead
         self.assertNotIn("data-fund", html)
-        self.assertIn("Paiement direct", html)
+        self.assertIn("Direct payment", html)
         with override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k"):
             html = self.client.get(self.url()).content.decode()
         self.assertIn("data-fund", html)
         self.assertIn("disabled", html.split("data-fund", 1)[1][:80], "no chosen freelance → the button is disabled")
-        self.assertIn("Choisissez d’abord un freelance", html)
-        self.assertIn("Trustless Work fixe le destinataire", html)
+        self.assertIn("Choose a freelancer first", html)
+        self.assertIn("Trustless Work fixes the escrow recipient", html)
 
     @override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k")
     def test_fund_button_enabled_once_a_freelance_is_chosen(self):
@@ -550,9 +550,9 @@ class ProjectDetailViewTests(BaseProjectTest):
         services.choose(self.t1, app_of(self.t1, self.a), self.company)
         html = self.client.get(self.url()).content.decode()
         self.assertIn(f'data-fund data-pending-url="{reverse("payments:project_pending", args=[self.project.pk])}"', html)
-        self.assertIn("1 tâche attribuée à financer", html)
+        self.assertIn("1 assigned task to fund", html)
         self.assertIn('id="funding-panel"', html)
-        self.assertIn("En préparation", html, "T1's escrow status in the banner")
+        self.assertIn("Preparing", html, "T1's escrow status in the banner")
         Project.objects.filter(pk=self.project.pk).update(status=Project.Status.CLOSED)
         r = self.client.get(self.url())
         self.assertNotContains(r, "data-fund")
@@ -567,7 +567,7 @@ class ProjectDetailViewTests(BaseProjectTest):
         self.assertNotIn("data-task-delete", html)
         self.assertNotIn("data-choose", html)
         self.assertNotIn("data-fund", html)
-        self.assertIn("Postulé", html, "the viewer's pending application is flagged on the row")
+        self.assertIn("Applied", html, "the viewer's pending application is flagged on the row")
         self.client.logout()
         r = self.client.get(self.url())
         self.assertEqual(r.status_code, 200)
@@ -580,7 +580,7 @@ class ProjectDetailViewTests(BaseProjectTest):
         services.deliver(self.t1, self.a, "https://x.y/pr")
         login(self.client, self.company)
         r = self.client.get(self.url())
-        self.assertContains(r, "Valider + noter")
+        self.assertContains(r, "Validate + rate")
         self.assertContains(r, "#validate-panel")
 
 
@@ -598,7 +598,7 @@ class TaskDetailViewTests(BaseProjectTest):
         html = self.client.get(self.url()).content.decode()
         self.assertNotIn('id="apply-form"', html)
         self.assertIn('id="my-application"', html)
-        self.assertIn("Votre candidature", html)
+        self.assertIn("Your application", html)
         self.assertIn('data-candidates data-count="1"', html)
 
     def test_company_sees_choose_on_every_candidate_and_no_apply_form(self):
@@ -623,11 +623,11 @@ class TaskDetailViewTests(BaseProjectTest):
         self.assertIn('id="deliver-panel"', html)
         self.assertIn('id="deliver-link"', html)
         self.assertIn("data-deliver", html)
-        self.assertIn("Choisi", html)
+        self.assertIn("Chosen", html)
         login(self.client, self.b)
         html = self.client.get(self.url()).content.decode()
         self.assertNotIn('id="deliver-panel"', html)
-        self.assertIn("Un freelance a été choisi", html)
+        self.assertIn("A freelancer has been chosen", html)
 
     def test_company_sees_the_rating_form_when_delivered(self):
         services.apply(self.t1, self.a, "", [])
@@ -639,13 +639,13 @@ class TaskDetailViewTests(BaseProjectTest):
         self.assertIn('novalidate data-validate data-validate-url="%s"' % reverse("projects:task_validate", args=[self.t1.pk]), html)
         self.assertEqual(html.count("data-rate="), 5)
         self.assertIn("data-validate-submit", html)
-        self.assertIn("Valider et payer 300.00 USDC", html)
+        self.assertIn("Validate and pay 300.00 USDC", html)
         self.assertIn('id="escrow-panel"', html)
         self.assertIn("https://x.y/pr", html)
         login(self.client, self.a)
         html = self.client.get(self.url()).content.decode()
         self.assertNotIn('id="validate-panel"', html)
-        self.assertIn("Livraison déclarée", html)
+        self.assertIn("Delivery declared", html)
 
     def test_paid_task_shows_the_rating_and_badges_on_the_next_task(self):
         self.pay_t1_to_a(5)
@@ -653,11 +653,11 @@ class TaskDetailViewTests(BaseProjectTest):
         services.apply(self.t2, self.b, "", ["stellar", "js"])
         login(self.client, self.company)
         html = self.client.get(self.url()).content.decode()
-        self.assertIn("Tâche payée", html)
+        self.assertIn("Task paid", html)
         self.assertIn('data-rating="5"', html)
         self.assertNotIn("data-choose", html)
-        self.assertIn("Choisi", html)
-        self.assertIn("Non retenu", html)
+        self.assertIn("Chosen", html)
+        self.assertIn("Not selected", html)
         html = self.client.get(self.url(self.t2)).content.decode()
         rows = html.split('class="ui-list-row cand-row')
         self.assertIn(self.a.stellar_address, rows[1])
@@ -706,13 +706,13 @@ class BoardViewTests(BaseProjectTest):
         cols = {c["key"]: [t.pk for t in c["tasks"]] for c in r.context["columns"]}
         self.assertEqual(cols["taken"], [self.t3.pk])
         self.assertEqual(cols["open"], [self.t2.pk])
-        self.assertContains(r, "Livrer")
+        self.assertContains(r, "Deliver")
 
     def test_company_does_not_see_its_own_open_tasks(self):
         login(self.client, self.company)
         r = self.client.get(reverse("projects:board"))
         self.assertEqual(r.context["counts"]["open"], 0)
-        self.assertContains(r, "Aucune tâche ouverte")
+        self.assertContains(r, "No open tasks")
 
 
 class MyProjectsViewTests(BaseProjectTest):
@@ -726,12 +726,12 @@ class MyProjectsViewTests(BaseProjectTest):
         self.assertEqual(r.context["projects"][0].pending_apps, 1)
         self.assertTrue(r.context["projects"][0].attention)
         self.assertEqual(len(self.client.get(reverse("projects:my_projects") + "?tab=done").context["projects"]), 0)
-        self.assertContains(self.client.get(reverse("projects:my_projects") + "?tab=done"), "Rien ici")
+        self.assertContains(self.client.get(reverse("projects:my_projects") + "?tab=done"), "Nothing here")
 
     def test_other_wallets_see_an_empty_list(self):
         login(self.client, self.a)
         r = self.client.get(reverse("projects:my_projects"))
-        self.assertContains(r, "Aucun projet en cours")
+        self.assertContains(r, "No projects in progress")
         self.assertEqual(self.client.get(reverse("projects:my_projects") + "?tab=nope").context["tab"], "active")
 
 
@@ -800,7 +800,7 @@ class ApplyChooseEndpointTests(BaseProjectTest):
         login(self.client, self.b)
         r = self.post_json(self.client, url, {"tags": ["a", "b", "c", "d"]})
         self.assertEqual((r.status_code, r.json()["error"]), (400, "bad_tags"))
-        self.assertIn("Au plus 3", r.json()["message"])
+        self.assertIn("At most 3", r.json()["message"])
 
     def test_choose_endpoint(self):
         services.apply(self.t1, self.a, "", [])
@@ -862,7 +862,7 @@ class DeliverValidateEndpointTests(BaseProjectTest):
         self.assertEqual(data["next"]["step"], "direct_pay")
         self.assertTrue(data["next"]["mine"])
         self.assertEqual(data["next"]["prepare_url"], reverse("payments:prepare", kwargs={"task_pk": self.t1.pk, "step": "direct_pay"}))
-        self.assertIn("Payer le freelance", data["message"])
+        self.assertIn("Pay the freelancer", data["message"])
         self.assertEqual(Rating.objects.get(task=self.t1).comment, "Top")
         self.assertEqual(Task.objects.get(pk=self.t1.pk).status, Task.Status.DELIVERED)
         # a second validation is refused (the task is still delivered but rated)
@@ -877,7 +877,7 @@ class CandidatesJsonTests(BaseProjectTest):
         self.assertEqual(r.status_code, 200)
         empty = r.json()
         self.assertEqual((empty["ok"], empty["count"], empty["status"], empty["candidates"]), (True, 0, "open", []))
-        self.assertIn("Aucun candidat", empty["html"])
+        self.assertIn("No candidates", empty["html"])
         services.apply(self.t1, self.a, "Moi", ["django", "ui"])
         services.apply(self.t1, self.b, "", ["django"])
         data = self.client.get(url).json()
@@ -890,7 +890,7 @@ class CandidatesJsonTests(BaseProjectTest):
         self.assertTrue(first["recommended"])
         self.assertFalse(first["validated"])
         self.assertEqual(first["rank"], 1)
-        self.assertNotIn("data-choose", data["html"], "anonymous: no Choisir button")
+        self.assertNotIn("data-choose", data["html"], "anonymous: no Choose button")
         login(self.client, self.company)
         html = self.client.get(url).json()["html"]
         self.assertEqual(html.count("data-choose="), 2)
@@ -918,10 +918,10 @@ class SeedDemoTests(TestCase):
         call_command("seed_demo", "--flush", stdout=out)
         text = out.getvalue()
         self.assertIn("Demo data ready.", text)
-        self.assertIn("freelance A", text)
+        self.assertIn("freelancer A", text)
         self.assertEqual(Project.objects.count(), 2)
         self.assertEqual(WalletUser.objects.count(), 3)
-        pitch = Project.objects.get(title__startswith="Plateforme")
+        pitch = Project.objects.get(title__startswith="Booking")
         t1, t2, t3 = list(pitch.tasks.order_by("position"))
         self.assertEqual((t1.status, t2.status, t3.status), ("paid", "open", "open"))
         self.assertEqual(Rating.objects.get(task=t1).note, 5)

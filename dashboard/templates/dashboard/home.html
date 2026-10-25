@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% load static lowbid_extras %}
-{% block title %}Tableau de bord · Lowbid{% endblock %}
-{% block meta_description %}Vos projets, vos tâches et ce qu’il vous reste à faire sur Lowbid.{% endblock %}
+{% block title %}Dashboard · Lowbid{% endblock %}
+{% block meta_description %}Your projects, your tasks and what is left for you to do on Lowbid.{% endblock %}
 
 {% block content %}
 <div class="ui-page-header">
   <div class="min-w-0">
-    <p class="ui-meta mb-2">Tableau de bord</p>
+    <p class="ui-meta mb-2">Dashboard</p>
     <h1 class="ui-page-title flex flex-wrap items-center gap-3">
-      {% include "components/wallet.html" with address=wallet.stellar_address name=wallet.display_name|default:"Mon wallet" size="lg" copy=True nolink=True %}
+      {% include "components/wallet.html" with address=wallet.stellar_address name=wallet.display_name|default:"My wallet" size="lg" copy=True nolink=True %}
     </h1>
-    <p class="ui-page-sub">{% if todo_act %}{{ todo_act }} action{{ todo_act|pluralize }} vous attend{{ todo_act|pluralize }}.{% else %}Rien d’urgent : tout est à jour.{% endif %}</p>
+    <p class="ui-page-sub">{% if todo_act %}{{ todo_act }} action{{ todo_act|pluralize }} waiting for you.{% else %}Nothing urgent: everything is up to date.{% endif %}</p>
   </div>
   <div class="ui-page-actions">
-    <a href="{% url 'dashboard:profile' wallet.stellar_address %}" class="ui-btn"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Mon profil public</a>
-    <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Nouveau projet</a>
+    <a href="{% url 'dashboard:profile' wallet.stellar_address %}" class="ui-btn"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> My public profile</a>
+    <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> New project</a>
   </div>
 </div>
 
@@ -23,7 +23,7 @@
     <section class="ui-panel" id="todo" aria-labelledby="todo-title">
       <div class="ui-panel-head">
         <div>
-          <h2 class="ui-panel-title" id="todo-title"><i class="fa-solid fa-list-check" style="color: var(--icon-accent)" aria-hidden="true"></i> À faire</h2>
+          <h2 class="ui-panel-title" id="todo-title"><i class="fa-solid fa-list-check" style="color: var(--icon-accent)" aria-hidden="true"></i> To do</h2>
         </div>
         {% if todo %}<span class="ui-badge {% if todo_act %}ui-badge-brand{% else %}ui-badge-neutral{% endif %}">{{ todo|length }}</span>{% endif %}
       </div>
@@ -35,13 +35,13 @@
         </div>
       {% else %}
         {% url 'projects:board' as board_url %}
-        {% include "components/next_card.html" with tone="done" kicker="Tout est à jour" headline="Rien à faire pour l’instant." body="Créez un projet ou postulez à une tâche ouverte sur le tableau." href=board_url cta="Voir le tableau" icon="fa-table-columns" %}
+        {% include "components/next_card.html" with tone="done" kicker="All up to date" headline="Nothing to do for now." body="Create a project or apply to an open task on the board." href=board_url cta="View the board" icon="fa-table-columns" %}
       {% endif %}
     </section>
 
     <section class="ui-panel" id="activity" aria-labelledby="activity-title">
       <div class="ui-panel-head">
-        <div><h2 class="ui-panel-title" id="activity-title">Activité récente</h2></div>
+        <div><h2 class="ui-panel-title" id="activity-title">Recent activity</h2></div>
       </div>
       {% if activity %}
         <ol class="ui-timeline">
@@ -50,13 +50,13 @@
               <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid {{ e.icon }}"></i></span>
               <div class="ui-timeline-body">
                 <a href="{{ e.href }}" class="ui-timeline-title hover:underline">{{ e.text }}</a>
-                <div class="ui-timeline-time"><span data-time-ago="{{ e.when|date:'c' }}">{{ e.when|date:"d/m H:i" }}</span></div>
+                <div class="ui-timeline-time"><span data-time-ago="{{ e.when|date:'c' }}">{{ e.when|date:"M j H:i" }}</span></div>
               </div>
             </li>
           {% endfor %}
         </ol>
       {% else %}
-        <p class="ui-meta">Aucune activité pour l’instant.</p>
+        <p class="ui-meta">No activity yet.</p>
       {% endif %}
     </section>
   </div>
@@ -64,40 +64,40 @@
   <aside class="ui-stack">
     <section class="ui-panel" aria-labelledby="company-title">
       <div class="ui-panel-head">
-        <div><h2 class="ui-panel-title" id="company-title"><i class="fa-solid fa-diagram-project" style="color: var(--icon-accent)" aria-hidden="true"></i> Côté entreprise</h2></div>
-        <a href="{% url 'projects:my_projects' %}" class="ui-link whitespace-nowrap">Mes projets <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
+        <div><h2 class="ui-panel-title" id="company-title"><i class="fa-solid fa-diagram-project" style="color: var(--icon-accent)" aria-hidden="true"></i> As a company</h2></div>
+        <a href="{% url 'projects:my_projects' %}" class="ui-link whitespace-nowrap">My projects <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
       </div>
       <div class="ui-kpi-band !grid-cols-2 !gap-3">
         {% url 'projects:my_projects' as my_projects_url %}
-        {% include "components/kpi.html" with label="Tâches ouvertes" value=company_stats.open icon="fa-bolt" href=my_projects_url %}
-        {% include "components/kpi.html" with label="À choisir" value=company_stats.to_choose icon="fa-user-check" href=my_projects_url %}
-        {% include "components/kpi.html" with label="À valider" value=company_stats.to_validate icon="fa-star" href=my_projects_url %}
-        {% include "components/kpi.html" with label="Payées" value=company_stats.paid icon="fa-circle-check" href=my_projects_url %}
+        {% include "components/kpi.html" with label="Open tasks" value=company_stats.open icon="fa-bolt" href=my_projects_url %}
+        {% include "components/kpi.html" with label="To choose" value=company_stats.to_choose icon="fa-user-check" href=my_projects_url %}
+        {% include "components/kpi.html" with label="To validate" value=company_stats.to_validate icon="fa-star" href=my_projects_url %}
+        {% include "components/kpi.html" with label="Paid" value=company_stats.paid icon="fa-circle-check" href=my_projects_url %}
       </div>
       <dl class="ui-facts mt-4">
-        <dt>Projets publiés</dt><dd class="ui-num">{{ company_stats.projects }}</dd>
-        <dt>Candidatures reçues</dt><dd class="ui-num">{{ company_stats.applications_received }}</dd>
-        <dt>Budget des projets</dt><dd>{% include "components/price.html" with amount=company_stats.committed_usdc %}</dd>
-        <dt>Versé aux freelances</dt><dd>{% include "components/price.html" with amount=company_stats.paid_usdc %}</dd>
+        <dt>Projects posted</dt><dd class="ui-num">{{ company_stats.projects }}</dd>
+        <dt>Applications received</dt><dd class="ui-num">{{ company_stats.applications_received }}</dd>
+        <dt>Projects budget</dt><dd>{% include "components/price.html" with amount=company_stats.committed_usdc %}</dd>
+        <dt>Paid out to freelancers</dt><dd>{% include "components/price.html" with amount=company_stats.paid_usdc %}</dd>
       </dl>
     </section>
 
     <section class="ui-panel" aria-labelledby="freelance-title">
       <div class="ui-panel-head">
-        <div><h2 class="ui-panel-title" id="freelance-title"><i class="fa-solid fa-table-columns" style="color: var(--icon-accent)" aria-hidden="true"></i> Côté freelance</h2></div>
-        <a href="{% url 'projects:board' %}" class="ui-link whitespace-nowrap">Mon tableau <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
+        <div><h2 class="ui-panel-title" id="freelance-title"><i class="fa-solid fa-table-columns" style="color: var(--icon-accent)" aria-hidden="true"></i> As a freelancer</h2></div>
+        <a href="{% url 'projects:board' %}" class="ui-link whitespace-nowrap">My board <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
       </div>
       <div class="ui-kpi-band !grid-cols-2 !gap-3">
         {% url 'projects:board' as board_url %}
-        {% include "components/kpi.html" with label="En attente" value=freelancer_stats.pending icon="fa-paper-plane" href=board_url %}
-        {% include "components/kpi.html" with label="En cours" value=freelancer_stats.in_progress icon="fa-truck-fast" href=board_url %}
-        {% include "components/kpi.html" with label="Payées" value=freelancer_stats.paid icon="fa-circle-check" href=board_url %}
-        {% include "components/kpi.html" with label="Encaissé" value=freelancer_stats.earned_usdc|usdc:"" unit="USDC" icon="fa-money-bill-transfer" href=board_url %}
+        {% include "components/kpi.html" with label="Pending" value=freelancer_stats.pending icon="fa-paper-plane" href=board_url %}
+        {% include "components/kpi.html" with label="In progress" value=freelancer_stats.in_progress icon="fa-truck-fast" href=board_url %}
+        {% include "components/kpi.html" with label="Paid" value=freelancer_stats.paid icon="fa-circle-check" href=board_url %}
+        {% include "components/kpi.html" with label="Earned" value=freelancer_stats.earned_usdc|usdc:"" unit="USDC" icon="fa-money-bill-transfer" href=board_url %}
       </div>
       <dl class="ui-facts mt-4">
-        <dt>Candidatures envoyées</dt><dd class="ui-num">{{ freelancer_stats.total }}</dd>
-        <dt>Taux de choix</dt><dd class="ui-num">{% if freelancer_stats.success_rate is not None %}{{ freelancer_stats.success_rate }} %{% else %}—{% endif %}</dd>
-        <dt>Note moyenne</dt><dd class="ui-num" data-avg-note>{% if freelancer_stats.avg_note is not None %}<i class="fa-solid fa-star text-[10px]" style="color: var(--icon-accent)" aria-hidden="true"></i> {{ freelancer_stats.avg_note|stringformat:".1f" }}/5 <span class="ui-meta">({{ freelancer_stats.ratings }})</span>{% else %}—{% endif %}</dd>
+        <dt>Applications sent</dt><dd class="ui-num">{{ freelancer_stats.total }}</dd>
+        <dt>Pick rate</dt><dd class="ui-num">{% if freelancer_stats.success_rate is not None %}{{ freelancer_stats.success_rate }}%{% else %}—{% endif %}</dd>
+        <dt>Average rating</dt><dd class="ui-num" data-avg-note>{% if freelancer_stats.avg_note is not None %}<i class="fa-solid fa-star text-[10px]" style="color: var(--icon-accent)" aria-hidden="true"></i> {{ freelancer_stats.avg_note|stringformat:".1f" }}/5 <span class="ui-meta">({{ freelancer_stats.ratings }})</span>{% else %}—{% endif %}</dd>
       </dl>
     </section>
   </aside>

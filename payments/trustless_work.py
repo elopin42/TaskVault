@@ -72,9 +72,9 @@ PATH_GET_ESCROW = "/escrow/single-release/get-escrow"
 PATH_SEND = "/helper/send-transaction"
 PATH_SET_TRUSTLINE = "/helper/set-trustline"
 
-ERR_NOT_CONFIGURED = "Le service d’escrow n’est pas configuré (clé API Trustless Work manquante)."
-ERR_UNREACHABLE = "Le service d’escrow est injoignable, réessayez dans un instant."
-ERR_UNEXPECTED = "Réponse inattendue du service d’escrow."
+ERR_NOT_CONFIGURED = "The escrow service is not configured (Trustless Work API key missing)."
+ERR_UNREACHABLE = "The escrow service is unreachable, try again in a moment."
+ERR_UNEXPECTED = "Unexpected response from the escrow service."
 
 Envelope = dict[str, Any]
 

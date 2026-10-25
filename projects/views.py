@@ -29,21 +29,21 @@ from .services import ProjectError, dec_str
 
 logger = logging.getLogger(__name__)
 
-LIST_TABS = (("active", "En cours"), ("closed", "Terminés"), ("all", "Tous"))
+LIST_TABS = (("active", "In progress"), ("closed", "Closed"), ("all", "All"))
 # ?sort= on the list page → (label, ordering over with_totals() annotations).
 LIST_SORTS = (
-    ("newest", "Plus récents", ("-created_at",)),
-    ("budget", "Budget le plus élevé", ("-total", "-created_at")),
-    ("open", "Plus de tâches ouvertes", ("-open_total", "-created_at")),
+    ("newest", "Newest", ("-created_at",)),
+    ("budget", "Highest budget", ("-total", "-created_at")),
+    ("open", "Most open tasks", ("-open_total", "-created_at")),
 )
 LIST_PAGE_SIZE = 24
 POPULAR_TAGS = 8
-MY_TABS = (("active", "En cours"), ("done", "Terminés"), ("all", "Tous"))
+MY_TABS = (("active", "In progress"), ("done", "Closed"), ("all", "All"))
 BOARD_COLUMNS = (
-    ("open", "Ouvert", "Toutes les tâches ouvertes, à prendre."),
-    ("taken", "Pris", "Vos tâches en cours : livrez un lien."),
-    ("delivered", "Livré", "En attente de validation par l’entreprise."),
-    ("paid", "Payé", "Validées et payées."),
+    ("open", "Open", "Every open task, available to take."),
+    ("taken", "Taken", "Your tasks in progress: deliver a link."),
+    ("delivered", "Delivered", "Waiting for the company to validate."),
+    ("paid", "Paid", "Validated and paid."),
 )
 # HTTP status for a refused action, by error code (anything else → 400).
 ERROR_STATUS = {
@@ -228,7 +228,7 @@ def project_create(request: HttpRequest) -> HttpResponse:
         if form.is_valid():
             project = form.save(company=wallet)
             logger.info("project created project=%s company=%s", project.pk, wallet.pk)
-            messages.success(request, "Projet créé. Ajoutez maintenant vos tâches à prix fixe.")
+            messages.success(request, "Project created. Now add your fixed-price tasks.")
             return redirect("projects:project_detail", pk=project.pk)
     else:
         form = ProjectForm()
@@ -270,7 +270,7 @@ def project_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "viewer_is_company": is_company,
             "can_add_task": is_company and project.status != Project.Status.CLOSED,
             "funding": funding,
-            # The company sees "Financer le projet" as soon as the project has a task; it is enabled
+            # The company sees "Fund the project" as soon as the project has a task; it is enabled
             # only when an assigned task still has to be deployed/funded (escrow mode).
             "show_fund": is_company and len(tasks) >= 1 and project.status != Project.Status.CLOSED,
             "candidate_blocks": candidate_blocks,
@@ -430,7 +430,7 @@ def task_add(request: HttpRequest, pk: int) -> JsonResponse:
             "task": {"id": task.pk, "title": task.title, "price": dec_str(task.price), "tags": task.tags, "status": task.status},
             "count": project.tasks.count(),
             "total": dec_str(project.total_amount),
-            "message": f"Tâche « {task.title} » ajoutée.",
+            "message": f'Task "{task.title}" added.',
         },
         status=201,
     )
@@ -446,7 +446,7 @@ def task_delete(request: HttpRequest, pk: int) -> JsonResponse:
     except ProjectError as e:
         return _error_response(e)
     return JsonResponse(
-        {"ok": True, "message": "Tâche supprimée.", "redirect": reverse("projects:project_detail", kwargs={"pk": project_pk})}
+        {"ok": True, "message": "Task deleted.", "redirect": reverse("projects:project_detail", kwargs={"pk": project_pk})}
     )
 
 
@@ -463,7 +463,7 @@ def apply_create(request: HttpRequest, pk: int) -> JsonResponse:
         {
             "ok": True,
             "application": {"id": app.pk, "score": f"{app.score:.1f}", "tags": app.tags},
-            "message": "Candidature envoyée. L’entreprise choisit parmi les candidats.",
+            "message": "Application sent. The company chooses among the candidates.",
         },
         status=201,
     )
@@ -483,7 +483,7 @@ def task_choose(request: HttpRequest, pk: int, app_pk: int) -> JsonResponse:
             "ok": True,
             "status": task.status,
             "assigned_to": app.freelancer.stellar_address,
-            "message": f"{app.freelancer.display_name or app.freelancer.short_address} est choisi pour « {task.title} ».",
+            "message": f'{app.freelancer.display_name or app.freelancer.short_address} is chosen for "{task.title}".',
         }
     )
 
@@ -497,7 +497,7 @@ def task_deliver(request: HttpRequest, pk: int) -> JsonResponse:
         task = services.deliver(task, get_wallet(request), delivery_link=data.get("delivery_link"))
     except ProjectError as e:
         return _error_response(e)
-    return JsonResponse({"ok": True, "status": task.status, "message": "Livraison déclarée. L’entreprise valide et note."})
+    return JsonResponse({"ok": True, "status": task.status, "message": "Delivery submitted. The company validates and rates."})
 
 
 @require_POST
@@ -514,11 +514,11 @@ def task_validate(request: HttpRequest, pk: int) -> JsonResponse:
         return _error_response(e)
     nxt = payments.next_action(task, wallet)
     if task.status == Task.Status.PAID:
-        message = "Tâche validée, notée et payée."
+        message = "Task validated, rated and paid."
     elif nxt and nxt["mine"]:
-        message = f"Note enregistrée. Signez maintenant « {nxt['label']} » dans Freighter."
+        message = f'Rating saved. Now sign "{nxt["label"]}" in Freighter.'
     else:
-        message = "Tâche validée et notée."
+        message = "Task validated and rated."
     return JsonResponse(
         {
             "ok": True,

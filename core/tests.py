@@ -12,9 +12,9 @@ class LandingTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Lowbid")
         self.assertContains(resp, "data-wallet-connect")
-        self.assertContains(resp, "prix fixe")
+        self.assertRegex(resp.content.decode(), r"(?i)fixed[- ]price")
         self.assertContains(resp, "data-landing-stats")
-        self.assertNotContains(resp, "enchère")
+        self.assertNotRegex(resp.content.decode(), r"(?i)auction|enchère")
 
     def test_landing_stats_and_latest_projects(self):
         from decimal import Decimal
@@ -25,7 +25,7 @@ class LandingTests(TestCase):
         from projects import services
 
         company = WalletUser.objects.create(stellar_address=Keypair.random().public_key)
-        project = services.create_project(company, "Projet vitrine", "Une description.")
+        project = services.create_project(company, "Showcase project", "Une description.")
         services.add_task(project, company, "Landing page", "", "300", ["django", "ui"])
         resp = self.client.get(reverse("core:landing"))
         self.assertEqual(resp.context["stats"], {"open_tasks": 1, "projects": 1, "paid_usdc": 0})
@@ -43,7 +43,7 @@ class LandingTests(TestCase):
 
         company = WalletUser.objects.create(stellar_address=Keypair.random().public_key)
         freelance = WalletUser.objects.create(stellar_address=Keypair.random().public_key)
-        project = services.create_project(company, "Projet vitrine", "Une description.")
+        project = services.create_project(company, "Showcase project", "Une description.")
         task = services.add_task(project, company, "Landing page", "", "300", ["django"])
         # Open task only: the receipt shows it with every step ahead, no tape yet.
         resp = self.client.get(reverse("core:landing"))
@@ -60,9 +60,9 @@ class LandingTests(TestCase):
         resp = self.client.get(reverse("core:landing"))
         self.assertEqual([s["state"] for s in resp.context["receipt"]["steps"]], ["done", "done", "current", "todo"])
         labels = {e["label"] for e in resp.context["tape"]}
-        self.assertEqual(labels, {"ESCROW CRÉÉ", "FONDS BLOQUÉS"})
+        self.assertEqual(labels, {"ESCROW CREATED", "FUNDS LOCKED"})
         self.assertGreaterEqual(len(resp.context["tape"]), 8)  # looped so one copy fills the viewport
-        self.assertContains(resp, "FONDS BLOQUÉS")
+        self.assertContains(resp, "FUNDS LOCKED")
 
     def test_landing_ignores_offsite_next(self):
         resp = self.client.get(reverse("core:landing") + "?next=https://evil.example/")
@@ -103,8 +103,8 @@ class FilterTests(TestCase):
     def test_underline_last(self):
         from core.templatetags.lowbid_extras import underline_last
 
-        self.assertEqual(underline_last("Mes projets"), '<span class="ui-title">Mes <span class="ui-underline">projets</span></span>')
-        self.assertEqual(underline_last("Projets"), '<span class="ui-title"><span class="ui-underline">Projets</span></span>')
+        self.assertEqual(underline_last("My projects"), '<span class="ui-title">My <span class="ui-underline">projects</span></span>')
+        self.assertEqual(underline_last("Projects"), '<span class="ui-title"><span class="ui-underline">Projects</span></span>')
         self.assertEqual(underline_last("a <b>"), '<span class="ui-title">a <span class="ui-underline">&lt;b&gt;</span></span>')
         self.assertEqual(underline_last(""), "")
 
@@ -120,26 +120,26 @@ class NavLinksTests(TestCase):
         return [link["label"] for link in resp.context["nav_links"] if link["active"]]
 
     def test_only_the_most_specific_link_is_active(self):
-        self.assertEqual(self._active(reverse("projects:project_list")), ["Projets"])
+        self.assertEqual(self._active(reverse("projects:project_list")), ["Projects"])
         # /projets/nouveau/ redirects anonymous users to the landing: inspect the context processor directly.
         from django.test import RequestFactory
 
         from core.context_processors import nav_links
 
         links = nav_links(RequestFactory().get(reverse("projects:project_create")))["nav_links"]
-        self.assertEqual([link["label"] for link in links if link["active"]], ["Nouveau projet"])
+        self.assertEqual([link["label"] for link in links if link["active"]], ["New project"])
         links = nav_links(RequestFactory().get(reverse("projects:board")))["nav_links"]
-        self.assertEqual([link["label"] for link in links if link["active"]], ["Tableau"])
+        self.assertEqual([link["label"] for link in links if link["active"]], ["Board"])
 
     def test_nav_links_cover_the_task_board(self):
         resp = self.client.get(reverse("core:landing"))
         labels = [link["label"] for link in resp.context["nav_links"]]
-        self.assertEqual(labels, ["Projets", "Tableau", "Nouveau projet", "Mes projets", "Tableau de bord"])
+        self.assertEqual(labels, ["Projects", "Board", "New project", "My projects", "Dashboard"])
         hrefs = {link["label"]: link["href"] for link in resp.context["nav_links"]}
-        self.assertEqual(hrefs["Tableau"], "/taches/")
-        self.assertEqual(hrefs["Mes projets"], "/mes-projets/")
+        self.assertEqual(hrefs["Board"], "/taches/")
+        self.assertEqual(hrefs["My projects"], "/mes-projets/")
         public = [link["label"] for link in resp.context["nav_links"] if not link["wallet"]]
-        self.assertEqual(public, ["Projets"])
+        self.assertEqual(public, ["Projects"])
 
     def test_landing_has_no_active_link(self):
         self.assertEqual(self._active(reverse("core:landing")), [])
@@ -149,7 +149,7 @@ class NavLinksTests(TestCase):
 
         from accounts.models import WalletUser
 
-        # Desktop nav + mobile nav: only "Projets" for an anonymous visitor, all five once signed in.
+        # Desktop nav + mobile nav: only "Projects" for an anonymous visitor, all five once signed in.
         html = self.client.get(reverse("core:landing")).content.decode()
         self.assertEqual(html.count('class="lb-nav-link"') + html.count('class="lb-nav-link is-active"'), 2)
         wallet = WalletUser.objects.create(stellar_address=Keypair.random().public_key)
@@ -167,4 +167,4 @@ class ErrorPageTests(TestCase):
             resp = self.client.get("/cette-page-n-existe-pas/")
         self.assertEqual(resp.status_code, 404)
         self.assertTemplateUsed(resp, "404.html")
-        self.assertContains(resp, "Page introuvable", status_code=404)
+        self.assertContains(resp, "Page not found", status_code=404)

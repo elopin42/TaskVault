@@ -1,25 +1,25 @@
 {% extends "base.html" %}
 {% load static lowbid_extras %}
-{% block title %}Mes projets · Lowbid{% endblock %}
+{% block title %}My projects · Lowbid{% endblock %}
 
 {% block content %}
 <div class="ui-page-header">
   <div class="min-w-0">
-    <h1 class="ui-page-title">{{ "Mes projets"|underline_last }}</h1>
+    <h1 class="ui-page-title">{{ "My projects"|underline_last }}</h1>
   </div>
   <div class="ui-page-actions">
-    <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> Nouveau projet</a>
+    <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary"><i class="fa-solid fa-plus" aria-hidden="true"></i> New project</a>
   </div>
 </div>
 
-<section class="ui-kpi-band mb-5" aria-label="Résumé">
-  {% include "components/kpi.html" with label="Brouillons" value=kpis.draft icon="fa-pen-to-square" %}
-  {% include "components/kpi.html" with label="À choisir" value=kpis.to_choose icon="fa-user-check" %}
-  {% include "components/kpi.html" with label="À valider" value=kpis.to_validate icon="fa-star" %}
-  {% include "components/kpi.html" with label="Terminés" value=kpis.closed icon="fa-circle-check" %}
+<section class="ui-kpi-band mb-5" aria-label="Summary">
+  {% include "components/kpi.html" with label="Drafts" value=kpis.draft icon="fa-pen-to-square" %}
+  {% include "components/kpi.html" with label="To choose" value=kpis.to_choose icon="fa-user-check" %}
+  {% include "components/kpi.html" with label="To validate" value=kpis.to_validate icon="fa-star" %}
+  {% include "components/kpi.html" with label="Closed" value=kpis.closed icon="fa-circle-check" %}
 </section>
 
-<nav class="seg-tabs mb-4" aria-label="Filtrer mes projets">
+<nav class="seg-tabs mb-4" aria-label="Filter my projects">
   {% for key, label in tabs %}<a href="?tab={{ key }}" class="seg-tab{% if tab == key %} is-active{% endif %}" {% if tab == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
 </nav>
 
@@ -29,10 +29,10 @@
     <table>
       <thead>
         <tr>
-          <th style="width: 34%">Projet</th>
-          <th>Statut</th>
-          <th class="ui-col-end">Tâches</th>
-          <th class="ui-col-end">Candidatures</th>
+          <th style="width: 34%">Project</th>
+          <th>Status</th>
+          <th class="ui-col-end">Tasks</th>
+          <th class="ui-col-end">Applications</th>
           <th class="ui-col-end">Budget</th>
           <th class="ui-col-end"><span class="sr-only">Action</span></th>
         </tr>
@@ -40,16 +40,16 @@
       <tbody>
         {% for project in projects %}
         <tr{% if project.attention %} class="is-attn"{% endif %} data-project-id="{{ project.pk }}">
-          <td data-label="Projet">
+          <td data-label="Project">
             <a href="{% url 'projects:project_detail' project.pk %}" class="ui-link font-semibold">{{ project.title }}</a>
-            <div class="ui-meta">créé le {{ project.created_at|date:"d/m/Y" }}{% if project.to_validate %} · <strong class="text-strong">{{ project.to_validate }} livraison{{ project.to_validate|pluralize }} à valider</strong>{% elif project.to_choose %} · {{ project.to_choose }} tâche{{ project.to_choose|pluralize }} avec candidats{% endif %}</div>
+            <div class="ui-meta">created {{ project.created_at|date:"M j, Y" }}{% if project.to_validate %} · <strong class="text-strong">{{ project.to_validate }} deliver{{ project.to_validate|pluralize:"y,ies" }} to validate</strong>{% elif project.to_choose %} · {{ project.to_choose }} task{{ project.to_choose|pluralize }} with candidates{% endif %}</div>
           </td>
-          <td data-label="Statut">{% include "components/status_badge.html" with obj=project %}</td>
-          <td data-label="Tâches" class="ui-col-end ui-num">{{ project.paid_count }}/{{ project.tasks_count }} <span class="ui-meta">payée{{ project.paid_count|pluralize }}</span></td>
-          <td data-label="Candidatures" class="ui-col-end ui-num">{{ project.pending_apps }}</td>
+          <td data-label="Status">{% include "components/status_badge.html" with obj=project %}</td>
+          <td data-label="Tasks" class="ui-col-end ui-num">{{ project.paid_count }}/{{ project.tasks_count }} <span class="ui-meta">paid</span></td>
+          <td data-label="Applications" class="ui-col-end ui-num">{{ project.pending_apps }}</td>
           <td data-label="Budget" class="ui-col-end ui-num"><span class="ui-price">{{ project.total_amount|usdc }}</span></td>
           <td data-label="" class="ui-col-end">
-            <a href="{% url 'projects:project_detail' project.pk %}" class="ui-btn ui-btn-sm{% if project.attention %} ui-btn-primary{% endif %}">{% if project.to_validate %}Valider{% elif project.to_choose %}Choisir{% else %}Voir{% endif %}</a>
+            <a href="{% url 'projects:project_detail' project.pk %}" class="ui-btn ui-btn-sm{% if project.attention %} ui-btn-primary{% endif %}">{% if project.to_validate %}Validate{% elif project.to_choose %}Choose{% else %}View{% endif %}</a>
           </td>
         </tr>
         {% endfor %}
@@ -60,9 +60,9 @@
 {% else %}
   {% url 'projects:project_create' as create_url %}
   {% if tab == 'active' %}
-    {% include "components/empty_state.html" with icon="fa-pen-to-square" title="Aucun projet en cours" desc="Décrivez votre projet, découpez-le en tâches à prix fixe et laissez les freelances postuler." cta_href=create_url cta_label="Nouveau projet" cta_icon="fa-plus" %}
+    {% include "components/empty_state.html" with icon="fa-pen-to-square" title="No projects in progress" desc="Describe your project, split it into fixed-price tasks and let freelancers apply." cta_href=create_url cta_label="New project" cta_icon="fa-plus" %}
   {% else %}
-    {% include "components/empty_state.html" with icon="fa-folder-open" title="Rien ici" desc="Aucun projet dans cet onglet." %}
+    {% include "components/empty_state.html" with icon="fa-folder-open" title="Nothing here" desc="No projects in this tab." %}
   {% endif %}
 {% endif %}
 {% endblock %}

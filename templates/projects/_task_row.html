@@ -4,33 +4,33 @@ One task of the project table (.rcard). Context: task (annotated app_count / pen
 can_delete / my_application / is_mine set by the view), viewer_is_company.
 {% endcomment %}
 <tr class="task-row{% if task.status == 'delivered' and viewer_is_company %} is-attn{% endif %}" data-task-id="{{ task.pk }}" data-status="{{ task.status }}">
-  <td data-label="Tâche">
+  <td data-label="Task">
     <a href="{% url 'projects:task_detail' task.pk %}" class="ui-link font-semibold">{{ task.title }}</a>
     {% if task.tags %}<div class="mt-1">{% include "components/tags.html" with tags=task.tags linked=True %}</div>{% endif %}
     {% if task.description %}<p class="ui-meta mt-1 line-clamp-2">{{ task.description }}</p>{% endif %}
   </td>
-  <td data-label="Prix" class="ui-col-end ui-num">{% include "components/price.html" with amount=task.price %}</td>
-  <td data-label="Statut">
+  <td data-label="Price" class="ui-col-end ui-num">{% include "components/price.html" with amount=task.price %}</td>
+  <td data-label="Status">
     {% include "components/status_badge.html" with obj=task %}
-    {% if task.pay_status_label and task.status != 'open' and task.status != 'paid' %}<span class="ui-badge {{ task.pay_badge_class }}" title="Paiement" data-pay-badge>{{ task.pay_status_label }}</span>{% endif %}
-    {% if task.my_application %}<span class="ui-badge {{ task.my_application.badge_class }}" title="Votre candidature">{% if task.my_application.status == 'pending' %}Postulé{% else %}{{ task.my_application.status_label }}{% endif %}</span>{% endif %}
+    {% if task.pay_status_label and task.status != 'open' and task.status != 'paid' %}<span class="ui-badge {{ task.pay_badge_class }}" title="Payment" data-pay-badge>{{ task.pay_status_label }}</span>{% endif %}
+    {% if task.my_application %}<span class="ui-badge {{ task.my_application.badge_class }}" title="Your application">{% if task.my_application.status == 'pending' %}Applied{% else %}{{ task.my_application.status_label }}{% endif %}</span>{% endif %}
   </td>
-  <td data-label="Freelance">
-    {% if task.assigned_to %}{% include "components/wallet.html" with address=task.assigned_to.stellar_address name=task.assigned_to.display_name you=task.is_mine %}{% else %}<span class="ui-meta">{{ task.app_count }} candidat{{ task.app_count|pluralize }}</span>{% endif %}
+  <td data-label="Freelancer">
+    {% if task.assigned_to %}{% include "components/wallet.html" with address=task.assigned_to.stellar_address name=task.assigned_to.display_name you=task.is_mine %}{% else %}<span class="ui-meta">{{ task.app_count }} candidate{{ task.app_count|pluralize }}</span>{% endif %}
   </td>
   <td data-label="" class="ui-col-end">
     <span class="inline-flex flex-wrap gap-1 justify-end">
       {% if viewer_is_company and task.status == 'delivered' %}
-        <a href="{% url 'projects:task_detail' task.pk %}#validate-panel" class="ui-btn ui-btn-sm ui-btn-primary"><i class="fa-solid fa-star" aria-hidden="true"></i> Valider + noter</a>
+        <a href="{% url 'projects:task_detail' task.pk %}#validate-panel" class="ui-btn ui-btn-sm ui-btn-primary"><i class="fa-solid fa-star" aria-hidden="true"></i> Validate + rate</a>
       {% elif viewer_is_company and task.status == 'open' and task.pending_count %}
-        <a href="#candidates-{{ task.pk }}" class="ui-btn ui-btn-sm ui-btn-primary"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Choisir</a>
+        <a href="#candidates-{{ task.pk }}" class="ui-btn ui-btn-sm ui-btn-primary"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Choose</a>
       {% elif task.is_mine and task.status == 'taken' %}
-        <a href="{% url 'projects:task_detail' task.pk %}#deliver-panel" class="ui-btn ui-btn-sm ui-btn-primary"><i class="fa-solid fa-truck-fast" aria-hidden="true"></i> Livrer</a>
+        <a href="{% url 'projects:task_detail' task.pk %}#deliver-panel" class="ui-btn ui-btn-sm ui-btn-primary"><i class="fa-solid fa-truck-fast" aria-hidden="true"></i> Deliver</a>
       {% else %}
-        <a href="{% url 'projects:task_detail' task.pk %}" class="ui-btn ui-btn-sm">Voir</a>
+        <a href="{% url 'projects:task_detail' task.pk %}" class="ui-btn ui-btn-sm">View</a>
       {% endif %}
       {% if task.can_delete %}
-        <button type="button" class="ui-btn ui-btn-sm ui-btn-danger" data-task-delete="{{ task.pk }}" data-task-title="{{ task.title }}" title="Supprimer la tâche" aria-label="Supprimer « {{ task.title }} »"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+        <button type="button" class="ui-btn ui-btn-sm ui-btn-danger" data-task-delete="{{ task.pk }}" data-task-title="{{ task.title }}" title="Delete task" aria-label="Delete &quot;{{ task.title }}&quot;"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
       {% endif %}
     </span>
   </td>

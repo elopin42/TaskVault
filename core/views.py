@@ -33,12 +33,12 @@ def landing_stats() -> dict:
 
 # On-chain events shown on the landing's ledger tape, in flow order: (tx hash field, label, timestamp field).
 TAPE_EVENTS = (
-    ("deploy_tx_hash", "ESCROW CRÉÉ", "created_at"),
-    ("fund_tx_hash", "FONDS BLOQUÉS", "funded_at"),
-    ("deliver_tx_hash", "LIVRAISON", "delivered_at"),
-    ("approve_tx_hash", "LIVRAISON VALIDÉE", "released_at"),
-    ("release_tx_hash", "FONDS LIBÉRÉS", "released_at"),
-    ("payment_tx_hash", "PAIEMENT DIRECT", "released_at"),
+    ("deploy_tx_hash", "ESCROW CREATED", "created_at"),
+    ("fund_tx_hash", "FUNDS LOCKED", "funded_at"),
+    ("deliver_tx_hash", "DELIVERY", "delivered_at"),
+    ("approve_tx_hash", "DELIVERY VALIDATED", "released_at"),
+    ("release_tx_hash", "FUNDS RELEASED", "released_at"),
+    ("payment_tx_hash", "DIRECT PAYMENT", "released_at"),
 )
 
 
@@ -103,7 +103,7 @@ def hero_receipt() -> dict | None:
         "task": task,
         "amount": task.price,
         "steps": steps,
-        "status_label": "En attente d’un freelance",
+        "status_label": "Waiting for a freelancer",
         "payer": task.project.company.stellar_address,
         "payee": "",
         "contract": "",

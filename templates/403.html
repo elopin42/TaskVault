@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}403 — Accès refusé · Lowbid{% endblock %}
+{% block title %}403 — Access denied · Lowbid{% endblock %}
 {% block content %}
 <div class="empty-state glass-card max-w-lg mx-auto mt-10">
   <div class="empty-state-icon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></div>
-  <div class="empty-state-title">403 · Accès refusé</div>
-  <p class="empty-state-desc">Vous n’avez pas les droits pour voir cette page (session expirée ou jeton CSRF invalide).</p>
-  <a href="{% url 'core:landing' %}" class="ui-btn ui-btn-primary mt-4"><i class="fa-solid fa-house" aria-hidden="true"></i> Retour à l’accueil</a>
+  <div class="empty-state-title">403 · Access denied</div>
+  <p class="empty-state-desc">You don't have permission to view this page (session expired or invalid CSRF token).</p>
+  <a href="{% url 'core:landing' %}" class="ui-btn ui-btn-primary mt-4"><i class="fa-solid fa-house" aria-hidden="true"></i> Back to home</a>
 </div>
 {% endblock %}

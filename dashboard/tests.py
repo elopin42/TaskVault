@@ -60,36 +60,36 @@ class TodoTests(ScenarioTest):
     def test_company_todo(self):
         items = services.todo_items(self.company)
         headlines = [it["headline"] for it in items]
-        self.assertTrue(any("Valider et noter" in h and "Retouche photos" in h for h in headlines), headlines)
-        self.assertTrue(any("Choisir un freelance" in h and "Intégration Freighter" in h for h in headlines), headlines)
-        self.assertTrue(any("Ajouter des tâches" in h and "Projet vide" in h for h in headlines), headlines)
+        self.assertTrue(any("Validate and rate" in h and "Retouche photos" in h for h in headlines), headlines)
+        self.assertTrue(any("Choose a freelancer" in h and "Intégration Freighter" in h for h in headlines), headlines)
+        self.assertTrue(any("Add tasks to" in h and "Projet vide" in h for h in headlines), headlines)
         self.assertFalse(any("Landing page" in h for h in headlines), "a paid task needs nothing")
         tones = [it["tone"] for it in items]
         self.assertEqual(tones, sorted(tones, key=lambda t: 0 if t == "act" else 1), "act items come first")
         for it in items:
             self.assertEqual(set(it), {"tone", "kicker", "headline", "body", "href", "cta", "icon", "when"})
             self.assertTrue(it["href"].startswith("/taches/") or it["href"].startswith("/projets/"), it["href"])
-        validate = next(it for it in items if "Valider et noter" in it["headline"])
+        validate = next(it for it in items if "Validate and rate" in it["headline"])
         self.assertEqual(validate["tone"], "act")
         self.assertTrue(validate["href"].endswith("#validate-panel"))
         self.assertIn("https://example.com/photos", validate["body"])
 
     def test_freelance_todo(self):
         a = services.todo_items(self.a)
-        deliver = [it for it in a if it["kicker"] == "Tâche prise"]
+        deliver = [it for it in a if it["kicker"] == "Task taken"]
         self.assertEqual(len(deliver), 1)
         self.assertEqual(deliver[0]["tone"], "act")
-        self.assertIn("Livrer « Dashboard »", deliver[0]["headline"])
+        self.assertIn('Deliver "Dashboard"', deliver[0]["headline"])
         self.assertTrue(deliver[0]["href"].endswith("#deliver-panel"))
-        pending = [it for it in a if it["kicker"] == "Candidature envoyée"]
+        pending = [it for it in a if it["kicker"] == "Application sent"]
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0]["tone"], "wait")
         self.assertIn("90.0/100", pending[0]["body"])
 
         b = services.todo_items(self.b)
-        self.assertTrue(any(it["kicker"] == "Livraison déclarée" and it["tone"] == "wait" for it in b), b)
-        self.assertFalse(any(it["kicker"] == "Tâche prise" for it in b))
-        self.assertEqual(sum(1 for it in b if it["kicker"] == "Candidature envoyée"), 1, "the rejected T1 application is gone")
+        self.assertTrue(any(it["kicker"] == "Delivery declared" and it["tone"] == "wait" for it in b), b)
+        self.assertFalse(any(it["kicker"] == "Task taken" for it in b))
+        self.assertEqual(sum(1 for it in b if it["kicker"] == "Application sent"), 1, "the rejected T1 application is gone")
 
     def test_fresh_wallet_has_nothing_to_do(self):
         self.assertEqual(services.todo_items(make_wallet()), [])
@@ -138,16 +138,16 @@ class StatsTests(ScenarioTest):
         whens = [e["when"] for e in events]
         self.assertEqual(whens, sorted(whens, reverse=True))
         texts = " | ".join(e["text"] for e in events)
-        self.assertIn("Projet créé", texts)
-        self.assertIn("choisi pour", texts)
-        self.assertIn("Paiement envoyé", texts)
+        self.assertIn("Project created", texts)
+        self.assertIn("chosen for", texts)
+        self.assertIn("Payment sent", texts)
         for e in events:
             self.assertEqual(set(e), {"when", "icon", "text", "href", "tone"})
         self.assertLessEqual(len(services.recent_activity(self.company, limit=3)), 3)
         a_texts = " | ".join(e["text"] for e in services.recent_activity(self.a))
-        self.assertIn("Candidature sur", a_texts)
-        self.assertIn("Paiement reçu", a_texts)
-        self.assertIn("Note reçue : 5/5", a_texts)
+        self.assertIn("Application for", a_texts)
+        self.assertIn("Payment received", a_texts)
+        self.assertIn("Rating received: 5/5", a_texts)
 
     def test_profile_stats(self):
         s = services.profile_stats(self.company)
@@ -178,7 +178,7 @@ class HomeViewTests(ScenarioTest):
         r = self.client.get(reverse("dashboard:home"))
         self.assertEqual(r.status_code, 200)
         html = r.content.decode()
-        for marker in ("À faire", "Activité récente", "Côté entreprise", "Côté freelance", "Valider et noter", "ui-timeline", "Studio Nova"):
+        for marker in ("To do", "Recent activity", "As a company", "As a freelancer", "Validate and rate", "ui-timeline", "Studio Nova"):
             self.assertIn(marker, html)
         self.assertNotIn("{%", html)
         self.assertNotIn("{{", html)
@@ -188,14 +188,14 @@ class HomeViewTests(ScenarioTest):
         r = self.client.get(reverse("dashboard:home"))
         self.assertContains(r, "data-avg-note")
         self.assertContains(r, "5.0/5")
-        self.assertContains(r, "Livrer « Dashboard »")
+        self.assertContains(r, "Deliver &quot;Dashboard&quot;")  # autoescaped quotes
 
     def test_home_without_anything_shows_done_card(self):
         fresh = make_wallet()
         login(self.client, fresh)
         r = self.client.get(reverse("dashboard:home"))
-        self.assertContains(r, "Rien à faire pour l’instant")
-        self.assertContains(r, "Aucune activité")
+        self.assertContains(r, "Nothing to do for now")
+        self.assertContains(r, "No activity")
 
     def test_navbar_links_to_dashboard(self):
         login(self.client, self.company)
@@ -223,25 +223,25 @@ class ProfileViewTests(ScenarioTest):
         self.assertEqual(r.status_code, 200)
         html = r.content.decode()
         self.assertIn("Yanis", html)
-        self.assertIn("Tâches réalisées", html)
-        self.assertIn("Notes reçues", html)
+        self.assertIn("Tasks completed", html)
+        self.assertIn("Ratings received", html)
         self.assertIn('data-avg-note="5.0"', html)
         self.assertIn("Landing page", html)
-        self.assertNotIn("Éditer mon nom", html)
+        self.assertNotIn("Edit my name", html)
         r = self.client.get(self.url(self.company))
         self.assertContains(r, "Plateforme de réservation")
         self.assertContains(r, "project-card")
-        self.assertContains(r, "aucune note reçue")
+        self.assertContains(r, "no ratings received")
 
     def test_owner_sees_and_uses_the_name_form(self):
         login(self.client, self.a)
         r = self.client.get(self.url(self.a))
-        self.assertContains(r, "Éditer mon nom")
+        self.assertContains(r, "Edit my name")
         r = self.client.post(self.url(self.a), {"display_name": "  Yanis Dev  "}, follow=True)
         self.assertEqual(r.status_code, 200)
         self.a.refresh_from_db()
         self.assertEqual(self.a.display_name, "Yanis Dev")
-        self.assertContains(r, "Nom affiché mis à jour")
+        self.assertContains(r, "Display name updated")
 
     def test_name_is_truncated_to_80_chars(self):
         login(self.client, self.a)
@@ -268,4 +268,4 @@ class ModelHelpersTests(ScenarioTest):
         self.assertEqual(p.open_count, 1)
         self.assertEqual(p.progress_pct, 25)
         self.assertEqual(Project.objects.get(pk=self.empty.pk).progress_pct, 0)
-        self.assertEqual(Task.objects.get(pk=self.t1.pk).status_label, "Payé")
+        self.assertEqual(Task.objects.get(pk=self.t1.pk).status_label, "Paid")

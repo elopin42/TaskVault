@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% load static lowbid_extras %}
-{% block title %}Nouveau projet · Lowbid{% endblock %}
+{% block title %}New project · Lowbid{% endblock %}
 
 {% block content %}
-{% include "partials/page_header.html" with title="Nouveau projet" subtitle="Ensuite, vous ajouterez les tâches à prix fixe." %}
+{% include "partials/page_header.html" with title="New project" subtitle="Next, you will add the fixed-price tasks." %}
 
 <div class="ui-split is-even ui-form-scope">
 <form method="post" class="ui-panel" novalidate id="project-form" data-submit-once>
@@ -27,20 +27,20 @@
   </div>
 
   <div class="ui-sticky-actions mt-4">
-    <span class="ui-meta me-auto"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Publié par <span class="font-mono">{{ wallet_user.short_address }}</span></span>
-    <a href="{% url 'projects:project_list' %}" class="ui-btn ui-btn-ghost">Annuler</a>
-    <button type="submit" class="ui-btn ui-btn-primary"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Créer et ajouter des tâches</button>
+    <span class="ui-meta me-auto"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Posted by <span class="font-mono">{{ wallet_user.short_address }}</span></span>
+    <a href="{% url 'projects:project_list' %}" class="ui-btn ui-btn-ghost">Cancel</a>
+    <button type="submit" class="ui-btn ui-btn-primary"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Create and add tasks</button>
   </div>
 </form>
 
-<aside class="hidden lg:block" aria-label="Comment ça marche">
+<aside class="hidden lg:block" aria-label="How it works">
   <div class="lg:sticky lg:top-20 ui-stack">
     <div class="ui-panel">
-      <div class="ui-panel-head"><div><h2 class="ui-panel-title">Ensuite</h2></div></div>
+      <div class="ui-panel-head"><div><h2 class="ui-panel-title">Next</h2></div></div>
       <ol class="ui-timeline">
-        <li class="ui-timeline-item is-brand"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-list-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Découpez en tâches</p></div></li>
-        <li class="ui-timeline-item"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-user-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Choisissez un freelance par tâche</p></div></li>
-        <li class="ui-timeline-item is-ok"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-circle-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Validez et notez</p></div></li>
+        <li class="ui-timeline-item is-brand"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-list-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Split into tasks</p></div></li>
+        <li class="ui-timeline-item"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-user-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Choose one freelancer per task</p></div></li>
+        <li class="ui-timeline-item is-ok"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-circle-check"></i></span><div class="ui-timeline-body"><p class="ui-timeline-title">Validate and rate</p></div></li>
       </ol>
     </div>
   </div>

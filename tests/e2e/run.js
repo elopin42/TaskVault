@@ -15,10 +15,10 @@
  *
  * Scenario: company creates a project + 3 tasks (inline) → A and B apply to T1 → company chooses A
  * → A delivers a link (direct mode: DB only) → company validates with note 5: the Rating is saved,
- * the chained payment FAILS gracefully (company account unknown on Horizon → French message in
+ * the chained payment FAILS gracefully (company account unknown on Horizon → error message in
  * [data-pay-error], HTTP 200 {ok:false}) → the fake Horizon "friendbots" the wallets, A adds the
  * USDC trustline, the company resumes the payment from the panel button → T1 paid, hash + explorer
- * link shown → A and B apply to T2 → A is top with « Validé » + « Recommandé » (90 vs 20). Plus the
+ * link shown → A and B apply to T2 → A is top with "Validated" + "Recommended" (90 vs 20). Plus the
  * kanban, dashboard, profile, list filters, mobile (no horizontal scroll), dark-only theme and logout.
  */
 "use strict";
@@ -91,7 +91,7 @@ function actor(name) {
   return { name, secret: kp.secret(), address: kp.publicKey(), short: short(kp.publicKey()) };
 }
 async function newContext(browser, who, viewport, extra) {
-  const ctx = await browser.newContext(Object.assign({ viewport, baseURL: BASE, locale: "fr-FR", timezoneId: "Europe/Paris" }, extra || {}));
+  const ctx = await browser.newContext(Object.assign({ viewport, baseURL: BASE, locale: "en-US", timezoneId: "Europe/Paris" }, extra || {}));
   if (who) await ctx.addInitScript(installFakeFreighter, { secret: who.secret, address: who.address, passphrase: PASSPHRASE });
   ctx.setDefaultTimeout(10000);
   return ctx;
@@ -198,21 +198,21 @@ async function waitForServer() {
 // --- the scenario ------------------------------------------------------------------------------
 
 const PROJECT = {
-  title: "Plateforme de réservation pour un studio de yoga",
-  description: "Site de réservation de cours (planning, abonnements, paiement USDC via Freighter) pour un studio de 3 salles. Maquettes Figma fournies, déploiement sur notre VPS. Découpé en trois tâches à prix fixe.",
+  title: "Booking platform for a yoga studio",
+  description: "Class booking site (schedule, memberships, USDC payment via Freighter) for a 3-room studio. Figma mockups provided, deployment on our VPS. Split into three fixed-price tasks.",
 };
 const TASKS = [
-  { title: "Landing page", description: "Page d’accueil responsive (Django + Tailwind) depuis la maquette, formulaire de contact.", price: 300, tags: "django, ui" },
-  { title: "Intégration Freighter", description: "Connexion wallet, signature SEP-53 et paiement USDC d’un abonnement depuis le navigateur.", price: 500, tags: "stellar, js" },
-  { title: "Dashboard", description: "Tableau de bord du studio : taux de remplissage, revenus USDC, export CSV.", price: 400, tags: "django, charts" },
+  { title: "Landing page", description: "Responsive home page (Django + Tailwind) from the mockup, contact form.", price: 300, tags: "django, ui" },
+  { title: "Freighter integration", description: "Wallet login, SEP-53 signature and USDC payment of a membership from the browser.", price: 500, tags: "stellar, js" },
+  { title: "Dashboard", description: "Studio dashboard: occupancy rate, USDC revenue, CSV export.", price: 400, tags: "django, charts" },
 ];
 const EXTRA_PROJECT = {
-  title: "Refonte de la charte et du site vitrine d’une boulangerie",
-  description: "Logo vectoriel, mini charte (couleurs, typos) et site vitrine 5 pages avec horaires et carte. Photos à retoucher légèrement, hébergement déjà en place.",
+  title: "Brand refresh and showcase website for a bakery",
+  description: "Vector logo, mini brand guide (colours, typefaces) and a 5-page showcase site with opening hours and menu. Photos need light retouching, hosting already in place.",
   tasks: [
-    { title: "Logo et charte", description: "Logo vectoriel, 2 déclinaisons, mini charte.", price: 250, tags: ["design", "figma"] },
-    { title: "Site vitrine WordPress", description: "5 pages, thème sur mesure, Core Web Vitals verts.", price: 600, tags: ["wordpress", "seo"] },
-    { title: "Retouche photos", description: "30 photos produits : détourage, colorimétrie, exports web.", price: 120, tags: ["photo"] },
+    { title: "Logo and brand guide", description: "Vector logo, 2 variants, mini brand guide.", price: 250, tags: ["design", "figma"] },
+    { title: "WordPress showcase site", description: "5 pages, custom theme, green Core Web Vitals.", price: 600, tags: ["wordpress", "seo"] },
+    { title: "Photo retouching", description: "30 product photos: clipping, colour grading, web exports.", price: 120, tags: ["photo"] },
   ],
 };
 
@@ -252,14 +252,14 @@ async function main() {
       await cp.locator(".lb-hero-title").waitFor();
       assert(await cp.locator(".lb-hero [data-wallet-connect]").count() === 1, "hero has the connect button");
       const body = await cp.evaluate(() => document.body.innerText);
-      assert(!/ench[eè]r/i.test(body), "landing copy is about the task board");
+      assert(!/ench[eè]r|auction/i.test(body), "landing copy is about the task board");
       await connect(cp, company, ".lb-hero [data-wallet-connect]");
       await cp.waitForURL(/\/tableau-de-bord\/$/, { timeout: 10000 });
       await cp.locator("#todo").waitFor();
       assert(await cp.locator("#activity").count() === 1, "dashboard has the activity section");
       assert(await cp.locator(".lb-tabbar").count() === 1, "signed-in pages carry the mobile tab bar markup");
       await cp.goto("/");
-      assert((await cp.locator(".lb-hero a.ui-btn-primary").innerText()).includes("Nouveau projet"), "hero CTA switches to Nouveau projet");
+      assert((await cp.locator(".lb-hero a.ui-btn-primary").innerText()).includes("New project"), "hero CTA switches to New project");
       assert(await cp.locator("[data-landing-stats]").count() === 1, "landing shows the live stats line");
     });
 
@@ -282,11 +282,11 @@ async function main() {
     // 2 ------------------------------------------------------------------------------------------
     await step("2. company creates the project and adds 3 tasks inline (300 / 500 / 400 USDC)", async () => {
       projectId = await createProject(cp, PROJECT);
-      await cp.locator(".ui-alert-ok", { hasText: "Projet créé" }).waitFor();
-      assert((await cp.locator("[data-status-badge]").innerText()).trim() === "Brouillon", "status Brouillon");
+      await cp.locator(".ui-alert-ok", { hasText: "Project created" }).waitFor();
+      assert((await cp.locator("[data-status-badge]").innerText()).trim() === "Draft", "status Draft");
       await cp.locator('[data-tasks][data-count="0"]').waitFor();
       assert(await cp.locator("#task-form").count() === 1, "company sees the inline add-task form");
-      assert(await cp.locator("[data-fund]").count() === 0, "no Financer button without a task");
+      assert(await cp.locator("[data-fund]").count() === 0, "no Fund button without a task");
       for (let i = 0; i < TASKS.length; i++) await addTaskUI(cp, TASKS[i], i + 1);
       const rows = cp.locator(".task-row");
       assert(await rows.count() === 3, "3 task rows");
@@ -297,15 +297,15 @@ async function main() {
       assert((await cp.locator("[data-kpi-total]").innerText()).replace(/\s+/g, " ").startsWith("1,200.00"), "KPI total = 1,200.00");
       assert(await cp.locator("[data-task-delete]").count() === 3, "every open task of a draft project can be deleted");
       // direct payment mode (no Trustless Work key): no funding button, the panel says so
-      assert(await cp.locator("[data-fund]").count() === 0, "no Financer button in direct mode");
+      assert(await cp.locator("[data-fund]").count() === 0, "no Fund button in direct mode");
       assert(await cp.locator("#funding-panel[data-mode=direct]").count() === 1, "funding banner in direct mode");
-      assert(/Paiement direct/.test(await cp.locator("#funding-panel").innerText()), "direct-mode note is displayed");
+      assert(/Direct payment|Direct USDC payment/i.test(await cp.locator("#funding-panel").innerText()), "direct-mode note is displayed");
       // server-side validation surfaces under the right field
-      await cp.fill("#task-title", "Tâche invalide"); await cp.fill("#task-price", "10"); await cp.fill("#task-tags", "a, b, c, d");
+      await cp.fill("#task-title", "Invalid task"); await cp.fill("#task-price", "10"); await cp.fill("#task-tags", "a, b, c, d");
       await cp.click("[data-task-add]");
       const err = cp.locator('[data-error-for="tags"]:not([hidden])');
       await err.waitFor();
-      assert(/Au plus 3/.test(await err.innerText()), `tags error, got "${await err.innerText()}"`);
+      assert(/At most 3/i.test(await err.innerText()), `tags error, got "${await err.innerText()}"`);
       assert(!(await cp.locator("[data-task-add]").isDisabled()), "submit button re-enabled after a refusal");
       await cp.goto(`/projets/${projectId}/`);
       await cp.locator('[data-tasks][data-count="3"]').waitFor();
@@ -327,21 +327,21 @@ async function main() {
 
     // 3 ------------------------------------------------------------------------------------------
     await step("3. A and B apply to T1 (A: django,ui · B: django); company cannot apply; duplicates refused", async () => {
-      await applyUI(pa, taskIds[0], { message: "Django + Tailwind au quotidien, je livre en 5 jours avec le déploiement.", tags: "django, ui" });
+      await applyUI(pa, taskIds[0], { message: "Django + Tailwind every day, I deliver in 5 days including deployment.", tags: "django, ui" });
       assert((await pa.locator("#my-application").innerText()).includes("20.0"), "A's score is 20.0 (tags only, no history)");
-      await applyUI(pb, taskIds[0], { message: "Intégration propre depuis Figma, 2 itérations comprises.", tags: "django" });
+      await applyUI(pb, taskIds[0], { message: "Clean build from Figma, 2 iterations included.", tags: "django" });
       assert((await pb.locator("#my-application").innerText()).includes("10.0"), "B's score is 10.0");
       assert(await pb.locator('[data-candidates][data-count="2"]').count() === 1, "B sees 2 candidates");
-      const dup = await api(pa, `/taches/${taskIds[0]}/postuler/`, { message: "encore", tags: ["django"] });
+      const dup = await api(pa, `/taches/${taskIds[0]}/postuler/`, { message: "again", tags: ["django"] });
       assert(dup.status === 409 && dup.json.error === "duplicate", `second application refused with duplicate, got ${dup.status} ${JSON.stringify(dup.json)}`);
-      const own = await api(cp, `/taches/${taskIds[0]}/postuler/`, { message: "moi", tags: [] });
+      const own = await api(cp, `/taches/${taskIds[0]}/postuler/`, { message: "me", tags: [] });
       assert(own.status === 403 && own.json.error === "own_task", `own_task refused, got ${own.status}`);
-      assert(/propre tâche/.test(own.json.message), `French own_task message, got "${own.json.message}"`);
+      assert(/own task/i.test(own.json.message), `English own_task message, got "${own.json.message}"`);
       await pa.goto(`/taches/${taskIds[0]}/`);
-      assert(await pa.locator("[data-choose]").count() === 0, "a freelance has no Choisir button");
+      assert(await pa.locator("[data-choose]").count() === 0, "a freelancer has no Choose button");
     });
 
-    await step("3b. company's task page updates by polling (2 candidates, Recommandé on A, Choisir on EVERY row)", async () => {
+    await step("3b. company's task page updates by polling (2 candidates, Recommended on A, Choose on EVERY row)", async () => {
       await cp.goto(`/taches/${taskIds[0]}/`);
       let navs = 0;
       cp.on("framenavigated", (f) => { if (f === cp.mainFrame()) navs++; });
@@ -352,7 +352,7 @@ async function main() {
       const pc = track(await cctx.newPage(), "freelanceC");
       await pc.goto("/");
       await connect(pc, fc, ".lb-hero [data-wallet-connect]");
-      const r = await api(pc, `/taches/${taskIds[0]}/postuler/`, { message: "Dispo tout de suite.", tags: ["ui"] });
+      const r = await api(pc, `/taches/${taskIds[0]}/postuler/`, { message: "Available right away.", tags: ["ui"] });
       assert(r.status === 201, `C applies: HTTP ${r.status}`);
       const t0 = Date.now();
       await cp.locator('[data-candidates][data-count="3"]').waitFor({ timeout: 8000 });
@@ -360,13 +360,13 @@ async function main() {
       assert(navs === 0, `no navigation on the company page (saw ${navs})`);
       assert((await cp.locator("[data-kpi-count]").innerText()).trim() === "3", "KPI count = 3");
       assert(await cp.locator("[data-live-dot]:not([hidden])").count() === 1, "live dot shown");
-      assert(await cp.locator("[data-choose]").count() === 3, "a Choisir button on EVERY candidate");
+      assert(await cp.locator("[data-choose]").count() === 3, "a Choose button on EVERY candidate");
       const rec = cp.locator("[data-recommended]");
-      assert(await rec.count() === 1, "exactly one Recommandé badge");
+      assert(await rec.count() === 1, "exactly one Recommended badge");
       const recRow = cp.locator(".cand-row:has([data-recommended])");
       assert((await recRow.getAttribute("data-freelancer")) === fa.address, "A (20.0) is recommended");
       assert((await recRow.locator("[data-score]").innerText()).trim() === "20.0", "A scores 20.0");
-      assert(await cp.locator(".badge-validated").count() === 0, "nobody is Validé yet");
+      assert(await cp.locator(".badge-validated").count() === 0, "nobody is Validated yet");
       // C withdraws nothing — just drop them from the demo by letting the company pick A below.
       await cctx.close();
       await shot(cp, "04-tache-candidats");
@@ -374,16 +374,16 @@ async function main() {
     });
 
     // 4 ------------------------------------------------------------------------------------------
-    await step("4. company chooses A → Pris, others Non retenu; B cannot deliver; A delivers a link", async () => {
+    await step("4. company chooses A → Taken, others Not selected; B cannot deliver; A delivers a link", async () => {
       const rowA = cp.locator(`.cand-row[data-freelancer="${fa.address}"]`);
       await rowA.locator("[data-choose]").click();
       await acceptConfirm(cp, "choose A");
-      await cp.locator("[data-status-badge]", { hasText: "Pris" }).waitFor({ timeout: 15000 });
-      assert(await cp.locator("[data-choose]").count() === 0, "no more Choisir buttons");
+      await cp.locator("[data-status-badge]", { hasText: "Taken" }).waitFor({ timeout: 15000 });
+      assert(await cp.locator("[data-choose]").count() === 0, "no more Choose buttons");
       assert(await cp.locator(".cand-row.is-chosen").count() === 1, "chosen row highlighted");
       assert((await cp.locator(".cand-row.is-chosen").getAttribute("data-freelancer")) === fa.address, "A is the chosen one");
-      assert(await cp.locator(".cand-row.is-rejected").count() === 2, "the two others are Non retenu");
-      assert(await cp.locator(".cand-row.is-rejected .ui-badge", { hasText: "Non retenu" }).count() === 2, "Non retenu badges");
+      assert(await cp.locator(".cand-row.is-rejected").count() === 2, "the two others are Not selected");
+      assert(await cp.locator(".cand-row.is-rejected .ui-badge", { hasText: "Not selected" }).count() === 2, "Not selected badges");
 
       const notB = await api(pb, `/taches/${taskIds[0]}/livrer/`, { delivery_link: "https://example.com/pr" });
       assert(notB.status === 403 && notB.json.error === "not_assigned", `B cannot deliver (got ${notB.status})`);
@@ -391,9 +391,9 @@ async function main() {
       await pa.goto(`/taches/${taskIds[0]}/`);
       await pa.locator("#escrow-panel[data-mode=direct]").waitFor();
       await pa.locator("#deliver-panel").waitFor();
-      assert(/Paiement direct USDC/.test(await pa.locator("#escrow-panel").innerText()), "panel announces the direct mode");
+      assert(/Direct payment USDC|Direct USDC payment/i.test(await pa.locator("#escrow-panel").innerText()), "panel announces the direct mode");
       assert(await pa.locator("#escrow-panel [data-pay-trustline]").count() === 1, "trustline helper offered to the freelance");
-      await pa.fill("#deliver-link", "pas-un-lien");
+      await pa.fill("#deliver-link", "not-a-link");
       await pa.click("[data-deliver]");
       await acceptConfirm(pa, "deliver (bad link)");
       const err = pa.locator("#deliver-panel [data-pay-error]:not([hidden])");
@@ -403,7 +403,7 @@ async function main() {
       await pa.fill("#deliver-link", "https://github.com/studio-nova/booking/pull/1");
       await pa.click("[data-deliver]");
       await acceptConfirm(pa, "deliver");
-      await pa.locator("[data-status-badge]", { hasText: "Livré" }).waitFor({ timeout: 15000 });
+      await pa.locator("[data-status-badge]", { hasText: "Delivered" }).waitFor({ timeout: 15000 });
       assert(await pa.locator("[data-delivery-link]").count() === 1, "delivery link displayed");
       assert(await pa.locator("#deliver-panel").count() === 0, "deliver form is gone");
       assert((await pa.locator("#escrow-panel").getAttribute("data-escrow-status")) === "delivered", "escrow row is delivered");
@@ -414,7 +414,7 @@ async function main() {
     await step("5. company validates with note 5: rating saved, the chained payment fails gracefully (account unknown on Horizon)", async () => {
       await cp.goto(`/projets/${projectId}/`);
       await cp.locator(".task-row[data-status=delivered]").waitFor();
-      assert(await cp.locator(".task-row[data-status=delivered] a", { hasText: "Valider + noter" }).count() === 1, "project page offers Valider + noter");
+      assert(await cp.locator(".task-row[data-status=delivered] a", { hasText: /Validate \+ rate/i }).count() === 1, "project page offers Validate + rate");
       await cp.goto(`/taches/${taskIds[0]}/`);
       await cp.locator("#validate-panel").waitFor();
       assert(await cp.locator("[data-validate] [data-rate]").count() === 5, "5 star radios");
@@ -426,56 +426,56 @@ async function main() {
       assert(early.status === 200 && early.json.ok === false && early.json.error === "wrong_state", `paying before rating is refused with HTTP 200 {ok:false}: ${JSON.stringify(early.json)}`);
       await cp.check('[data-rate="5"]', { force: true });
       assert(await cp.isChecked('[data-rate="5"]'), "note 5 checked");
-      await cp.fill("#validate-comment", "Impeccable, pixel-perfect et en avance.");
+      await cp.fill("#validate-comment", "Flawless, pixel-perfect and ahead of schedule.");
       await shot(cp, "06-valider-noter");
       await cp.click("[data-validate-submit]");
       await acceptConfirm(cp, "validate");
       // The Rating is stored, then lowbid-projects.js chains direct_pay: the company account does not exist
-      // on (the fake) Horizon yet → prepare answers HTTP 200 {ok:false, error:"stellar"} with a French message.
+      // on (the fake) Horizon yet → prepare answers HTTP 200 {ok:false, error:"stellar"} with an error message.
       const payErr = cp.locator("#escrow-panel [data-pay-error]:not([hidden])");
       await payErr.waitFor({ timeout: 15000 });
       const payMsg = (await payErr.innerText()).trim();
-      assert(/Compte Stellar introuvable|financez|Horizon/.test(payMsg), `French payment error shown, got "${payMsg}"`);
+      assert(/Stellar account not found|account not found|fund it|friendbot|Horizon/i.test(payMsg), `payment error shown, got "${payMsg}"`);
       assert(await cp.locator("#validate-form").count() === 0, "the rating form is gone (rating saved)");
       const resume = cp.locator('#escrow-panel [data-pay-step="direct_pay"]');
-      assert(await resume.count() === 1, "a resume button « Payer le freelance » replaces the form");
-      assert((await cp.locator("[data-status-badge]").innerText()).trim() === "Livré", "task is still Livré (nothing paid)");
+      assert(await resume.count() === 1, "a resume button \"Pay the freelancer\" replaces the form");
+      assert((await cp.locator("[data-status-badge]").innerText()).trim() === "Delivered", "task is still Delivered (nothing paid)");
       const dup = await api(cp, `/taches/${taskIds[0]}/valider/`, { note: 4 });
       assert(dup.status === 409 && dup.json.error === "duplicate", `second validation refused (got ${dup.status} ${dup.json && dup.json.error})`);
       const fail = await api(cp, `/pay/prepare/${taskIds[0]}/direct_pay/`, {});
       assert(fail.status === 200 && fail.json.ok === false && fail.json.error === "stellar", `prepare fails gracefully: ${JSON.stringify(fail.json)}`);
       await cp.reload();
       await cp.locator('#escrow-panel [data-pay-step="direct_pay"]').waitFor();
-      assert(/Compte Stellar introuvable|financez/.test(await cp.locator("#escrow-panel").innerText()), "last_error persisted in the panel after a reload");
+      assert(/Stellar account not found|account not found|fund it|friendbot/i.test(await cp.locator("#escrow-panel").innerText()), "last_error persisted in the panel after a reload");
       assert(await cp.locator("#escrow-panel [data-last-error]").count() === 1, "last_error alert");
       await shot(cp, "13-paiement-echec");
       // dashboard: the pending payment step surfaces for both roles
       await cp.goto("/tableau-de-bord/");
-      assert(await cp.locator("[data-todo-list] .ui-next-card.act", { hasText: "Payer « Landing page »" }).count() === 1, "company to-do: pay the task");
+      assert(await cp.locator("[data-todo-list] .ui-next-card.act", { hasText: /Pay "Landing page"|Pay .Landing page./ }).count() === 1, "company to-do: pay the task");
       await pa.goto("/tableau-de-bord/");
-      assert(await pa.locator("[data-todo-list] .ui-next-card", { hasText: "paiement en attente" }).count() === 1, "freelance to-do: payment pending");
+      assert(await pa.locator("[data-todo-list] .ui-next-card", { hasText: /payment pending|pending payment/i }).count() === 1, "freelance to-do: payment pending");
     });
 
-    await step("5b. wallets funded on Horizon, A adds the USDC trustline, the company resumes → T1 Payé with its explorer link", async () => {
+    await step("5b. wallets funded on Horizon, A adds the USDC trustline, the company resumes → T1 Paid with its explorer link", async () => {
       if (!horizon) { log("      skipped (no fake Horizon)"); return; }
       horizon.fund(company.address, { usdc: 1000 });
       horizon.fund(fa.address); // XLM only: the trustline comes from the UI
       await pa.goto(`/taches/${taskIds[0]}/`);
       await pa.locator("#escrow-panel [data-pay-trustline]").click();
-      await pa.locator(".lb-toast", { hasText: "Trustline USDC ajoutée" }).waitFor({ timeout: 15000 });
+      await pa.locator(".lb-toast", { hasText: /Trustline USDC added|USDC trustline added/i }).waitFor({ timeout: 15000 });
       assert(horizon.submitted.some((t) => t.type === "change_trust" && t.source === fa.address), "changeTrust reached Horizon");
       assert(horizon.balanceOf(fa.address) === 0, "A holds the trustline with a 0 balance");
       const again = await api(pa, "/pay/trustline/prepare/", {});
-      assert(again.json.ok && !again.json.xdr && /déjà présente/.test(again.json.message), `second trustline call says already present: ${JSON.stringify(again.json)}`);
+      assert(again.json.ok && !again.json.xdr && /already/i.test(again.json.message), `second trustline call says already present: ${JSON.stringify(again.json)}`);
 
       await cp.goto(`/taches/${taskIds[0]}/`);
       await cp.locator('#escrow-panel [data-pay-step="direct_pay"]').click();
-      await cp.locator("[data-status-badge]", { hasText: "Payé" }).waitFor({ timeout: 20000 });
+      await cp.locator("[data-status-badge]", { hasText: "Paid" }).waitFor({ timeout: 20000 });
       const payment = horizon.submitted.find((t) => t.type === "payment");
       assert(payment && payment.source === company.address && payment.destination === fa.address && Number(payment.amount) === 300 && payment.asset === "USDC", `payment submitted to Horizon: ${JSON.stringify(payment)}`);
       assert(horizon.balanceOf(fa.address) === 300 && horizon.balanceOf(company.address) === 700, "ledger moved 300 USDC");
       assert(await cp.locator('[data-rating="5"]').count() === 1, "rating 5 displayed");
-      assert(/Tâche payée/.test(await cp.locator("main").innerText()), "Tâche payée panel");
+      assert(/Task paid/i.test(await cp.locator("main").innerText()), "Task paid panel");
       const link = cp.locator(`#escrow-panel [data-explorer-links] a[href*="stellar.expert/explorer/testnet/tx/${payment.hash}"]`);
       assert(await link.count() === 1, "the payment hash links to stellar.expert");
       assert(await cp.locator("#escrow-panel [data-last-error]").count() === 0, "last_error cleared");
@@ -488,9 +488,9 @@ async function main() {
       await cp.goto(`/projets/${projectId}/`);
       await cp.locator("#funding-panel").waitFor();
       const banner = await cp.locator("#funding-panel").innerText();
-      assert(/300\.00 USDC/.test(banner) && /Payé/.test(banner), `banner lists T1 as paid: "${banner.slice(0, 200)}"`);
+      assert(/300\.00 USDC/.test(banner) && /Paid/.test(banner), `banner lists T1 as paid: "${banner.slice(0, 200)}"`);
       assert(await cp.locator(`#funding-panel a[href*="/tx/${payment.hash}"]`).count() === 1, "banner carries the explorer link");
-      assert((await cp.locator("[data-status-badge]").first().innerText()).trim() === "Financé", "project is Financé after the first direct payment");
+      assert((await cp.locator("[data-status-badge]").first().innerText()).trim() === "Funded", "project is Funded after the first direct payment");
       await shot(cp, "15-financement-projet");
     });
 
@@ -498,19 +498,19 @@ async function main() {
       if (!horizon) { log("      skipped (no fake Horizon)"); return; }
 
       await pa.goto("/taches/");
-      assert(await pa.locator(`.kanban-col[data-col="paid"] .kanban-card[data-task-id="${taskIds[0]}"]`).count() === 1, "T1 sits in A's Payé column");
-      assert(await pa.locator(".kanban-col[data-col=open] .kanban-card").count() >= 2, "open tasks of the company are in A's Ouvert column");
+      assert(await pa.locator(`.kanban-col[data-col="paid"] .kanban-card[data-task-id="${taskIds[0]}"]`).count() === 1, "T1 sits in A's Paid column");
+      assert(await pa.locator(".kanban-col[data-col=open] .kanban-card").count() >= 2, "open tasks of the company are in A's Open column");
       assert(await pa.locator(`.kanban-col[data-col="open"] .kanban-card[data-task-id="${taskIds[0]}"]`).count() === 0, "T1 is no longer open");
       await shot(pa, "07-tableau-kanban");
       await noHorizontalScroll(pa, "desktop kanban");
     });
 
     // 6 ------------------------------------------------------------------------------------------
-    await step("6. A and B apply to T2 → A is TOP with Validé + Recommandé (90.0 vs 20.0)", async () => {
+    await step("6. A and B apply to T2 → A is TOP with Validated + Recommended (90.0 vs 20.0)", async () => {
       if (!horizon) { log("      skipped (no fake Horizon: T1 is not paid)"); return; }
-      await applyUI(pa, taskIds[1], { message: "J’ai déjà branché Freighter et Horizon sur un back-office Django.", tags: "stellar" });
+      await applyUI(pa, taskIds[1], { message: "I have already wired Freighter and Horizon into a Django back office.", tags: "stellar" });
       assert((await pa.locator("#my-application").innerText()).includes("90.0"), "A's score is 90.0 (40 + 5×8 + 20×½)");
-      await applyUI(pb, taskIds[1], { message: "Spécialiste Stellar/JS : SEP-53, trustlines, Soroban.", tags: "stellar, js" });
+      await applyUI(pb, taskIds[1], { message: "Stellar/JS specialist: SEP-53, trustlines, Soroban.", tags: "stellar, js" });
       assert((await pb.locator("#my-application").innerText()).includes("20.0"), "B's score is 20.0 (tags only)");
 
       await cp.goto(`/taches/${taskIds[1]}/`);
@@ -519,25 +519,25 @@ async function main() {
       assert((await rows.nth(0).getAttribute("data-freelancer")) === fa.address, "A ranks first");
       assert((await rows.nth(0).locator("[data-score]").innerText()).trim() === "90.0", "A = 90.0");
       assert((await rows.nth(1).locator("[data-score]").innerText()).trim() === "20.0", "B = 20.0");
-      assert(await rows.nth(0).locator('[data-badge="valide"]').count() === 1, "A carries Validé");
-      assert(await rows.nth(0).locator("[data-recommended]").count() === 1, "A carries Recommandé");
-      assert(await rows.nth(1).locator('[data-badge="valide"]').count() === 0, "B is not Validé");
-      assert(await rows.nth(1).locator("[data-recommended]").count() === 0, "B is not Recommandé");
-      assert(await cp.locator("[data-choose]").count() === 2, "Choisir on both candidates (the company stays free to pick B)");
+      assert(await rows.nth(0).locator('[data-badge="valide"]').count() === 1, "A carries Validated");
+      assert(await rows.nth(0).locator("[data-recommended]").count() === 1, "A carries Recommended");
+      assert(await rows.nth(1).locator('[data-badge="valide"]').count() === 0, "B is not Validated");
+      assert(await rows.nth(1).locator("[data-recommended]").count() === 0, "B is not Recommended");
+      assert(await cp.locator("[data-choose]").count() === 2, "Choose on both candidates (the company stays free to pick B)");
       const json = await api(cp, `/taches/${taskIds[1]}/candidats.json`, undefined, "GET");
       assert(json.status === 200 && json.json.candidates[0].score === "90.0" && json.json.candidates[0].validated === true && json.json.candidates[0].recommended === true, `candidats.json ranks A first with the badges: ${JSON.stringify(json.json.candidates)}`);
       await shot(cp, "08-tache-valide-recommande");
       await noHorizontalScroll(cp, "desktop task T2");
 
-      // the project page shows the same candidates block with Choisir buttons
+      // the project page shows the same candidates block with Choose buttons
       await cp.goto(`/projets/${projectId}/`);
       await cp.locator(`#candidates-${taskIds[1]}`).waitFor();
-      assert(await cp.locator(`#candidates-${taskIds[1]} [data-choose]`).count() === 2, "project page: Choisir on every candidate of T2");
-      assert(await cp.locator(`#candidates-${taskIds[1]} [data-badge="valide"]`).count() === 1, "project page: Validé badge");
-      assert(await cp.locator(".task-row[data-status=paid]").count() === 1, "T1 row is Payé");
-      // One escrow per task: the project is Financé but only the still-open tasks (T2, T3) can be deleted; T1 (paid) cannot.
-      assert(await cp.locator("[data-task-delete]").count() === 2, "project is Financé: only the two open tasks keep a delete button");
-      assert(await cp.locator("#task-title").count() === 1, "project is Financé: the add-task form is still there");
+      assert(await cp.locator(`#candidates-${taskIds[1]} [data-choose]`).count() === 2, "project page: Choose on every candidate of T2");
+      assert(await cp.locator(`#candidates-${taskIds[1]} [data-badge="valide"]`).count() === 1, "project page: Validated badge");
+      assert(await cp.locator(".task-row[data-status=paid]").count() === 1, "T1 row is Paid");
+      // One escrow per task: the project is Funded but only the still-open tasks (T2, T3) can be deleted; T1 (paid) cannot.
+      assert(await cp.locator("[data-task-delete]").count() === 2, "project is Funded: only the two open tasks keep a delete button");
+      assert(await cp.locator("#task-title").count() === 1, "project is Funded: the add-task form is still there");
       await shot(cp, "03-projet-entreprise");
       await noHorizontalScroll(cp, "desktop project company");
 
@@ -558,11 +558,11 @@ async function main() {
     });
 
     // 7 ------------------------------------------------------------------------------------------
-    await step("7. list / search / tag chips, Mes projets, dashboard to-do + KPIs, public profile (note 5.0, name edit)", async () => {
+    await step("7. list / search / tag chips, My projects, dashboard to-do + KPIs, public profile (note 5.0, name edit)", async () => {
       await pn.goto("/projets/");
       assert(await pn.locator(".project-card").count() === 2, "list shows the 2 projects");
       await shot(pn, "02-liste-projets");
-      await noHorizontalScroll(pn, "desktop liste");
+      await noHorizontalScroll(pn, "desktop list");
       await pn.goto("/projets/?tab=all&q=Freighter");
       assert(await pn.locator(".project-card").count() === 1, "search matches a task title");
       await pn.goto("/projets/?tab=all&q=zzzzqqqq");
@@ -572,7 +572,7 @@ async function main() {
       assert(await pn.locator(".ui-chip-row .ui-tag").count() >= 1, "popular tag chips rendered");
       await pn.locator(".ui-chip-row .ui-tag").first().click();
       assert(new URL(pn.url()).searchParams.get("tag"), "chip click filters by tag");
-      await noHorizontalScroll(pn, "desktop liste filtrée");
+      await noHorizontalScroll(pn, "desktop filtered list");
       await pn.goto("/");
       await pn.locator(".project-card").first().waitFor();
       await shot(pn, "01-landing");
@@ -580,28 +580,28 @@ async function main() {
 
       await cp.goto("/mes-projets/");
       const row = cp.locator("tbody tr", { hasText: PROJECT.title.slice(0, 30) });
-      assert(await row.count() === 1, "the project is listed in Mes projets");
-      assert(await row.locator(".ui-badge", { hasText: horizon ? "Financé" : "Brouillon" }).count() === 1, "project status badge in Mes projets");
-      assert(/Choisir/.test(await row.innerText()), "row CTA says Choisir (candidates waiting on T2)");
+      assert(await row.count() === 1, "the project is listed in My projects");
+      assert(await row.locator(".ui-badge", { hasText: horizon ? "Funded" : "Draft" }).count() === 1, "project status badge in My projects");
+      assert(/Choose/.test(await row.innerText()), "row CTA says Choose (candidates waiting on T2)");
       assert(await cp.locator("tbody tr").count() === 2, "both company projects listed");
       await shot(cp, "09-mes-projets");
-      await noHorizontalScroll(cp, "desktop mes projets");
+      await noHorizontalScroll(cp, "desktop my projects");
 
       await cp.goto("/tableau-de-bord/");
       await cp.locator("#todo").waitFor();
       const todo = cp.locator("[data-todo-list] .ui-next-card");
       assert(await todo.count() >= 1, "company has at least one to-do");
-      assert(await cp.locator("[data-todo-list] .ui-next-card.act", { hasText: "Choisir un freelance" }).count() >= 1, "to-do: choose a freelance for T2");
+      assert(await cp.locator("[data-todo-list] .ui-next-card.act", { hasText: /Choose a freelancer/i }).count() >= 1, "to-do: choose a freelancer for T2");
       assert(await cp.locator(".ui-kpi-tile").count() >= 4, "dashboard KPI tiles");
       assert(await cp.locator("#activity .ui-timeline-item").count() >= 1, "activity timeline has entries");
-      if (horizon) assert(/Paiement envoyé/.test(await cp.locator("#activity").innerText()), "activity mentions the payment of T1");
+      if (horizon) assert(/Payment sent/i.test(await cp.locator("#activity").innerText()), "activity mentions the payment of T1");
       await shot(cp, "10-tableau-de-bord");
       await noHorizontalScroll(cp, "desktop dashboard");
 
       await pa.goto("/tableau-de-bord/");
       await pa.locator("#todo").waitFor();
       assert(/5\.0\/5/.test(await pa.locator("[data-avg-note]").innerText()), "A's average note is 5.0/5 on the dashboard");
-      if (horizon) assert(await pa.locator("[data-todo-list] .ui-next-card", { hasText: "Intégration Freighter" }).count() >= 1, "A's to-do lists the pending application");
+      if (horizon) assert(await pa.locator("[data-todo-list] .ui-next-card", { hasText: "Freighter integration" }).count() >= 1, "A's to-do lists the pending application");
 
       await pa.goto(`/profil/${fa.address}/`);
       await pa.locator("#edit-name").waitFor();
@@ -610,7 +610,7 @@ async function main() {
       await pa.locator(".ui-alert-ok").waitFor();
       assert((await pa.locator(".ui-wallet-name").first().innerText()).includes("Yanis"), "display name updated on the profile");
       assert((await pa.locator('[data-avg-note="5.0"]').count()) === 1, "public profile shows the 5.0 average");
-      assert(/Notes reçues/.test(await pa.locator("main").innerText()), "ratings section rendered");
+      assert(/Ratings received|Received ratings/i.test(await pa.locator("main").innerText()), "ratings section rendered");
       await shot(pa, "11-profil");
       await noHorizontalScroll(pa, "desktop profil");
       await pb.goto(`/profil/${fa.address}/`);
@@ -621,7 +621,7 @@ async function main() {
     });
 
     // 8 ------------------------------------------------------------------------------------------
-    await step("8. mobile: kanban, liste, formulaire, dashboard, landing — no horizontal scroll, menu toggles", async () => {
+    await step("8. mobile: kanban, list, form, dashboard, landing — no horizontal scroll, menu toggles", async () => {
       const ma = await mobileClone(browser, ctx.fa, fa);
       const map = track(await ma.newPage(), "mobile A");
       await map.goto("/taches/");
@@ -629,10 +629,10 @@ async function main() {
       await noHorizontalScroll(map, "mobile kanban");
       await shot(map, "mobile-kanban");
       await map.goto("/projets/");
-      await noHorizontalScroll(map, "mobile liste");
+      await noHorizontalScroll(map, "mobile list");
       await shot(map, "mobile-liste");
       await map.goto("/projets/nouveau/");
-      await noHorizontalScroll(map, "mobile formulaire");
+      await noHorizontalScroll(map, "mobile form");
       await map.goto("/tableau-de-bord/");
       await map.locator("#todo").waitFor();
       assert(await map.locator(".lb-tabbar").isVisible(), "mobile tab bar visible on the phone");

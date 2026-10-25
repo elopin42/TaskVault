@@ -19,19 +19,19 @@ ZERO = Decimal("0")
 # Payment steps → to-do copy for the wallet that must sign them (company side) and for the
 # freelance waiting on them. Mirrors payments.services.FLOW; the "validate" step is projects'.
 COMPANY_PAY_STEPS = {
-    "deploy": ("Financement", "Financer « {title} »", "Créer l’escrow de la tâche, puis bloquer {amount} {code} (deux signatures).", "Financer", "fa-lock", "#funding-panel"),
-    "fund": ("Financement", "Bloquer les fonds de « {title} »", "Escrow créé : il reste à y bloquer {amount} {code}.", "Bloquer", "fa-lock", "#funding-panel"),
-    "approve": ("Paiement", "Libérer les fonds de « {title} »", "Note enregistrée : signez la validation puis la libération des {amount} {code}.", "Libérer", "fa-money-bill-transfer", "#paiement"),
-    "release": ("Paiement", "Libérer les fonds de « {title} »", "Livraison validée on-chain : signez la libération des {amount} {code}.", "Libérer", "fa-money-bill-transfer", "#paiement"),
-    "direct_pay": ("Paiement", "Payer « {title} »", "Note enregistrée : signez le paiement de {amount} {code} dans Freighter.", "Payer", "fa-money-bill-transfer", "#paiement"),
+    "deploy": ("Funding", 'Fund "{title}"', "Create the task's escrow, then lock {amount} {code} (two signatures).", "Fund", "fa-lock", "#funding-panel"),
+    "fund": ("Funding", 'Lock the funds for "{title}"', "Escrow created: {amount} {code} still to lock in it.", "Lock", "fa-lock", "#funding-panel"),
+    "approve": ("Payment", 'Release the funds for "{title}"', "Rating saved: sign the validation, then the release of the {amount} {code}.", "Release", "fa-money-bill-transfer", "#paiement"),
+    "release": ("Payment", 'Release the funds for "{title}"', "Delivery validated on-chain: sign the release of the {amount} {code}.", "Release", "fa-money-bill-transfer", "#paiement"),
+    "direct_pay": ("Payment", 'Pay "{title}"', "Rating saved: sign the payment of {amount} {code} in Freighter.", "Pay", "fa-money-bill-transfer", "#paiement"),
 }
 FREELANCE_WAIT_STEPS = {
-    "deploy": ("Financement attendu", "« {title} » : en attente du financement par l’entreprise", "Vous pourrez déclarer la livraison une fois les {amount} {code} bloqués en escrow."),
-    "fund": ("Financement attendu", "« {title} » : en attente du financement par l’entreprise", "Escrow créé, fonds pas encore bloqués."),
-    "validate": ("Livraison déclarée", "« {title} » : en attente de validation par l’entreprise", ""),
-    "approve": ("Paiement en cours", "« {title} » : validée, libération des fonds en attente", "L’entreprise signe la libération de vos {amount} {code}."),
-    "release": ("Paiement en cours", "« {title} » : validée, libération des fonds en attente", "L’entreprise signe la libération de vos {amount} {code}."),
-    "direct_pay": ("Paiement en cours", "« {title} » : validée, paiement en attente", "L’entreprise signe le paiement de vos {amount} {code}."),
+    "deploy": ("Funding awaited", '"{title}": waiting for the company to fund it', "You can declare the delivery once the {amount} {code} are locked in escrow."),
+    "fund": ("Funding awaited", '"{title}": waiting for the company to fund it', "Escrow created, funds not locked yet."),
+    "validate": ("Delivery declared", '"{title}": waiting for the company to validate it', ""),
+    "approve": ("Payment in progress", '"{title}": validated, funds release pending', "The company is signing the release of your {amount} {code}."),
+    "release": ("Payment in progress", '"{title}": validated, funds release pending', "The company is signing the release of your {amount} {code}."),
+    "direct_pay": ("Payment in progress", '"{title}": validated, payment pending', "The company is signing the payment of your {amount} {code}."),
 }
 
 
@@ -71,15 +71,15 @@ def todo_items(wallet) -> list[dict]:
         if task.status in (Task.Status.TAKEN, Task.Status.DELIVERED):
             action = payments.next_action(task, wallet)
             if action and action["mine"] and action["step"] == "validate":
-                who = task.assigned_to.display_name or task.assigned_to.short_address if task.assigned_to else "le freelance"
+                who = task.assigned_to.display_name or task.assigned_to.short_address if task.assigned_to else "the freelancer"
                 items.append(
                     {
                         "tone": "act",
-                        "kicker": "Livraison déclarée",
-                        "headline": f"Valider et noter « {task.title} »",
-                        "body": f"{who} a livré : {task.delivery_link}" if task.delivery_link else f"{who} a livré.",
+                        "kicker": "Delivery declared",
+                        "headline": f'Validate and rate "{task.title}"',
+                        "body": f"{who} delivered: {task.delivery_link}" if task.delivery_link else f"{who} delivered.",
                         "href": _task_url(task, "#validate-panel"),
-                        "cta": "Valider + noter",
+                        "cta": "Validate + rate",
                         "icon": "fa-star",
                         "when": task.delivered_at or task.updated_at,
                     }
@@ -103,12 +103,12 @@ def todo_items(wallet) -> list[dict]:
             items.append(
                 {
                     "tone": "act",
-                    "kicker": "Candidatures",
-                    "headline": f"Choisir un freelance pour « {task.title} »",
-                    "body": f"{task.pending_count} candidat{'s' if task.pending_count > 1 else ''}, "
-                    f"{task.price:,.2f} {asset_code()} — projet « {task.project.title} ».",
+                    "kicker": "Applications",
+                    "headline": f'Choose a freelancer for "{task.title}"',
+                    "body": f"{task.pending_count} candidate{'s' if task.pending_count > 1 else ''}, "
+                    f'{task.price:,.2f} {asset_code()} — project "{task.project.title}".',
                     "href": _task_url(task, "#candidates-panel"),
-                    "cta": "Choisir",
+                    "cta": "Choose",
                     "icon": "fa-user-check",
                     "when": task.updated_at,
                 }
@@ -118,11 +118,11 @@ def todo_items(wallet) -> list[dict]:
             items.append(
                 {
                     "tone": "wait",
-                    "kicker": "Projet vide",
-                    "headline": f"Ajouter des tâches à « {project.title} »",
-                    "body": "Un projet sans tâche ne reçoit aucune candidature.",
+                    "kicker": "Empty project",
+                    "headline": f'Add tasks to "{project.title}"',
+                    "body": "A project without tasks gets no applications.",
                     "href": _project_url(project, "#task-form-panel"),
-                    "cta": "Ajouter",
+                    "cta": "Add",
                     "icon": "fa-plus",
                     "when": project.created_at,
                 }
@@ -137,11 +137,11 @@ def todo_items(wallet) -> list[dict]:
             items.append(
                 {
                     "tone": "act",
-                    "kicker": "Tâche prise",
-                    "headline": f"Livrer « {task.title} »",
-                    "body": f"{task.price:,.2f} {asset_code()} à la validation — projet « {task.project.title} ».",
+                    "kicker": "Task taken",
+                    "headline": f'Deliver "{task.title}"',
+                    "body": f'{task.price:,.2f} {asset_code()} on validation — project "{task.project.title}".',
                     "href": _task_url(task, "#deliver-panel"),
-                    "cta": "Livrer",
+                    "cta": "Deliver",
                     "icon": "fa-truck-fast",
                     "when": task.updated_at,
                 }
@@ -155,7 +155,7 @@ def todo_items(wallet) -> list[dict]:
                     "headline": _fmt(headline, task),
                     "body": _fmt(body, task),
                     "href": _task_url(task, "#paiement"),
-                    "cta": "Voir",
+                    "cta": "View",
                     "icon": "fa-hourglass-half",
                     "when": task.delivered_at or task.updated_at,
                 }
@@ -169,11 +169,11 @@ def todo_items(wallet) -> list[dict]:
         items.append(
             {
                 "tone": "wait",
-                "kicker": "Candidature envoyée",
-                "headline": f"« {app.task.title} » : l’entreprise choisit",
-                "body": f"Votre score : {app.score:.1f}/100.",
+                "kicker": "Application sent",
+                "headline": f'"{app.task.title}": the company is choosing',
+                "body": f"Your score: {app.score:.1f}/100.",
                 "href": _task_url(app.task),
-                "cta": "Voir",
+                "cta": "View",
                 "icon": "fa-paper-plane",
                 "when": app.created_at,
             }
@@ -258,7 +258,7 @@ def recent_activity(wallet, limit: int = 12) -> list[dict]:
                 "when": app.created_at,
                 "icon": "fa-paper-plane",
                 "tone": "brand",
-                "text": f"Candidature sur « {app.task.title} » ({app.task.price:,.2f} {asset_code()})",
+                "text": f'Application for "{app.task.title}" ({app.task.price:,.2f} {asset_code()})',
                 "href": _task_url(app.task),
             }
         )
@@ -269,7 +269,7 @@ def recent_activity(wallet, limit: int = 12) -> list[dict]:
                 "when": project.created_at,
                 "icon": "fa-diagram-project",
                 "tone": "",
-                "text": f"Projet créé : « {project.title} »",
+                "text": f'Project created: "{project.title}"',
                 "href": _project_url(project),
             }
         )
@@ -284,7 +284,7 @@ def recent_activity(wallet, limit: int = 12) -> list[dict]:
                     "when": task.updated_at if task.status == Task.Status.TAKEN else (task.delivered_at or task.updated_at),
                     "icon": "fa-user-check",
                     "tone": "brand",
-                    "text": (f"{who} choisi pour « {task.title} »" if mine_as_company else f"Choisi pour « {task.title} »"),
+                    "text": (f'{who} chosen for "{task.title}"' if mine_as_company else f'Chosen for "{task.title}"'),
                     "href": _task_url(task),
                 }
             )
@@ -294,7 +294,7 @@ def recent_activity(wallet, limit: int = 12) -> list[dict]:
                     "when": task.delivered_at,
                     "icon": "fa-truck-fast",
                     "tone": "",
-                    "text": f"Livraison déclarée — « {task.title} »",
+                    "text": f'Delivery declared — "{task.title}"',
                     "href": _task_url(task, "#delivery-panel"),
                 }
             )
@@ -304,7 +304,7 @@ def recent_activity(wallet, limit: int = 12) -> list[dict]:
                     "when": task.paid_at,
                     "icon": "fa-money-bill-transfer",
                     "tone": "ok",
-                    "text": f"{'Paiement envoyé' if mine_as_company else 'Paiement reçu'} — « {task.title} » ({task.price:,.2f} {asset_code()})",
+                    "text": f"{'Payment sent' if mine_as_company else 'Payment received'} — \"{task.title}\" ({task.price:,.2f} {asset_code()})",
                     "href": _task_url(task),
                 }
             )
@@ -315,7 +315,7 @@ def recent_activity(wallet, limit: int = 12) -> list[dict]:
                 "when": rating.created_at,
                 "icon": "fa-star",
                 "tone": "ok",
-                "text": f"Note reçue : {rating.note}/5 sur « {rating.task.title} »",
+                "text": f'Rating received: {rating.note}/5 for "{rating.task.title}"',
                 "href": _task_url(rating.task),
             }
         )

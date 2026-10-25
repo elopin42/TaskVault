@@ -40,7 +40,7 @@
     });
   });
 
-  /* ---------- live "n / 3 compétences" helper under every tags input ---------- */
+  /* ---------- live "n / 3 skills" helper under every tags input ---------- */
   document.querySelectorAll("[data-tags-help]").forEach(function (help) {
     var input = document.getElementById(help.getAttribute("data-tags-help"));
     if (!input) return;
@@ -48,15 +48,15 @@
     function render() {
       var t = Lowbid.parseTags(input.value);
       if (!t.length) { help.innerHTML = base; help.classList.remove("ui-error"); return; }
-      help.textContent = t.length + " / 3 compétence" + (t.length > 1 ? "s" : "") + " : " + t.join(", ");
+      help.textContent = t.length + " / 3 skill" + (t.length > 1 ? "s" : "") + ": " + t.join(", ");
       help.classList.toggle("ui-error", t.length > 3);
     }
     input.addEventListener("input", render);
   });
 
   function toastError(err, fallback) {
-    var msg = (err && err.data && err.data.message) || (err && err.message) || fallback || "Action impossible.";
-    if (err && err.status === 401) msg = "Connectez votre wallet pour continuer.";
+    var msg = (err && err.data && err.data.message) || (err && err.message) || fallback || "Action not possible.";
+    if (err && err.status === 401) msg = "Connect your wallet to continue.";
     Lowbid.toast(msg, "error");
     return msg;
   }
@@ -94,16 +94,16 @@
       var url = choose.dataset.chooseUrl || (window.LOWBID_TASK && window.LOWBID_TASK.urls.choose.replace(/\/0\/$/, "/" + choose.dataset.choose + "/"));
       if (!url) return;
       Lowbid.confirm({
-        title: "Choisir ce freelance ?",
-        message: (choose.dataset.chooseLabel || "Ce candidat") + " sera chargé de la tâche. Les autres candidatures passeront en « Non retenu ».",
-        confirmLabel: "Choisir", icon: "fa-user-check"
+        title: "Choose this freelancer?",
+        message: (choose.dataset.chooseLabel || "This candidate") + " will take the task. The other applications will move to \"Not selected\".",
+        confirmLabel: "Choose", icon: "fa-user-check"
       }).then(function (ok) {
         if (!ok) return;
         setBusy(choose, true, "…");
         Lowbid.api(url, { method: "POST" }).then(function (data) {
-          Lowbid.toast(data.message || "Freelance choisi.", "success", { title: "Choix" });
+          Lowbid.toast(data.message || "Freelancer chosen.", "success", { title: "Choice" });
           setTimeout(function () { location.reload(); }, 500);
-        }).catch(function (err) { setBusy(choose, false); toastError(err, "Choix impossible."); });
+        }).catch(function (err) { setBusy(choose, false); toastError(err, "Could not choose."); });
       });
       return;
     }
@@ -113,16 +113,16 @@
       var cfgP = window.LOWBID_PROJECT;
       if (!cfgP) return;
       Lowbid.confirm({
-        title: "Supprimer cette tâche ?",
-        message: "« " + (del.dataset.taskTitle || "Tâche") + " » sera retirée du projet, avec ses candidatures.",
-        confirmLabel: "Supprimer", cancelLabel: "Garder", danger: true
+        title: "Delete this task?",
+        message: "\"" + (del.dataset.taskTitle || "Task") + "\" will be removed from the project, with its applications.",
+        confirmLabel: "Delete", cancelLabel: "Keep", danger: true
       }).then(function (ok) {
         if (!ok) return;
         setBusy(del, true, "…");
         Lowbid.api(cfgP.urls.deleteTask.replace(/\/0\/supprimer\/$/, "/" + del.dataset.taskDelete + "/supprimer/"), { method: "POST" }).then(function (data) {
-          Lowbid.toast(data.message || "Tâche supprimée.", "success");
+          Lowbid.toast(data.message || "Task deleted.", "success");
           setTimeout(function () { location.href = data.redirect || location.pathname; }, 400);
-        }).catch(function (err) { setBusy(del, false); toastError(err, "Suppression impossible."); });
+        }).catch(function (err) { setBusy(del, false); toastError(err, "Could not delete."); });
       });
     }
   });
@@ -138,11 +138,11 @@
       if (addingTask) return;
       clearErrors(taskForm);
       var title = document.getElementById("task-title"), price = document.getElementById("task-price");
-      if (!title.value.trim()) { fieldError(taskForm, "title", "Donnez un titre à la tâche."); title.focus(); return; }
-      if (!(parseFloat(price.value) > 0)) { fieldError(taskForm, "price", "Le prix doit être strictement positif."); price.focus(); return; }
+      if (!title.value.trim()) { fieldError(taskForm, "title", "Give the task a title."); title.focus(); return; }
+      if (!(parseFloat(price.value) > 0)) { fieldError(taskForm, "price", "The price must be greater than zero."); price.focus(); return; }
       addingTask = true;
       var btn = taskForm.querySelector("[data-task-add]");
-      setBusy(btn, true, "Ajout…");
+      setBusy(btn, true, "Adding…");
       Lowbid.api(project.urls.addTask, {
         method: "POST",
         body: {
@@ -150,16 +150,16 @@
           price: price.value, tags: Lowbid.parseTags(document.getElementById("task-tags").value)
         }
       }).then(function (data) {
-        Lowbid.toast(data.message || "Tâche ajoutée.", "success", { title: "Tâche" });
+        Lowbid.toast(data.message || "Task added.", "success", { title: "Task" });
         // Reload: the table, the KPI band and the total all change.
         setTimeout(function () { location.reload(); }, 350);
       }).catch(function (err) {
         addingTask = false;
         setBusy(btn, false);
         var code = err && err.data && err.data.error;
-        var msg = toastError(err, "Tâche refusée.");
+        var msg = toastError(err, "Task rejected.");
         var field = TASK_FIELD[code] || "_";
-        if (code === "invalid" && /titre/i.test(msg)) field = "title";
+        if (code === "invalid" && /title|titre/i.test(msg)) field = "title";
         fieldError(taskForm, field, msg);
       });
     });
@@ -201,18 +201,18 @@
       if (applying) return;
       clearErrors(applyForm);
       var tags = Lowbid.parseTags(document.getElementById("apply-tags").value);
-      if (tags.length > 3) { fieldError(applyForm, "tags", "Au plus 3 compétences."); return; }
+      if (tags.length > 3) { fieldError(applyForm, "tags", "At most 3 skills."); return; }
       applying = true;
       var btn = applyForm.querySelector("[data-apply-submit]");
-      setBusy(btn, true, "Envoi…");
+      setBusy(btn, true, "Sending…");
       Lowbid.api(cfg.urls.apply, { method: "POST", body: { message: document.getElementById("apply-message").value, tags: tags } }).then(function (data) {
-        Lowbid.toast(data.message || "Candidature envoyée.", "success", { title: "Candidature" });
+        Lowbid.toast(data.message || "Application sent.", "success", { title: "Application" });
         setTimeout(function () { location.reload(); }, 500);
       }).catch(function (err) {
         applying = false;
         setBusy(btn, false);
         var code = err && err.data && err.data.error;
-        var msg = toastError(err, "Candidature refusée.");
+        var msg = toastError(err, "Application rejected.");
         fieldError(applyForm, APPLY_FIELD[code] || "_", msg);
         if (code === "wrong_state") setTimeout(function () { location.reload(); }, 1500);
       });
@@ -222,7 +222,7 @@
   /* ----- validate + rate form (company) → saves the Rating, then chains the payment signatures ----- */
   var validateForm = document.querySelector("form[data-validate]");
   if (validateForm) {
-    var LABELS = { 1: "1/5 — insuffisant", 2: "2/5 — passable", 3: "3/5 — correct", 4: "4/5 — très bien", 5: "5/5 — excellent" };
+    var LABELS = { 1: "1/5 — poor", 2: "2/5 — fair", 3: "3/5 — good", 4: "4/5 — very good", 5: "5/5 — excellent" };
     var help = validateForm.querySelector("[data-rate-help]");
     validateForm.querySelectorAll("[data-rate]").forEach(function (r) {
       r.addEventListener("change", function () { if (help) help.textContent = LABELS[r.value] || ""; });
@@ -236,10 +236,10 @@
       var panel = validateForm.closest("#validate-panel") || validateForm.parentNode;
       var box = document.createElement("div");
       box.innerHTML =
-        '<div class="ui-alert ui-alert-ok mb-3"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Note enregistrée. ' +
-        (next && next.mine ? "Il reste à signer « " + Lowbid.escapeHtml(next.label) + " » pour payer le freelance." : "") + "</span></div>" +
+        '<div class="ui-alert ui-alert-ok mb-3"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Rating saved. ' +
+        (next && next.mine ? "Sign \"" + Lowbid.escapeHtml(next.label) + "\" to pay the freelancer." : "") + "</span></div>" +
         (next && next.mine && next.prepare_url
-          ? '<button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-pay-step="' + Lowbid.escapeHtml(next.step) + '" data-prepare-url="' + Lowbid.escapeHtml(next.prepare_url) + '" data-loading-label="Signature…"><i class="fa-solid fa-money-bill-transfer" aria-hidden="true"></i> ' + Lowbid.escapeHtml(next.label) + "</button>"
+          ? '<button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-pay-step="' + Lowbid.escapeHtml(next.step) + '" data-prepare-url="' + Lowbid.escapeHtml(next.prepare_url) + '" data-loading-label="Signing…"><i class="fa-solid fa-money-bill-transfer" aria-hidden="true"></i> ' + Lowbid.escapeHtml(next.label) + "</button>"
           : "") +
         '<p class="ui-error mt-2" data-pay-error' + (msg ? "" : " hidden") + ">" + Lowbid.escapeHtml(msg || "") + "</p>";
       panel.replaceChild(box, validateForm);
@@ -250,23 +250,23 @@
       if (validating) return;
       clearErrors(validateForm);
       var checked = validateForm.querySelector("[data-rate]:checked");
-      if (!checked) { fieldError(validateForm, "note", "Choisissez une note de 1 à 5."); return; }
+      if (!checked) { fieldError(validateForm, "note", "Choose a rating from 1 to 5."); return; }
       var note = parseInt(checked.value, 10);
       var btn = validateForm.querySelector("[data-validate-submit]");
       Lowbid.confirm({
-        title: "Valider la livraison ?",
-        message: "Note " + note + "/5. " + (isDirect
-          ? "La note enregistrée, vous signez le paiement de la tâche dans Freighter."
-          : "La note enregistrée, vous signez la validation puis la libération des fonds dans Freighter (deux signatures)."),
-        confirmLabel: isDirect ? "Valider et payer" : "Valider et libérer", icon: "fa-circle-check"
+        title: "Validate the delivery?",
+        message: "Rating " + note + "/5. " + (isDirect
+          ? "Once the rating is saved, you sign the task payment in Freighter."
+          : "Once the rating is saved, you sign the approval, then the release of the funds in Freighter (two signatures)."),
+        confirmLabel: isDirect ? "Validate and pay" : "Validate and release", icon: "fa-circle-check"
       }).then(function (ok) {
         if (!ok) return;
         validating = true;
-        setBusy(btn, true, "Validation…");
+        setBusy(btn, true, "Validating…");
         var comment = document.getElementById("validate-comment");
         var url = validateForm.getAttribute("data-validate-url") || cfg.urls.validate;
         Lowbid.api(url, { method: "POST", body: { note: note, comment: comment ? comment.value : "" } }).then(function (data) {
-          Lowbid.toast(data.message || "Tâche validée.", "success", { title: "Validation" });
+          Lowbid.toast(data.message || "Task validated.", "success", { title: "Validation" });
           var next = data.next;
           if (!(next && next.mine && next.prepare_url && Lowbid.pay)) { setTimeout(function () { location.reload(); }, 500); return; }
           setBusy(btn, true, next.label + "…");
@@ -277,8 +277,8 @@
           }).catch(function (err) {
             validating = false;
             var pending = (err && err.pending) || next;
-            var msg = err && err.handled ? "" : ((err && err.data && err.data.message) || (err && err.message) || "Signature impossible.");
-            if (msg) Lowbid.toast(msg, "error", { title: "Paiement" });
+            var msg = err && err.handled ? "" : ((err && err.data && err.data.message) || (err && err.message) || "Could not sign.");
+            if (msg) Lowbid.toast(msg, "error", { title: "Payment" });
             if (err && err.completed) { setTimeout(function () { location.reload(); }, 900); return; }
             showResume(pending, msg);
           });
@@ -286,7 +286,7 @@
           validating = false;
           setBusy(btn, false);
           var code = err && err.data && err.data.error;
-          fieldError(validateForm, code === "invalid" ? "note" : "_", toastError(err, "Validation refusée."));
+          fieldError(validateForm, code === "invalid" ? "note" : "_", toastError(err, "Validation rejected."));
           if (code === "wrong_state" || code === "duplicate") setTimeout(function () { location.reload(); }, 1500);
         });
       });

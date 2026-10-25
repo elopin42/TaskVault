@@ -11,16 +11,16 @@
   <p class="ui-meta leading-relaxed line-clamp-2">{{ project.description }}</p>
   <dl class="grid grid-cols-2 gap-x-3 gap-y-2">
     <div class="min-w-0"><dt class="ui-label mb-0.5">Budget</dt><dd class="ui-price text-sm">{{ project.total_amount|usdc }}</dd></div>
-    <div class="min-w-0"><dt class="ui-label mb-0.5">Tâches</dt><dd class="ui-num text-sm">{{ project.tasks_count }} · <span class="text-muted font-normal">{{ project.open_count }} ouverte{{ project.open_count|pluralize }}</span></dd></div>
+    <div class="min-w-0"><dt class="ui-label mb-0.5">Tasks</dt><dd class="ui-num text-sm">{{ project.tasks_count }} · <span class="text-muted font-normal">{{ project.open_count }} open</span></dd></div>
   </dl>
   {% if project.tasks_count %}
-    <div class="flex items-center gap-2" title="{{ project.paid_count }} tâche{{ project.paid_count|pluralize }} payée{{ project.paid_count|pluralize }} sur {{ project.tasks_count }}">
+    <div class="flex items-center gap-2" title="{{ project.paid_count }} of {{ project.tasks_count }} task{{ project.tasks_count|pluralize }} paid">
       <div class="ui-progress flex-1{% if project.progress_pct == 100 %} is-ok{% endif %}" aria-hidden="true"><span style="width: {{ project.progress_pct }}%"></span></div>
-      <span class="ui-meta ui-num whitespace-nowrap">{{ project.paid_count }}/{{ project.tasks_count }} payée{{ project.paid_count|pluralize }}</span>
+      <span class="ui-meta ui-num whitespace-nowrap">{{ project.paid_count }}/{{ project.tasks_count }} paid</span>
     </div>
   {% endif %}
   <div class="ui-meta flex items-center justify-between gap-2 mt-auto pt-1">
-    {% include "components/wallet.html" with address=project.company.stellar_address label="Entreprise" %}
-    <a href="{% url 'projects:project_detail' project.pk %}" class="ui-link">Voir <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
+    {% include "components/wallet.html" with address=project.company.stellar_address label="Company" %}
+    <a href="{% url 'projects:project_detail' project.pk %}" class="ui-link">View <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>
   </div>
 </article>

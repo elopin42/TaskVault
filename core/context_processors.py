@@ -26,11 +26,11 @@ def site(request):
 # `wallet` marks links that need a session. `short` is the label of the mobile tab bar
 # (partials/tabbar.html); `primary` renders the raised tab.
 NAV_LINKS = (
-    {"label": "Projets", "short": "Projets", "url_name": "projects:project_list", "fallback": "/projets/", "icon": "fa-diagram-project", "wallet": False},
-    {"label": "Tableau", "short": "Tableau", "url_name": "projects:board", "fallback": "/taches/", "icon": "fa-table-columns", "wallet": True},
-    {"label": "Nouveau projet", "short": "Créer", "url_name": "projects:project_create", "fallback": "/projets/nouveau/", "icon": "fa-plus", "wallet": True, "primary": True},
-    {"label": "Mes projets", "short": "Mes projets", "url_name": "projects:my_projects", "fallback": "/mes-projets/", "icon": "fa-folder-open", "wallet": True},
-    {"label": "Tableau de bord", "short": "Bord", "url_name": "dashboard:home", "fallback": "/tableau-de-bord/", "icon": "fa-gauge-high", "wallet": True},
+    {"label": "Projects", "short": "Projects", "url_name": "projects:project_list", "fallback": "/projets/", "icon": "fa-diagram-project", "wallet": False},
+    {"label": "Board", "short": "Board", "url_name": "projects:board", "fallback": "/taches/", "icon": "fa-table-columns", "wallet": True},
+    {"label": "New project", "short": "Create", "url_name": "projects:project_create", "fallback": "/projets/nouveau/", "icon": "fa-plus", "wallet": True, "primary": True},
+    {"label": "My projects", "short": "My projects", "url_name": "projects:my_projects", "fallback": "/mes-projets/", "icon": "fa-folder-open", "wallet": True},
+    {"label": "Dashboard", "short": "Home", "url_name": "dashboard:home", "fallback": "/tableau-de-bord/", "icon": "fa-gauge-high", "wallet": True},
 )
 
 
@@ -57,7 +57,7 @@ def nav_links(request):
                 "active": False,
             }
         )
-    # Only the most specific match is active: /projets/nouveau/ must not also light up "Projets".
+    # Only the most specific match is active: /projets/nouveau/ must not also light up "Projects".
     matching = [link for link in links if link["href"] != "/" and path.startswith(link["href"])]
     if matching:
         max(matching, key=lambda link: len(link["href"]))["active"] = True

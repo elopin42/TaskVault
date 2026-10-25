@@ -1,4 +1,4 @@
-{% comment %}{% include "components/section_head.html" with title="Projets en cours" sub="…" icon="fa-bolt" link_href=url link_label="Tout voir" %}{% endcomment %}<div class="ui-section-head">
+{% comment %}{% include "components/section_head.html" with title="Projects in progress" sub="…" icon="fa-bolt" link_href=url link_label="View all" %}{% endcomment %}<div class="ui-section-head">
   <div class="min-w-0"><h2 class="ui-section-title">{% if icon %}<i class="fa-solid {{ icon }}" aria-hidden="true"></i>{% endif %}{{ title }}</h2>{% if sub %}<p class="ui-section-sub">{{ sub }}</p>{% endif %}</div>
-  {% if link_href %}<a href="{{ link_href }}" class="ui-link whitespace-nowrap">{{ link_label|default:"Tout voir" }} <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>{% endif %}
+  {% if link_href %}<a href="{{ link_href }}" class="ui-link whitespace-nowrap">{{ link_label|default:"View all" }} <i class="fa-solid fa-arrow-right text-[10px]" aria-hidden="true"></i></a>{% endif %}
 </div>

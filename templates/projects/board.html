@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 {% load static lowbid_extras %}
-{% block title %}Tableau des tâches · Lowbid{% endblock %}
-{% block meta_description %}Votre kanban freelance : tâches ouvertes à prendre, en cours, livrées, payées.{% endblock %}
+{% block title %}Task board · Lowbid{% endblock %}
+{% block meta_description %}Your freelancer kanban: open tasks to pick up, in progress, delivered, paid.{% endblock %}
 
 {% block content %}
 <div class="ui-page-header">
   <div class="min-w-0">
-    <h1 class="ui-page-title">{{ "Tableau des tâches"|underline_last }}</h1>
+    <h1 class="ui-page-title">{{ "Task board"|underline_last }}</h1>
   </div>
   <div class="ui-page-actions">
-    <a href="{% url 'projects:project_list' %}" class="ui-btn"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Projets</a>
+    <a href="{% url 'projects:project_list' %}" class="ui-btn"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Projects</a>
   </div>
 </div>
 
-<section class="ui-kpi-band mb-5" aria-label="Résumé">
-  {% include "components/kpi.html" with label="À prendre" value=counts.open icon="fa-bolt" %}
-  {% include "components/kpi.html" with label="Postulé" value=applied_count icon="fa-paper-plane" %}
-  {% include "components/kpi.html" with label="En cours" value=counts.taken icon="fa-truck-fast" %}
-  {% include "components/kpi.html" with label="Encaissé" value=earned_usdc|usdc:"" unit=asset_code icon="fa-money-bill-transfer" %}
+<section class="ui-kpi-band mb-5" aria-label="Summary">
+  {% include "components/kpi.html" with label="Available" value=counts.open icon="fa-bolt" %}
+  {% include "components/kpi.html" with label="Applied" value=applied_count icon="fa-paper-plane" %}
+  {% include "components/kpi.html" with label="In progress" value=counts.taken icon="fa-truck-fast" %}
+  {% include "components/kpi.html" with label="Earned" value=earned_usdc|usdc:"" unit=asset_code icon="fa-money-bill-transfer" %}
 </section>
 
 <div class="kanban-wrap"><div class="kanban" data-kanban>
@@ -32,7 +32,7 @@
         {% for task in col.tasks %}
           {% include "projects/_board_card.html" with task=task col=col.key %}
         {% empty %}
-          <div class="kanban-empty ui-meta">{% if col.key == 'open' %}Aucune tâche ouverte pour l’instant.{% elif col.key == 'taken' %}Aucune tâche en cours : postulez à une tâche ouverte.{% elif col.key == 'delivered' %}Rien en attente de validation.{% else %}Aucune tâche payée pour l’instant.{% endif %}</div>
+          <div class="kanban-empty ui-meta">{% if col.key == 'open' %}No open tasks yet.{% elif col.key == 'taken' %}No tasks in progress: apply to an open task.{% elif col.key == 'delivered' %}Nothing awaiting validation.{% else %}No paid tasks yet.{% endif %}</div>
         {% endfor %}
       </div>
     </section>

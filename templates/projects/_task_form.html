@@ -3,35 +3,35 @@
 <section class="ui-panel ui-form-scope" id="task-form-panel" aria-labelledby="task-form-title">
   <div class="ui-panel-head">
     <div>
-      <h2 class="ui-panel-title" id="task-form-title"><i class="fa-solid fa-plus" style="color: var(--icon-accent)" aria-hidden="true"></i> Ajouter une tâche</h2>
+      <h2 class="ui-panel-title" id="task-form-title"><i class="fa-solid fa-plus" style="color: var(--icon-accent)" aria-hidden="true"></i> Add a task</h2>
     </div>
   </div>
   <form id="task-form" class="ui-form-grid" novalidate>
     <div class="ui-field ui-field-wide">
-      <label for="task-title" class="ui-label">Titre</label>
+      <label for="task-title" class="ui-label">Title</label>
       <input id="task-title" name="title" class="ui-input" type="text" maxlength="120" required placeholder="Landing page" autocomplete="off">
       <span class="ui-error" data-error-for="title" hidden></span>
     </div>
     <div class="ui-field ui-field-wide">
-      <label for="task-description" class="ui-label">Description <span class="normal-case font-normal">(optionnel)</span></label>
-      <textarea id="task-description" name="description" class="ui-textarea" rows="3" placeholder="Le livrable attendu, les contraintes…" style="min-height: 84px"></textarea>
+      <label for="task-description" class="ui-label">Description <span class="normal-case font-normal">(optional)</span></label>
+      <textarea id="task-description" name="description" class="ui-textarea" rows="3" placeholder="The expected deliverable, the constraints…" style="min-height: 84px"></textarea>
     </div>
     <div class="ui-field">
-      <label for="task-price" class="ui-label">Prix</label>
+      <label for="task-price" class="ui-label">Price</label>
       <div class="ui-input-group"><input id="task-price" name="price" class="ui-input" type="number" inputmode="decimal" step="0.01" min="0.01" required placeholder="300"><span class="ui-input-addon">{{ asset_code }}</span></div>
       <span class="ui-error" data-error-for="price" hidden></span>
     </div>
     <div class="ui-field">
-      <label for="task-tags" class="ui-label">Compétences</label>
+      <label for="task-tags" class="ui-label">Skills</label>
       <input id="task-tags" name="tags" class="ui-input" type="text" autocomplete="off" placeholder="django, ui">
-      <span class="ui-help" data-tags-help="task-tags">Jusqu’à 3, séparées par des virgules.</span>
+      <span class="ui-help" data-tags-help="task-tags">Up to 3, comma-separated.</span>
       <span class="ui-error" data-error-for="tags" hidden></span>
     </div>
     <div class="ui-field-wide">
       <span class="ui-error" data-error-for="_" hidden></span>
       <div class="ui-sticky-actions">
-        <span class="ui-meta me-auto">Total du projet : <strong class="text-strong ui-num" data-project-total>{{ project.total_amount|usdc }}</strong></span>
-        <button type="submit" class="ui-btn ui-btn-primary" data-task-add><i class="fa-solid fa-plus" aria-hidden="true"></i> Ajouter la tâche</button>
+        <span class="ui-meta me-auto">Project total: <strong class="text-strong ui-num" data-project-total>{{ project.total_amount|usdc }}</strong></span>
+        <button type="submit" class="ui-btn ui-btn-primary" data-task-add><i class="fa-solid fa-plus" aria-hidden="true"></i> Add task</button>
       </div>
     </div>
   </form>

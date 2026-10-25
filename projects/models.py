@@ -21,8 +21,13 @@ from django.db.models.functions import Coalesce
 
 ZERO = Decimal("0")
 
-PROJECT_STATUS_LABELS = {"draft": "Draft", "funded": "Funded", "closed": "Closed"}
-PROJECT_STATUS_BADGES = {"draft": "ui-badge-neutral", "funded": "ui-badge-ok", "closed": "ui-badge-brand"}
+PROJECT_STATUS_LABELS = {"draft": "Draft", "funded": "Funded", "closed": "Closed", "cancelled": "Cancelled"}
+PROJECT_STATUS_BADGES = {
+    "draft": "ui-badge-neutral",
+    "funded": "ui-badge-ok",
+    "closed": "ui-badge-brand",
+    "cancelled": "ui-badge-neutral",
+}
 
 STATUS_LABELS = {
     "open": "Open",
@@ -61,17 +66,26 @@ class ProjectQuerySet(models.QuerySet):
     def active(self):
         return self.exclude(status=Project.Status.CLOSED)
 
+    def published(self):
+        """Projects visible on the public list: `published_at` set (payments.deposits: the publication
+        deposit is funded in escrow mode; set at creation when deposits are not active)."""
+        return self.filter(published_at__isnull=False)
+
 
 class Project(models.Model):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"  # no task funded / paid yet
         FUNDED = "funded", "Funded"  # every assigned task holds funds (escrow) / a first payment was made (direct)
         CLOSED = "closed", "Closed"  # every task paid or resolved by the arbiter
+        CANCELLED = "cancelled", "Cancelled"  # the company cancelled it before choosing anyone (projects.services.cancel_project)
 
     company = models.ForeignKey("accounts.WalletUser", on_delete=models.PROTECT, related_name="projects")
     title = models.CharField(max_length=120)
     description = models.TextField()
-    status = models.CharField(max_length=8, choices=Status.choices, default=Status.DRAFT, db_index=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT, db_index=True)
+    # When the project started taking applications: the publication deposit was funded (escrow mode with
+    # deposits, payments.deposits.confirm_deposit), or at creation when deposits are not active. None = unpublished.
+    published_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -141,6 +155,14 @@ class Project(models.Model):
     @property
     def is_draft(self) -> bool:
         return self.status == self.Status.DRAFT
+
+    @property
+    def is_published(self) -> bool:
+        return self.published_at is not None
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self.status == self.Status.CANCELLED
 
     def is_company(self, wallet) -> bool:
         return wallet is not None and wallet.pk == self.company_id

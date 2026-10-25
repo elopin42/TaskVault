@@ -87,6 +87,11 @@ The mode is frozen on the Escrow row at the first prepare (`stellar.payment_mode
 re-frozen while the row is still `created` (nothing is on chain yet), so flipping
 `LOWBID_PAYMENT_MODE=direct` after a failed deploy just works.
 
+Publication deposit: the project-level deposit escrow (company deploys + funds it in Freighter to
+publish the project; the server keys refund it to the company or forfeit it to the guarantee fund)
+lives in `payments/deposits.py`, with its own state table — this module only hosts the shared helpers
+it reuses (`PaymentError`, `_xdr_hash`, `_unsigned_xdr`).
+
 Errors: `PaymentError(code, message)` with codes `not_chosen · forbidden · wrong_state ·
 wrong_mode · unknown_step · tampered · provider · stellar · invalid · not_assigned`. A provider
 failure never flips the status (the user retries); the vendor/Horizon message is kept in
@@ -572,7 +577,7 @@ def sync_project_status(project: Project) -> Project:
     no direct payment was made), so "Funded" never lies. Closing (every task paid or resolved) is
     projects.services.mark_paid's / mark_resolved's job; a closed project is left alone."""
     locked = Project.objects.select_for_update().get(pk=project.pk)
-    if locked.status == Project.Status.CLOSED:
+    if locked.status in (Project.Status.CLOSED, Project.Status.CANCELLED):
         return locked
     tasks = list(locked.tasks.exclude(status=T.OPEN))
     if not tasks:

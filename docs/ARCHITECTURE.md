@@ -127,6 +127,12 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 | `POST /pay/trustline/prepare/`, `POST /pay/trustline/send/` | trustline of the session wallet | `payments:trustline_prepare` / `_send` | wallet |
 | `GET /pay/project/<pk>/pending.json` | `project_pending` → `{ok, project, mode, total, funded, can_fund, hint, tasks[]}`: the tasks "Fund the project" chains | `payments:project_pending` | wallet (company) |
 | `GET /pay/<task_pk>/` | `task_pay` → 302 to the task page `#paiement` | `payments:task_pay` | public |
+| `POST /projets/<pk>/annuler/` | `project_cancel` → `{ok, status, message, redirect}` (company, before any choice) | `projects:project_cancel` | wallet |
+| `POST /pay/caution/<pk>/prepare/<step>/`, `POST /pay/caution/<pk>/send/<step>/` | `deposit_views.deposit_prepare` / `deposit_send` (step `deploy` \| `fund`) | `payments:deposit_prepare` / `deposit_send` | wallet (company) |
+| `GET /pay/caution/<pk>/pending.json` | `deposit_pending` → `{ok, project, active, amount, next}` | `payments:deposit_pending` | wallet (company) |
+| `POST /pay/caution/<pk>/recuperer/` | `deposit_refund` → `{ok, status, message, explorer_urls, next}` (verdict refund) | `payments:deposit_refund` | wallet (company) |
+| `POST /pay/caution/<pk>/signaler/` | `deposit_report` → same shape (verdict forfeit) | `payments:deposit_report` | wallet (any) |
+| `GET /fonds/` | `deposit_views.fund_page` (guarantee fund) | `payments:fund_page` | public |
 | `GET /tableau-de-bord/`, `GET/POST /profil/<address>/` | `dashboard.views.home` / `profile` | `dashboard:home` / `dashboard:profile` | wallet / public |
 | `POST /taches/<pk>/noter-entreprise/` | `reputation.views.rate_company` ← `{note, comment}` → `{ok, note, avg, count, message}` | `reputation:rate_company` | wallet (assignee) |
 | `GET /profil/github/message/` | `github_message` → `{ok, message}` (`lowbid:<G…>` of the session wallet) | `reputation:github_message` | wallet |
@@ -134,7 +140,7 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 | `POST /profil/github/retirer/` | `github_unlink` → `{ok, message}` | `reputation:github_unlink` | wallet |
 
 Projects refusals are 4xx `{ok:false, error, message}` (`ERROR_STATUS` in `projects/views.py`: 403 `forbidden`
-`own_task` `not_assigned`, 409 `wrong_state` `duplicate` `too_many_revisions`, 400 `invalid` `bad_tags`, any other code 400; an unknown
+`own_task` `not_assigned`, 409 `wrong_state` `duplicate` `too_many_revisions` `not_published` `not_covered`, 400 `invalid` `bad_tags`, any other code 400; an unknown
 project / task / application is a 404). Payments refusals are HTTP 200
 `{ok:false, error, message}` so `Lowbid.api` resolves and the panel shows `message`. A caller without a session that sends
 `X-Requested-With: fetch` or `Accept: application/json` gets 401 `{ok:false, error:"wallet_required"}`; a browser gets a
@@ -310,6 +316,50 @@ the company while delivered + unrated, the freelance once `is_review_overdue`); 
 freelance share down to a stroop; the company gets the exact remainder. Once disputed, the stepper switches to
 … Delivered → In dispute → Resolved, and `next_action` answers `resolve` (mine for the arbiter, "Waiting for the
 arbiter's decision." for the parties).
+
+### Deposit (`payments/deposits.py`)
+
+The publication deposit is a project-level Trustless Work single-release escrow, separate from the per-task escrows.
+Active iff `LOWBID_DEPOSIT_ENABLED` and `payment_mode() == "escrow"`; otherwise `projects.services.create_project` /
+`ProjectForm` set `published_at` at creation and nothing below runs. The authoritative state table is the docstring of
+`payments/deposits.py`:
+
+```
+step       who signs           deposit: before → after   TW call                            project / persisted
+deploy     company (Freighter) (none|created) → deployed deployer/single-release            contract_id, deploy_tx_hash
+fund       company (Freighter) deployed → funded         fund-escrow                        fund_tx_hash, funded_at; published_at = now if None
+milestone  platform key        funded                    change-milestone-status            milestone_tx_hash      ┐ refund chain
+approve    platform key        funded                    approve-milestone                  approve_tx_hash        │ (verdict refund)
+release    platform key        funded → refunded         release-funds (→ company)          release_tx_hash        ┘
+dispute    platform key        funded                    dispute-escrow                     dispute_tx_hash        ┐ forfeit chain
+resolve    resolver key        funded → forfeited        resolve-dispute [(fund, balance)]  resolve_tx_hash        ┘ (verdict forfeit)
+```
+
+Roles at deploy: signer + receiver = company; approver = serviceProvider = releaseSigner = platformAddress = the platform
+key (`LOWBID_PLATFORM_SECRET`, whose public key must be `LOWBID_PLATFORM_ADDRESS`); disputeResolver = the deposit resolver
+key (`LOWBID_DEPOSIT_RESOLVER_SECRET`) — a second key because the contract refuses a dispute opened by the resolver.
+`payments/signer.py` builds the keypairs on demand and signs (`TransactionEnvelope.from_xdr(...).sign(kp)`); only public
+addresses are logged. `payments/checks.py` (Tags.security) fails `manage.py check` on a missing / invalid / overlapping key
+or fund address while deposits are active.
+
+Verdict (`deposit_verdict(project, now)`, pure, PRODUCT R65): closed → refund; cancelled without application → refund;
+no application for `LOWBID_NO_APPLICATION_DAYS` → refund; first application `LOWBID_CHOICE_DAYS` old and nobody ever chosen,
+or cancelled with applications → forfeit; else locked.
+
+Serialization and idempotence: company steps gate the role and the state in both halves, replay of the same signed XDR
+answers ok, the send runs outside any transaction and the row is re-read under `select_for_update` before the write. The
+server chains build → sign → send each step inside the request (a TW XDR is single use, valid about a minute), skip any
+step whose hash is stored, store `last_error` and stop on the first failure (status unchanged), and re-read the row under
+`select_for_update` before each write — a rerun sends only the missing steps.
+
+Triggers: `payments/apps.py` connects `post_save` on `projects.Project` to `deposits.on_project_saved`: when the saved
+project is `closed` (from `mark_paid`) or `cancelled` (from `cancel_project`) and holds a funded deposit, it registers
+`transaction.on_commit(_settle_after_commit)`, which settles every funded row inside `try/except Exception:
+logger.exception`. The manual endpoints `/pay/caution/<pk>/recuperer/` (company, verdict refund) and `/signaler/` (any
+wallet, verdict forfeit) run the same `settle_project` and serve as the retry. `projects.services.apply` calls the hook
+`_check_applications_open` → `deposits.check_can_apply` (`not_published`, `not_covered`, cancelled → `wrong_state`).
+The UI is `{% deposit_panel project wallet %}` / `{% deposit_badge project %}` (payments_extras) +
+`static/js/lowbid-deposit.js`; `/fonds/` lists the forfeited deposits.
 
 ### Modes
 

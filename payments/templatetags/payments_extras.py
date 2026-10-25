@@ -92,3 +92,22 @@ def escrow_panel(context, task, wallet=None):
         # Direct mode = unprotected payment: shown on every non-open task in direct mode, to everyone.
         "direct_warning": mode == Escrow.Mode.DIRECT and task.status != task.Status.OPEN,
     }
+
+
+@register.inclusion_tag("payments/_deposit_panel.html", takes_context=True)
+def deposit_panel(context, project, wallet=None):
+    """`{% deposit_panel project wallet %}` — the publication deposit panel (payments.deposits decides)."""
+    from payments import deposits  # lazy: keeps the tag library import-light
+
+    ctx = deposits.deposit_panel_context(project, wallet)
+    ctx.update({"request": context.get("request"), "wallet": wallet, "asset_code": stellar.asset_code()})
+    return ctx
+
+
+@register.inclusion_tag("payments/_deposit_badge.html")
+def deposit_badge(project):
+    """`{% deposit_badge project %}` — "Not published" (unpublished) or "Deposit locked X" (funded deposit)."""
+    from payments import deposits
+
+    locked = deposits.locked_amount(project) if project.published_at is not None else deposits.ZERO
+    return {"unpublished": project.published_at is None, "locked": locked, "asset_code": stellar.asset_code()}

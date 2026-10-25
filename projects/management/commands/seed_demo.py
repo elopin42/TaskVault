@@ -23,6 +23,11 @@ which falls back to LOWBID_DISPUTE_RESOLVER (else LOWBID_PLATFORM_ADDRESS) befor
 opens only for the wallet equal to that setting. The dev DB is throwaway: `rm data/db.sqlite3` then
 `make dev` after a models change.
 
+With publication deposits active (escrow mode, payments.deposits.deposits_active) the pitch project gets a
+funded deposit row (demo hashes) before taking applications, the draft stays unpublished (no deposit row),
+and a fourth, cancelled project shows a deposit forfeited to the guarantee fund (/fonds/). Direct mode seeds
+exactly the three projects above.
+
     python manage.py seed_demo [--flush]
 """
 
@@ -38,9 +43,10 @@ from django.utils import timezone
 from stellar_sdk import Keypair
 
 from accounts.models import WalletUser
+from payments import deposits
 from payments import services as payment_services
 from payments import stellar
-from payments.models import Escrow
+from payments.models import Escrow, ProjectDeposit
 from projects import services
 from projects.models import Application, Delivery, Dispute, Project, Rating, RevisionRequest, Task
 
@@ -81,6 +87,7 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         if options["flush"]:
+            deposit_rows, _ = ProjectDeposit.objects.all().delete()
             escrows, _ = Escrow.objects.all().delete()
             disputes, _ = Dispute.objects.all().delete()
             revisions, _ = RevisionRequest.objects.all().delete()
@@ -91,7 +98,7 @@ class Command(BaseCommand):
             projects, _ = Project.objects.all().delete()
             self.stdout.write(
                 f"flushed projects={projects} tasks={tasks} applications={apps} ratings={ratings} "
-                f"deliveries={deliveries} revisions={revisions} disputes={disputes} escrows={escrows}"
+                f"deliveries={deliveries} revisions={revisions} disputes={disputes} escrows={escrows} deposits={deposit_rows}"
             )
 
         company = _wallet("LOWBID_DEMO_CLIENT", "Studio Nova (company)")
@@ -100,6 +107,7 @@ class Command(BaseCommand):
         resolver = payment_services.resolver_address()  # LOWBID_DISPUTE_RESOLVER, else LOWBID_PLATFORM_ADDRESS
         arbiter = _wallet("LOWBID_DEMO_ARBITER", "TaskVault arbiter", fallback=resolver)
         mode = stellar.payment_mode()
+        with_deposits = deposits.deposits_active()
 
         # 1. The pitch project: T1 paid to A, T2 open with A + B, T3 open.
         p1 = services.create_project(
@@ -121,6 +129,8 @@ class Command(BaseCommand):
             p1, company, "Dashboard", "Studio dashboard: occupancy rate, USDC revenue, CSV export.",
             "400", ["django", "charts"],
         )
+        if with_deposits:
+            _demo_deposit(p1, company, ProjectDeposit.Status.FUNDED)
         services.apply(t1, a, "Django + Tailwind every day, I deliver in 5 days including deployment.", ["django", "ui"])
         services.apply(t1, b, "Clean build from Figma, 2 iterations included.", ["django"])
         app_a = Application.objects.get(task=t1, freelancer=a)
@@ -157,6 +167,19 @@ class Command(BaseCommand):
         # 3. The anti-scam showcase: a delivery sent back for changes then delivered again, and a dispute.
         p3, t4, t5 = self._food_truck(company, a, b, arbiter)
 
+        p4 = None
+        if with_deposits:
+            # 4. A ghost listing: candidates applied, nobody was chosen, the company cancelled → forfeited.
+            p4 = services.create_project(
+                company,
+                "Pop-up bakery branding",
+                "Logo, packaging and a one-page site for a pop-up bakery. Cancelled after the applications came in.",
+            )
+            t6 = services.add_task(p4, company, "Packaging design", "Boxes, bags and labels, print-ready files.", "300", ["design"])
+            _demo_deposit(p4, company, ProjectDeposit.Status.FORFEITED)
+            services.apply(t6, b, "Packaging for three food brands, print-ready in a week.", ["design"])
+            services.cancel_project(p4, company)
+
         scores = {app.freelancer.display_name: f"{app.score:.1f}" for app in t2.applications.select_related("freelancer")}
         self.stdout.write(self.style.SUCCESS("Demo data ready."))
         self.stdout.write(f"  payment mode {mode} (LOWBID_PAYMENT_MODE={os.environ.get('LOWBID_PAYMENT_MODE', '') or 'auto'}), asset {stellar.asset_code()}")
@@ -181,6 +204,9 @@ class Command(BaseCommand):
                 f"set LOWBID_DISPUTE_RESOLVER={arbiter.stellar_address} in .env and restart to open it as the arbiter "
                 f"(currently {resolver or 'unset'})."
             ))
+
+        if with_deposits:
+            self.stdout.write(f"  deposits: pitch=#{p1.pk} funded, draft=#{p2.pk} not published, ghost listing=#{p4.pk} forfeited (/fonds/)")
 
     def _food_truck(self, company: WalletUser, a: WalletUser, b: WalletUser, arbiter: WalletUser):
         """Project 3: T4 delivered again after a change request (direct row), T5 disputed (escrow row)."""
@@ -251,3 +277,34 @@ class Command(BaseCommand):
         t4.refresh_from_db()
         t5.refresh_from_db()
         return p3, t4, t5
+
+
+def _demo_deposit(project: Project, company: WalletUser, status: str) -> ProjectDeposit:
+    """A deposit row with demo hashes (nothing on chain): `funded` publishes the project, `forfeited` also
+    carries the dispute / resolve hashes so /fonds/ lists it."""
+    now = timezone.now()
+    budget = project.total_amount
+    label = f"deposit-{project.pk}"
+    row = ProjectDeposit.objects.create(
+        project=project,
+        kind=ProjectDeposit.Kind.PUBLICATION,
+        amount=deposits.deposit_amount(budget),
+        covered_budget=budget,
+        payer_address=company.stellar_address,
+        platform_address=(os.environ.get("LOWBID_PLATFORM_ADDRESS") or "").strip() or company.stellar_address,
+        resolver_address=company.stellar_address,
+        fund_address=deposits.fund_address(),
+        engagement_id=f"taskvault-deposit-{project.pk}-1",
+        deploy_tx_hash=_demo_hash(f"{label}-deploy"),
+        fund_tx_hash=_demo_hash(f"{label}-fund"),
+        status=status,
+        funded_at=now,
+    )
+    if status == ProjectDeposit.Status.FORFEITED:
+        row.dispute_tx_hash = _demo_hash(f"{label}-dispute")
+        row.resolve_tx_hash = _demo_hash(f"{label}-resolve")
+        row.settled_at = now
+        row.save(update_fields=["dispute_tx_hash", "resolve_tx_hash", "settled_at"])
+    Project.objects.filter(pk=project.pk, published_at__isnull=True).update(published_at=now)
+    project.refresh_from_db()
+    return row

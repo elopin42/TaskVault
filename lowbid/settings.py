@@ -33,6 +33,11 @@ def _int(name: str, default: int) -> int:
     return int(os.environ.get(name, "").strip() or default)
 
 
+def _decimal(name: str, default: str) -> Decimal:
+    """A decimal setting (amounts, rates); an empty / missing variable means the default."""
+    return Decimal(os.environ.get(name, "").strip() or default)
+
+
 # --- Security / debug ---------------------------------------------------------
 
 DEBUG = _bool("DJANGO_DEBUG", "0")
@@ -181,7 +186,7 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 30
 
 # Bump whenever css/lowbid-*.css or js/lowbid-*.js changes (30-day static cache).
-LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-reputation"
+LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-anticheat"
 
 # --- Stellar ------------------------------------------------------------------
 
@@ -233,6 +238,26 @@ LOWBID_GITHUB_MIN_AGE_DAYS = _int("LOWBID_GITHUB_MIN_AGE_DAYS", 365)
 LOWBID_RELIABLE_PAYER_MIN_PARTNERS = _int("LOWBID_RELIABLE_PAYER_MIN_PARTNERS", 3)
 # Optional GitHub token (raises the API rate limit); never rendered, never logged.
 LOWBID_GITHUB_TOKEN = os.environ.get("LOWBID_GITHUB_TOKEN", "").strip()
+
+# Publication deposit (payments/deposits.py). Active only when enabled AND payment_mode() == "escrow":
+# the company locks max(rate × budget, min) in a Trustless Work escrow before the project takes
+# applications; it is refunded (closed project, no application) or forfeited to the guarantee fund
+# (ghost listing). Every delay is evaluated when a request reads it — no timer.
+LOWBID_DEPOSIT_ENABLED = _bool("LOWBID_DEPOSIT_ENABLED", "1")
+LOWBID_DEPOSIT_RATE = _decimal("LOWBID_DEPOSIT_RATE", "0.01")
+LOWBID_DEPOSIT_MIN = _decimal("LOWBID_DEPOSIT_MIN", "5")
+LOWBID_DEPOSIT_TOPUP_MIN = _decimal("LOWBID_DEPOSIT_TOPUP_MIN", "1")
+# Days the company has to choose a freelancer once the first application arrived (else: forfeit).
+LOWBID_CHOICE_DAYS = _int("LOWBID_CHOICE_DAYS", 14)
+# Days after publication without any application after which the deposit is refundable.
+LOWBID_NO_APPLICATION_DAYS = _int("LOWBID_NO_APPLICATION_DAYS", 30)
+# Public G… address that receives forfeited deposits (needs the asset trustline; != the platform address).
+LOWBID_GUARANTEE_FUND_ADDRESS = os.environ.get("LOWBID_GUARANTEE_FUND_ADDRESS", "").strip()
+# Server-held TESTNET secrets (S…), never logged nor rendered (payments/signer.py builds keypairs on demand):
+# the platform key (its public key must equal LOWBID_PLATFORM_ADDRESS) signs the refund chain and opens the
+# dispute; the deposit resolver key (a second, different key) resolves it towards the guarantee fund.
+LOWBID_PLATFORM_SECRET = os.environ.get("LOWBID_PLATFORM_SECRET", "").strip()
+LOWBID_DEPOSIT_RESOLVER_SECRET = os.environ.get("LOWBID_DEPOSIT_RESOLVER_SECRET", "").strip()
 
 # --- Logging ------------------------------------------------------------------
 # Structured key=value lines on stdout; level from DJANGO_LOG_LEVEL (default INFO).

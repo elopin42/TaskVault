@@ -12,6 +12,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.formats import date_format
 
+from payments import deposits
 from payments import services as payments
 from payments.stellar import asset_code
 from projects import services as projects
@@ -70,6 +71,44 @@ def _avg_note(wallet):
 
 
 # --- to-do ------------------------------------------------------------------------
+
+def _deposit_items(wallet) -> list[dict]:
+    """Company side of the publication deposit (payments.deposits decides): a deposit to lock, a deposit to reclaim."""
+    items: list[dict] = []
+    for project in Project.objects.filter(company=wallet).exclude(status=Project.Status.CANCELLED):
+        if project.status != Project.Status.CLOSED:
+            action = deposits.next_deposit_action(project, wallet)
+            if action:
+                items.append(
+                    {
+                        "tone": "act",
+                        "kicker": "Deposit",
+                        "headline": f'Publish "{project.title}" (deposit {action["amount"]:,.2f} {asset_code()})'
+                        if project.published_at is None
+                        else f'Top up the deposit of "{project.title}" ({action["amount"]:,.2f} {asset_code()})',
+                        "body": "Freelancers can apply once the deposit is locked in escrow (two Freighter signatures).",
+                        "href": _project_url(project, "#deposit-panel"),
+                        "cta": "Publish" if project.published_at is None else "Top up",
+                        "icon": "fa-lock",
+                        "when": project.updated_at,
+                    }
+                )
+        locked = deposits.locked_amount(project)
+        if locked and deposits.deposit_verdict(project)["verdict"] == "refund":
+            items.append(
+                {
+                    "tone": "act",
+                    "kicker": "Deposit",
+                    "headline": f'Reclaim my deposit for "{project.title}"',
+                    "body": f"{locked:,.2f} {asset_code()} can go back to your wallet.",
+                    "href": _project_url(project, "#deposit-panel"),
+                    "cta": "Reclaim",
+                    "icon": "fa-rotate-left",
+                    "when": project.updated_at,
+                }
+            )
+    return items
+
 
 def todo_items(wallet) -> list[dict]:
     """What this wallet should look at, `act` items first (then by date desc).
@@ -149,6 +188,8 @@ def todo_items(wallet) -> list[dict]:
                     "when": project.created_at,
                 }
             )
+
+    items.extend(_deposit_items(wallet))
 
     # Freelance side: tasks to deliver, funding / validation / payment awaited, disputes, pending applications.
     for task in Task.objects.filter(assigned_to=wallet).select_related("project__company"):

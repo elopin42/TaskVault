@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% load lowbid_extras %}
+{% comment %}
+/fonds/ (payments:fund_page, public). Context: fund_address, fund_explorer_url, balance (Decimal, or None when
+Horizon is unreachable), forfeited (rows: project, amount, settled_at, resolve_tx_hash, resolve_url), forfeited_total.
+DOM: [data-fund-balance], [data-forfeited] tbody tr.
+{% endcomment %}
+{% block title %}Guarantee fund · TaskVault{% endblock %}
+{% block meta_description %}The TaskVault guarantee fund: deposits forfeited by ghost listings, on Stellar.{% endblock %}
+
+{% block content %}
+{% include "partials/page_header.html" with title="Guarantee fund" subtitle="Money from ghost listings protects scammed freelancers." %}
+
+<section class="ui-kpi-band mb-6" aria-label="Key figures">
+  <div class="ui-kpi-tile">
+    <span class="ui-kpi-label">Fund balance</span>
+    <span class="ui-kpi-value" data-fund-balance>{% if balance is None %}<span class="ui-meta text-base">Balance unavailable right now</span>{% else %}{{ balance|usdc_parts }}<span class="ui-price-unit">{{ asset_code }}</span>{% endif %}</span>
+    <span class="ui-kpi-hint ui-meta">read from Horizon</span>
+  </div>
+  <div class="ui-kpi-tile">
+    <span class="ui-kpi-label">Forfeited deposits</span>
+    <span class="ui-kpi-value">{{ forfeited|length }}</span>
+    <span class="ui-kpi-hint ui-meta">{{ forfeited_total|usdc:asset_code }} in total</span>
+  </div>
+</section>
+
+<div class="ui-stack">
+  <section class="ui-panel">
+    <div class="ui-panel-head"><div><h2 class="ui-panel-title">How it works</h2></div></div>
+    <p class="leading-relaxed">A company locks a publication deposit in a Trustless Work escrow before its project takes applications. It gets it back when the project is closed, or when nobody applies. If candidates are left waiting without anyone being chosen, or the project is cancelled after receiving applications, the deposit is sent here, on chain, by the platform.</p>
+    {% if fund_address %}
+      <p class="ui-meta mt-3">Fund wallet: <a href="{{ fund_explorer_url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ fund_address }}">{{ fund_address|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a></p>
+    {% else %}
+      <p class="ui-meta mt-3">The guarantee fund wallet is not configured on this instance.</p>
+    {% endif %}
+  </section>
+
+  <section class="ui-panel">
+    <div class="ui-panel-head"><div><h2 class="ui-panel-title">Ghost listings</h2></div></div>
+    {% if forfeited %}
+      <div class="rcard" data-forfeited>
+        <table>
+          <thead><tr><th>Project</th><th class="ui-col-end">Deposit</th><th>Sent to the fund</th><th>Transaction</th></tr></thead>
+          <tbody>
+            {% for f in forfeited %}
+              <tr>
+                <td data-label="Project"><a href="{% url 'projects:project_detail' f.project.pk %}" class="ui-link">{{ f.project.title }}</a></td>
+                <td data-label="Deposit" class="ui-col-end ui-num">{{ f.amount|usdc:asset_code }}</td>
+                <td data-label="Sent to the fund">{% if f.settled_at %}{{ f.settled_at|date:"M j, Y" }}{% else %}—{% endif %}</td>
+                <td data-label="Transaction">{% if f.resolve_url %}<a href="{{ f.resolve_url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ f.resolve_tx_hash }}">{{ f.resolve_tx_hash|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      {% include "components/empty_state.html" with icon="fa-ghost" title="No ghost listing yet" desc="Every deposit so far went back to its company." %}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

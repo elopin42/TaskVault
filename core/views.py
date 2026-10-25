@@ -98,7 +98,7 @@ def landing(request: HttpRequest) -> HttpResponse:
     from projects.models import Project  # local import: core must stay importable without the domain apps
 
     latest_projects = list(
-        Project.objects.with_totals()
+        Project.objects.published().exclude(status=Project.Status.CANCELLED).with_totals()
         .select_related("company")
         .prefetch_related("tasks")
         .filter(open_total__gt=0)

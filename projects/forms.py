@@ -1,7 +1,7 @@
 from django import forms
 
 from .models import Project
-from .services import TITLE_MIN
+from .services import TITLE_MIN, initial_published_at
 
 
 class ProjectForm(forms.ModelForm):
@@ -37,6 +37,8 @@ class ProjectForm(forms.ModelForm):
     def save(self, company, commit: bool = True) -> Project:
         project: Project = super().save(commit=False)
         project.company = company
+        if project.pk is None:
+            project.published_at = initial_published_at()
         if commit:
             project.save()
         return project

@@ -1,0 +1,90 @@
+{% load lowbid_extras %}
+{% comment %}
+Rendered by the `deposit_panel` inclusion tag (payments/templatetags/payments_extras.py) as the first block of
+the project page's aside. Context = payments.deposits.deposit_panel_context(project, wallet): status
+(direct | inactive | due | created | deployed | funded | refunded | forfeited), status_label, badge_class,
+is_company, amount_due, locked, refunded, forfeited, published, verdict / reason / deadline / deadline_kind,
+action (the next company signature), can_publish, publish_is_topup, can_reclaim, can_report, can_cancel,
+cancel_outcome (refund | forfeit | none), last_error, retry (publish | refund | report | ""), links, the URLs,
+choice_days, no_application_days, asset_code. The template decides nothing.
+DOM contract: #deposit-panel[data-deposit-status] · [data-deposit-amount] · [data-deposit-deadline] · [data-publish]
+[data-pending-url] · [data-deposit-refund] · [data-deposit-report] · [data-project-cancel] · [data-deposit-error].
+Driven by static/js/lowbid-deposit.js.
+{% endcomment %}
+<section class="ui-panel" id="deposit-panel" data-deposit-status="{{ status }}">
+{% if is_direct %}
+  <p class="ui-meta flex items-center gap-2" data-deposit-direct><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Direct mode: payment not protected.</p>
+{% else %}
+  <div class="ui-panel-head">
+    <div>
+      <h2 class="ui-panel-title"><i class="fa-solid fa-shield-halved" style="color: var(--warning)" aria-hidden="true"></i> Publication deposit</h2>
+      <p class="ui-panel-sub">Proof the company means to hire: refunded when the project is closed or nobody applies, sent to the <a href="{% url 'payments:fund_page' %}" class="ui-link">guarantee fund</a> if candidates are left waiting.</p>
+    </div>
+    {% if status_label %}<span class="ui-badge {{ badge_class }} whitespace-nowrap">{{ status_label }}</span>{% endif %}
+  </div>
+
+  {% if status == 'inactive' %}
+    <p class="ui-meta">Publication deposits are off: the project is public from its creation.</p>
+  {% else %}
+    <dl class="ui-facts">
+      {% if locked %}<dt>Locked</dt><dd class="ui-num" style="color: var(--warning)" data-deposit-amount="{{ locked|plain }}">{{ locked|usdc:asset_code }}</dd>{% endif %}
+      {% if amount_due and action %}<dt>{% if publish_is_topup %}Top-up due{% else %}Deposit due{% endif %}</dt><dd class="ui-num" style="color: var(--warning)" data-deposit-due="{{ amount_due|plain }}">{{ amount_due|usdc:asset_code }}</dd>{% endif %}
+      {% if refunded %}<dt>Refunded</dt><dd class="ui-num">{{ refunded|usdc:asset_code }}</dd>{% endif %}
+      {% if forfeited %}<dt>To the guarantee fund</dt><dd class="ui-num">{{ forfeited|usdc:asset_code }}</dd>{% endif %}
+    </dl>
+
+    {% if deadline %}
+      <p class="ui-help mt-3" data-deposit-deadline data-deadline="{{ deadline|date:'c' }}">
+        <i class="fa-regular fa-clock" aria-hidden="true"></i>
+        {% if deadline_kind == 'choose' %}Choose a freelancer before {{ deadline|date:"M j, Y H:i" }}, or the deposit goes to the guarantee fund.{% else %}Refundable if no application by {{ deadline|date:"M j, Y H:i" }}.{% endif %}
+      </p>
+    {% elif locked %}
+      <p class="ui-help mt-3">{{ reason }}</p>
+    {% endif %}
+
+    {% if not published and not action %}
+      <p class="ui-help mt-3" data-deposit-hint>{% if is_company %}Add tasks, then publish the project with its deposit: freelancers can apply once it is locked.{% else %}This project is not published yet.{% endif %}</p>
+    {% elif not published and not is_company %}
+      <p class="ui-help mt-3" data-deposit-hint>This project is not published yet.</p>
+    {% elif action and not is_company %}
+      <p class="ui-help mt-3" data-deposit-hint>New tasks open to applications once the company tops up its deposit.</p>
+    {% endif %}
+
+    <div class="flex flex-col gap-2 mt-4">
+      {% if can_publish %}
+        <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-publish data-pending-url="{{ pending_url }}" data-loading-label="Publishing…">
+          <i class="fa-solid fa-lock" aria-hidden="true"></i>
+          {% if publish_is_topup %}Top up the deposit ({{ amount_due|usdc:asset_code }}){% else %}Publish the project (deposit {{ amount_due|usdc:asset_code }}){% endif %}
+        </button>
+        <p class="ui-meta">Two Freighter signatures: create the deposit escrow, then lock the deposit.</p>
+      {% endif %}
+      {% if can_reclaim %}
+        <button type="button" class="ui-btn ui-btn-block" data-deposit-refund data-url="{{ refund_url }}" data-amount="{{ locked|usdc:asset_code }}" data-loading-label="Refunding…"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Reclaim my deposit</button>
+      {% endif %}
+      {% if can_report %}
+        <button type="button" class="ui-btn ui-btn-block" data-deposit-report data-url="{{ report_url }}" data-amount="{{ locked|usdc:asset_code }}" data-loading-label="Reporting…"><i class="fa-solid fa-ghost" aria-hidden="true"></i> Report a ghost listing</button>
+      {% endif %}
+      {% if can_cancel %}
+        <button type="button" class="ui-btn ui-btn-ghost ui-btn-block" data-project-cancel data-url="{{ cancel_url }}" data-confirm-message="{% if cancel_outcome == 'refund' %}The project stops taking applications. Nobody applied yet: your deposit of {{ locked|usdc:asset_code }} is refunded to your wallet.{% elif cancel_outcome == 'forfeit' %}The project stops taking applications. Freelancers already applied: your deposit of {{ locked|usdc:asset_code }} goes to the guarantee fund.{% else %}The project stops taking applications. This cannot be undone.{% endif %}" data-confirm-danger="{% if cancel_outcome == 'forfeit' %}1{% endif %}"><i class="fa-solid fa-ban" aria-hidden="true"></i> Cancel the project</button>
+      {% endif %}
+    </div>
+
+    <div class="ui-alert ui-alert-danger mt-3" data-deposit-error{% if not last_error %} hidden{% endif %}>
+      <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      <span class="flex-1 min-w-0"><span data-deposit-error-text>{{ last_error }}</span>
+        {% if retry == 'publish' %}<button type="button" class="ui-btn ui-btn-sm mt-2" data-publish data-pending-url="{{ pending_url }}">Retry</button>
+        {% elif retry == 'refund' %}<button type="button" class="ui-btn ui-btn-sm mt-2" data-deposit-refund data-url="{{ refund_url }}" data-amount="{{ locked|usdc:asset_code }}" data-no-confirm>Retry</button>
+        {% elif retry == 'report' %}<button type="button" class="ui-btn ui-btn-sm mt-2" data-deposit-report data-url="{{ report_url }}" data-amount="{{ locked|usdc:asset_code }}" data-no-confirm>Retry</button>{% endif %}
+      </span>
+    </div>
+
+    {% if links %}
+      <ul class="mt-4 space-y-0.5 border-t pt-3" style="border-color: var(--divider)" data-deposit-links>
+        {% for l in links %}
+          <li class="flex items-center justify-between gap-3 ui-meta"><span>{{ l.label }}</span><a href="{{ l.url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ l.value }}">{{ l.value|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a></li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endif %}
+{% endif %}
+</section>

@@ -167,3 +167,120 @@ class Escrow(models.Model):
             if value:
                 links.append({"key": field, "label": label, "url": stellar.explorer_tx_url(value), "value": value, "at": at})
         return links
+
+
+# --- publication deposit (payments/deposits.py) -------------------------------------------------
+
+DEPOSIT_STATUS_LABELS = {
+    "created": "Preparing",
+    "deployed": "Deposit escrow created",
+    "funded": "Deposit locked",
+    "refunded": "Deposit refunded",
+    "forfeited": "Forfeited to the guarantee fund",
+}
+DEPOSIT_STATUS_BADGES = {
+    "created": "ui-badge-neutral",
+    "deployed": "ui-badge-info",
+    "funded": "ui-badge-attn",
+    "refunded": "ui-badge-ok",
+    "forfeited": "ui-badge-danger",
+}
+
+
+class ProjectDeposit(models.Model):
+    """One publication (or top-up) deposit of a project: a Trustless Work single-release escrow the
+    COMPANY deploys + funds in Freighter, settled by the SERVER keys — refunded to the company
+    (milestone → approve → release, platform key) or forfeited to the guarantee fund (dispute with the
+    platform key, resolve with the deposit resolver key). The state table and every rule live in
+    payments/deposits.py; nothing here talks to the network.
+
+    `covered_budget` is the part of the project budget this row covers (the whole budget for the
+    publication deposit, the uncovered gap for a top-up), so Σ covered_budget of the funded / settled
+    rows is the budget covered so far. The per-step hashes record the progress of the server chains
+    (status only moves created → deployed → funded → refunded | forfeited)."""
+
+    class Kind(models.TextChoices):
+        PUBLICATION = "publication", "Publication deposit"
+        TOPUP = "topup", "Deposit top-up"
+
+    class Status(models.TextChoices):
+        CREATED = "created", "Preparing"
+        DEPLOYED = "deployed", "Deposit escrow created"
+        FUNDED = "funded", "Deposit locked"
+        REFUNDED = "refunded", "Deposit refunded"
+        FORFEITED = "forfeited", "Forfeited to the guarantee fund"
+
+    project = models.ForeignKey("projects.Project", on_delete=models.CASCADE, related_name="deposits")
+    kind = models.CharField(max_length=12, choices=Kind.choices, default=Kind.PUBLICATION)
+    amount = models.DecimalField(max_digits=18, decimal_places=7)
+    covered_budget = models.DecimalField(max_digits=18, decimal_places=7)
+    payer_address = models.CharField(max_length=56)  # the company (receiver of a refund)
+    platform_address = models.CharField(max_length=56)  # approver = serviceProvider = releaseSigner = platformAddress
+    resolver_address = models.CharField(max_length=56)  # disputeResolver (second server key)
+    fund_address = models.CharField(max_length=56, blank=True)  # guarantee fund, frozen at creation
+    contract_id = models.CharField(max_length=64, blank=True)
+    engagement_id = models.CharField(max_length=64, blank=True)
+    deploy_tx_hash = models.CharField(max_length=64, blank=True)
+    fund_tx_hash = models.CharField(max_length=64, blank=True)
+    milestone_tx_hash = models.CharField(max_length=64, blank=True)
+    approve_tx_hash = models.CharField(max_length=64, blank=True)
+    release_tx_hash = models.CharField(max_length=64, blank=True)
+    dispute_tx_hash = models.CharField(max_length=64, blank=True)
+    resolve_tx_hash = models.CharField(max_length=64, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.CREATED, db_index=True)
+    last_error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    funded_at = models.DateTimeField(null=True, blank=True)
+    settled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self) -> str:
+        return f"Deposit project#{self.project_id} {self.kind} {self.status}"
+
+    @property
+    def holds_funds(self) -> bool:
+        return self.status == self.Status.FUNDED
+
+    @property
+    def is_settled(self) -> bool:
+        return self.status in (self.Status.REFUNDED, self.Status.FORFEITED)
+
+    @property
+    def status_label(self) -> str:
+        return DEPOSIT_STATUS_LABELS.get(self.status, self.status)
+
+    @property
+    def badge_class(self) -> str:
+        return DEPOSIT_STATUS_BADGES.get(self.status, "ui-badge-neutral")
+
+    def explorer_links(self) -> list[dict]:
+        """Every stored on-chain reference, in flow order: [{key, label, url, value, at}] (same shape as
+        Escrow.explorer_links)."""
+        links: list[dict] = []
+        if self.contract_id:
+            links.append(
+                {
+                    "key": "contract",
+                    "label": "Deposit escrow contract",
+                    "url": stellar.explorer_contract_url(self.contract_id),
+                    "value": self.contract_id,
+                    "at": None,
+                }
+            )
+        labels = (
+            ("deploy_tx_hash", "Deposit escrow creation", None),
+            ("fund_tx_hash", "Deposit locking", self.funded_at),
+            ("milestone_tx_hash", "Refund: milestone", None),
+            ("approve_tx_hash", "Refund: approval", None),
+            ("release_tx_hash", "Refund: release", self.settled_at),
+            ("dispute_tx_hash", "Ghost listing: dispute", None),
+            ("resolve_tx_hash", "Ghost listing: sent to the fund", self.settled_at),
+        )
+        for field, label, at in labels:
+            value = getattr(self, field)
+            if value:
+                links.append({"key": field, "label": label, "url": stellar.explorer_tx_url(value), "value": value, "at": at})
+        return links

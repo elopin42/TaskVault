@@ -15,6 +15,7 @@ urlpatterns = [
     path("litiges/", views.disputes, name="disputes"),
     # JSON (fetch via Lowbid.api)
     path("projets/<int:pk>/taches/ajouter/", views.task_add, name="task_add"),
+    path("projets/<int:pk>/annuler/", views.project_cancel, name="project_cancel"),
     path("taches/<int:pk>/supprimer/", views.task_delete, name="task_delete"),
     path("taches/<int:pk>/postuler/", views.apply_create, name="apply_create"),
     path("taches/<int:pk>/choisir/<int:app_pk>/", views.task_choose, name="task_choose"),

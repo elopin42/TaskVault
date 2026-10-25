@@ -65,6 +65,8 @@ ERROR_STATUS = {
     "wrong_state": 409,
     "duplicate": 409,
     "too_many_revisions": 409,
+    "not_published": 409,
+    "not_covered": 409,
     "invalid": 400,
     "bad_tags": 400,
 }
@@ -190,11 +192,11 @@ def project_list(request: HttpRequest) -> HttpResponse:
         sort = "newest"
     ordering = next(o for k, _, o in LIST_SORTS if k == sort)
 
-    qs = Project.objects.with_totals().select_related("company").prefetch_related("tasks")
+    qs = Project.objects.published().with_totals().select_related("company").prefetch_related("tasks")
     if tab == "active":
-        qs = qs.exclude(status=Project.Status.CLOSED)
+        qs = qs.exclude(status__in=(Project.Status.CLOSED, Project.Status.CANCELLED))
     elif tab == "closed":
-        qs = qs.filter(status=Project.Status.CLOSED)
+        qs = qs.filter(status__in=(Project.Status.CLOSED, Project.Status.CANCELLED))
     if q:
         # JSON containment is not portable to SQLite: tags are matched on their text repr.
         task_hits = Task.objects.filter(Q(title__icontains=q) | Q(tags__icontains=q)).values("project_id")
@@ -281,11 +283,11 @@ def project_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "tasks": tasks,
             "wallet": wallet,
             "viewer_is_company": is_company,
-            "can_add_task": is_company and project.status != Project.Status.CLOSED,
+            "can_add_task": is_company and project.status not in (Project.Status.CLOSED, Project.Status.CANCELLED),
             "funding": funding,
             # The company sees "Fund the project" as soon as the project has a task; it is enabled
             # only when an assigned task still has to be deployed/funded (escrow mode).
-            "show_fund": is_company and len(tasks) >= 1 and project.status != Project.Status.CLOSED,
+            "show_fund": is_company and len(tasks) >= 1 and project.status not in (Project.Status.CLOSED, Project.Status.CANCELLED),
             "candidate_blocks": candidate_blocks,
             "pending_total": pending_total,
             "to_validate": to_validate,
@@ -347,7 +349,8 @@ def board(request: HttpRequest) -> HttpResponse:
         Application.objects.filter(freelancer=wallet, status=Application.Status.PENDING).values_list("task_id", flat=True)
     )
     open_tasks = list(
-        Task.objects.filter(status=Task.Status.OPEN)
+        Task.objects.filter(status=Task.Status.OPEN, project__published_at__isnull=False)
+        .exclude(project__status=Project.Status.CANCELLED)
         .exclude(project__company=wallet)
         .select_related("project__company")
         .annotate(app_count=Count("applications"))
@@ -400,7 +403,7 @@ def my_projects(request: HttpRequest) -> HttpResponse:
             )
         )
     )
-    kpis = {"draft": 0, "funded": 0, "closed": 0, "to_choose": 0, "to_validate": 0}
+    kpis = {"draft": 0, "funded": 0, "closed": 0, "cancelled": 0, "to_choose": 0, "to_validate": 0}
     projects = []
     for project in all_projects:
         kpis[project.status] += 1
@@ -412,7 +415,7 @@ def my_projects(request: HttpRequest) -> HttpResponse:
         project.attention = bool(project.to_choose or project.to_validate)
         kpis["to_choose"] += project.to_choose
         kpis["to_validate"] += project.to_validate
-        done = project.status == Project.Status.CLOSED
+        done = project.status in (Project.Status.CLOSED, Project.Status.CANCELLED)
         if (tab == "active" and done) or (tab == "done" and not done):
             continue
         projects.append(project)
@@ -512,6 +515,26 @@ def task_add(request: HttpRequest, pk: int) -> JsonResponse:
             "message": f'Task "{task.title}" added.',
         },
         status=201,
+    )
+
+
+@require_POST
+@wallet_required
+def project_cancel(request: HttpRequest, pk: int) -> JsonResponse:
+    """The company cancels its project before choosing anyone (services.cancel_project); payments then
+    settles the deposit once the cancellation is committed."""
+    project = get_object_or_404(Project, pk=pk)
+    try:
+        project = services.cancel_project(project, get_wallet(request))
+    except ProjectError as e:
+        return _error_response(e)
+    return JsonResponse(
+        {
+            "ok": True,
+            "status": project.status,
+            "message": "Project cancelled.",
+            "redirect": reverse("projects:project_detail", kwargs={"pk": project.pk}),
+        }
     )
 
 

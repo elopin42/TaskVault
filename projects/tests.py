@@ -417,7 +417,7 @@ class ValidateTests(BaseProjectTest):
         self.assertIsNotNone(task.paid_at)
         self.assertEqual(Project.objects.get(pk=self.project.pk).status, Project.Status.DRAFT, "two tasks remain")
 
-    @override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k")
+    @override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k", LOWBID_DEPOSIT_ENABLED=False)
     def test_db_only_delivery_is_refused_in_escrow_mode(self):
         services.apply(self.t1, self.a, "A", ["django", "ui"])
         services.choose(self.t1, app_of(self.t1, self.a), self.company)
@@ -616,14 +616,14 @@ class ProjectDetailViewTests(BaseProjectTest):
         # direct mode (no Trustless Work key): no funding button, an honest note instead
         self.assertNotIn("data-fund", html)
         self.assertIn("Direct payment", html)
-        with override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k"):
+        with override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k", LOWBID_DEPOSIT_ENABLED=False):
             html = self.client.get(self.url()).content.decode()
         self.assertIn("data-fund", html)
         self.assertIn("disabled", html.split("data-fund", 1)[1][:80], "no chosen freelance → the button is disabled")
         self.assertIn("Choose a freelancer first", html)
         self.assertIn("Trustless Work fixes the escrow recipient", html)
 
-    @override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k")
+    @override_settings(LOWBID_PAYMENT_MODE="escrow", TRUSTLESS_WORK_API_KEY="k", LOWBID_DEPOSIT_ENABLED=False)
     def test_fund_button_enabled_once_a_freelance_is_chosen(self):
         login(self.client, self.company)
         empty = services.create_project(self.company, "Vide", "Rien.")
@@ -839,7 +839,7 @@ class MyProjectsViewTests(BaseProjectTest):
         r = self.client.get(reverse("projects:my_projects"))
         self.assertContains(r, "Plateforme de réservation")
         self.assertContains(r, "rcard")
-        self.assertEqual(r.context["kpis"], {"draft": 1, "funded": 0, "closed": 0, "to_choose": 1, "to_validate": 0})
+        self.assertEqual(r.context["kpis"], {"draft": 1, "funded": 0, "closed": 0, "cancelled": 0, "to_choose": 1, "to_validate": 0})
         self.assertEqual(r.context["projects"][0].pending_apps, 1)
         self.assertTrue(r.context["projects"][0].attention)
         self.assertEqual(len(self.client.get(reverse("projects:my_projects") + "?tab=done").context["projects"]), 0)

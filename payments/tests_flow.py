@@ -153,6 +153,7 @@ ESCROW_SETTINGS = dict(
     STELLAR_ASSET_ISSUER=USDC_ISSUER,
     STELLAR_ASSET_CODE="USDC",
     STELLAR_HORIZON_URL="https://horizon-testnet.stellar.org",
+    LOWBID_DEPOSIT_ENABLED=False,  # the per-task escrow flow; the publication deposit has its own tests (tests_deposit.py)
 )
 DIRECT_SETTINGS = {**ESCROW_SETTINGS, "LOWBID_PAYMENT_MODE": "direct"}
 

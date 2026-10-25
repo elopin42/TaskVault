@@ -104,6 +104,21 @@ R25–R29 are not used (the delivery rules started at R30); R50+ and R60+ are re
 - **R23** The payment mode is frozen on a task's escrow row when the row is created (first payment step, or the rating). It may still change while nothing is on chain (status `created`), so switching to direct mode after a failed deploy works. A native-XLM asset always means direct mode (Trustless Work v1 needs an issuer).
 - **R24** Any signed-in wallet can add the asset's trustline from the payment panel ("Add the USDC trustline"); there is nothing to sign when Horizon already shows it, or when the asset is native XLM. The signed transaction must be one `change_trust` from that wallet for the configured asset code and issuer (`tampered`).
 
+### Publication deposit
+Active only when `LOWBID_DEPOSIT_ENABLED` (default 1) **and** the payment mode is `escrow` (`payments.deposits.deposits_active`). Every rule lives in `payments/deposits.py`; every delay is evaluated when a request reads it — there is no timer.
+- **R60** *Publication.* With deposits active a new project is **unpublished** (`published_at` empty): it is absent from the project list, the board and the landing, and refuses applications (`not_published`, 409). Funding the publication deposit sets `published_at` (the project is published). With deposits not active (direct mode, or disabled) a project is published at creation, as before; projects created before this feature are published (migration).
+- **R61** *Amount.* Publication deposit = max(`LOWBID_DEPOSIT_RATE` × project budget, `LOWBID_DEPOSIT_MIN`) (defaults 1 %, 5 USDC), 7 decimals rounded up. A project without tasks has nothing to deposit: add tasks first.
+- **R62** *Coverage and top-up.* Each funded (or settled) deposit row covers part of the budget (`covered_budget`: the whole budget for the publication deposit, the uncovered gap for a top-up). A task takes applications only when the covered budget reaches the cumulated prices of the project's tasks in creation order up to and including it (`not_covered`, 409): a task added after the last funded deposit waits for a top-up = max(rate × gap, `LOWBID_DEPOSIT_TOPUP_MIN`) (default 1 USDC).
+- **R63** *Escrow roles.* The deposit is a Trustless Work single-release escrow deployed and funded by the company in Freighter (two signatures: "Publish the project (deposit X)"): signer and **receiver** = the company; approver = serviceProvider = releaseSigner = platformAddress = the platform key (`LOWBID_PLATFORM_SECRET`, public key = `LOWBID_PLATFORM_ADDRESS`); disputeResolver = a second server key (`LOWBID_DEPOSIT_RESOLVER_SECRET`); platform fee 0; one milestone "Deposit for project #pk"; engagement id `taskvault-deposit-<pk>-<n>`.
+- **R64** *Company steps.* Only the company prepares / sends a deposit step (`forbidden`), only while the project is neither closed nor cancelled (`wrong_state`), in order deploy → fund (`wrong_state`), with deposits active (`wrong_mode`); the signed transaction's source must be the company (`tampered`); replaying the same signed transaction answers "Step already confirmed." and writes nothing twice; a provider failure keeps the status and stores the message. Addresses come from the session and the settings, never from the body.
+- **R65** *Verdict.* `deposit_verdict(project, now)` (pure): closed → **refund**; cancelled with no application → refund; no application `LOWBID_NO_APPLICATION_DAYS` (30) days after publication → refund; at least one application, the first one `LOWBID_CHOICE_DAYS` (14) days old and no freelance ever chosen → **forfeit**; cancelled with at least one application → forfeit; otherwise **locked**. The deadline shown is the date the verdict changes if nothing happens ("Refundable if no application by …" / "Choose a freelancer before …").
+- **R66** *Refund.* Signed by the server's platform key: milestone status change ("deposit refund"), approve, release → the escrow pays the company (minus the Trustless Work protocol fee). Each step is skipped when its hash is stored; a failure stores `last_error`, keeps the deposit `funded`, and the next attempt only sends the missing steps.
+- **R67** *Forfeit.* Needs the guarantee fund's asset trustline (checked first: no call at all without it, "The guarantee fund has no USDC trustline."). The platform key opens a dispute, then the resolver key resolves it sending the escrow's whole on-chain balance (read with `validateOnChain`) to `LOWBID_GUARANTEE_FUND_ADDRESS`. Same idempotence and failure rules as R66.
+- **R68** *Triggers.* Settling happens (a) automatically right after the commit that makes the project `closed` (last task paid) or `cancelled` (a `post_save` receiver registers an `on_commit` callback; a failure is logged and shown on the panel, never raised), (b) on "Reclaim my deposit" (company only, verdict refund; also the retry), (c) on "Report a ghost listing" (any connected wallet, verdict forfeit; also the retry). A request whose verdict does not match is refused (`wrong_state`).
+- **R69** *Cancel.* Only the company (`forbidden`) cancels a project, only while it is neither closed nor cancelled and no freelance was chosen on any task (`wrong_state`). A cancelled project takes no application (`wrong_state`, every mode), no new task, no choice. The confirmation says whether the deposit will be refunded (nobody applied) or forfeited (applications received).
+- **R70** *Server keys.* While deposits are active `manage.py check` fails (Tags.security) when the platform secret is missing, invalid or does not match `LOWBID_PLATFORM_ADDRESS`, when the resolver secret is missing, invalid or equal to the platform key, or when the fund address is missing, invalid or equal to the platform address. The secrets are never logged, rendered or returned (only public addresses are).
+- **R71** *Guarantee fund page.* `/fonds/` (public) shows the fund's balance (Horizon; "Balance unavailable right now" when unreachable), its account link, and every forfeited deposit (project, amount, the resolve transaction on stellar.expert): "Money from ghost listings protects scammed freelancers."
+
 ### Error codes
 
 | Code | HTTP (projects) | Meaning |
@@ -111,6 +126,7 @@ R25–R29 are not used (the delivery rules started at R30); R50+ and R60+ are re
 | `forbidden`, `own_task`, `not_assigned` | 403 | wrong role for this action |
 | `wrong_state`, `duplicate` | 409 | not possible at this stage / already done (e.g. validating or requesting changes on a disputed task) |
 | `too_many_revisions` | 409 | the task already had `LOWBID_MAX_REVISIONS` change requests (R35) |
+| `not_published`, `not_covered` | 409 | the project's publication deposit is not funded yet / the task is not covered by a funded deposit (R60, R62) |
 | `invalid`, `bad_tags` | 400 | bad input |
 | `wallet_required` | 401 | no session (any `@wallet_required` endpoint called with `fetch` or `Accept: application/json`) |
 
@@ -184,8 +200,11 @@ Studio Nova chooses Yanis. He delivers, the company rates him **5/5**, and T1 is
 | `draft` | "Draft" | created | every assigned task holds its money in escrow (funded, delivered, approved, released, disputed or resolved), or the first direct payment → `funded`; the last task paid or resolved → `closed` |
 | `funded` | "Funded" | see above | every task paid or resolved → `closed` |
 | `closed` | "Closed" | every task `paid` or `resolved` | — |
+| `cancelled` | "Cancelled" | the company cancels before choosing anyone (R69) | — |
 
-Tasks can be added until `closed`; only an `open` task can be deleted. A project with a single task paid directly goes from `draft` straight to `closed`.
+Independently of the status, a project is **published** (`published_at` set) once its publication deposit is funded (deposits active) or at creation (deposits not active) — R60.
+
+Tasks can be added until `closed` or `cancelled`; only an `open` task can be deleted. A project with a single task paid directly goes from `draft` straight to `closed`.
 
 ### Task
 
@@ -198,7 +217,7 @@ Tasks can be added until `closed`; only an `open` task can be deleted. A project
 | `disputed` | "Disputed" | the dispute-escrow transaction is confirmed (R38); funds locked | the arbiter's resolve-dispute is confirmed → `resolved` |
 | `resolved` | "Resolved" | resolve-dispute confirmed (`mark_resolved`, R41) | — (settled, like `paid`) |
 
-There is no cancellation and no re-assignment. Every delivery is kept as a `Delivery` row and every change request as a `RevisionRequest` row (R36), the dispute (at most one per task) as a `Dispute` row (R38).
+There is no task cancellation and no re-assignment (a whole project can be cancelled before any choice, R69). Every delivery is kept as a `Delivery` row and every change request as a `RevisionRequest` row (R36), the dispute (at most one per task) as a `Dispute` row (R38).
 
 ### Application
 
@@ -238,6 +257,17 @@ Direct mode has no dispute step (R42): nothing is locked, the panel warns "unpro
 
 Status labels in the UI: `created` "Preparing", `deployed` "Escrow created", `funded` "Funds locked", `delivered` "Delivered", `approved` "Delivery validated", `released` "Funds released", `paid` "Paid", `disputed` "In dispute", `resolved` "Resolved by the arbiter". `failed` ("Failed") exists in the status choices but no step sets it: a failure leaves the status unchanged (R22).
 
+### Publication deposit (one or more per project, `payments.ProjectDeposit`)
+
+| Step | Signs | Deposit status | Trustless Work call | Effect |
+|------|-------|----------------|---------------------|--------|
+| deploy | company (Freighter) | (none / `created`) → `deployed` | deployer/single-release | contract id stored |
+| fund | company (Freighter) | `deployed → funded` | fund-escrow | `published_at` = now if empty (R60) |
+| milestone, approve, release | platform key (server) | `funded → refunded` | change-milestone-status, approve-milestone, release-funds | the company gets the deposit back (R66) |
+| dispute, resolve | platform key, then resolver key (server) | `funded → forfeited` | dispute-escrow, resolve-dispute | the balance goes to the guarantee fund (R67) |
+
+Labels: `created` "Preparing", `deployed` "Deposit escrow created", `funded` "Deposit locked", `refunded` "Deposit refunded", `forfeited` "Forfeited to the guarantee fund". Kinds: `publication`, `topup`. No other status: the per-step hashes record the progress of the server chains.
+
 Signatures for one task: escrow mode = 4 by the company (deploy, fund, approve, release) + 1 by the freelance (deliver); a disputed task = deploy, fund, deliver, then 1 by the party who disputes + 1 by the arbiter; direct mode = 1 by the company.
 
 ## 6. Screens
@@ -249,8 +279,9 @@ The site is dark only and responsive down to phone width; below 1024 px a signed
 | `/` | everyone | Landing: pitch, live stats (open tasks, projects, USDC paid), a ledger tape of the latest on-chain events, the 3D project cube scrolled through four chapters (decorative example figures), the 3 latest projects with an open task; "New project" + "Task board" once signed in, "Connect my Freighter wallet" otherwise | `01-landing.png`, `mobile-landing.png` |
 | `/projets/` | everyone | Project list: tabs In progress / Closed / All, search (project title or description, task title, tags), the 8 most used tags on open tasks as chips, sort (Newest, Highest budget, Most open tasks), 24 per page | `02-liste-projets.png`, `mobile-liste.png` |
 | `/projets/nouveau/` | signed in | New project form (title, description) | — |
-| `/projets/<pk>/` | everyone | Project page: KPIs (total budget, tasks, pending applications, paid tasks), the task table with each task's status and payment status, the inline add-task form (company, until the project is closed), candidates per open task with "Choose" (company), the funding banner and "Fund the project" (company, escrow mode) | `03-projet-entreprise.png`, `15-financement-projet.png`, `mobile-projet.png` |
+| `/projets/<pk>/` | everyone | Project page: the publication deposit panel first in the aside (`#deposit-panel`: amount due or locked, deadline, "Publish the project (deposit X)" / top-up for the company, "Reclaim my deposit" for the company when refundable, "Report a ghost listing" for any wallet when forfeitable, "Cancel the project", the last error with Retry, explorer links; "Direct mode: payment not protected." in direct mode), "Not published" / "Deposit locked X" badges, KPIs (total budget, tasks, pending applications, paid tasks), the task table with each task's status and payment status, the inline add-task form (company, until the project is closed), candidates per open task with "Choose" (company), the funding banner and "Fund the project" (company, escrow mode) | `03-projet-entreprise.png`, `15-financement-projet.png`, `mobile-projet.png` |
 | `/taches/<pk>/` | everyone | Task page: KPIs (fixed price, candidates, project, stage), tags, the apply form (freelance), the ranked candidates with badges and score bars (polled every 5 s while open), the delivery panel (link with its domain and the "Unknown domain" warning, fingerprint, full deliverable when visible, review deadline), the delivery history, the payment panel (stepper, next step, delivery form, change request, rating form, dispute, trustline, live balance, stellar.expert links), the project's other tasks | `04-tache-candidats.png`, `05-tache-livree-freelance.png`, `06-valider-noter.png`, `08-tache-valide-recommande.png`, `12-tache-dark.png`, `13-paiement-echec.png`, `14-paiement-tache.png`, `mobile-tache-candidats.png` |
+| `/fonds/` | everyone | Guarantee fund: balance, fund wallet link, forfeited deposits with their resolve transaction | — |
 | `/taches/` | signed in | Freelance kanban: Open (every open task of other companies, the ones I applied to first), Taken, Delivered, Paid (my tasks; a disputed task sits in Delivered and a resolved one in Paid, each with its own badge) | `07-tableau-kanban.png`, `mobile-kanban.png` |
 | `/mes-projets/` | signed in | The company's projects: KPIs (drafts, tasks to choose for, deliveries to validate, closed), tabs In progress / Closed / All, a row per project (status, tasks, applications, budget) with its next action | `09-mes-projets.png` |
 | `/tableau-de-bord/` | signed in | Dashboard: to-do list (choose, fund, validate, pay, deliver, add tasks to an empty draft, waiting on the other side), KPIs as company and as freelance, recent activity | `10-tableau-de-bord.png`, `mobile-tableau-de-bord.png` |
@@ -262,7 +293,7 @@ Reputation additions: the profile header carries the badges "Reliable payer", "N
 ## 7. Out of scope for the hackathon
 
 - A multisig arbiter driven by the UI: `LOWBID_DISPUTE_RESOLVER` may be a multisig account, but the site collects one Freighter signature — sequential signatures on one XDR need a validity window Trustless Work does not document (docs/STELLAR_NOTES.md §1.3). Disputes themselves are in (R37–R42).
-- Cancelling a project or a task, un-choosing a freelance, editing a task after creation.
+- Cancelling a task (a project can be cancelled before any choice), un-choosing a freelance, editing a task after creation.
 - Several freelances on one task, partial payments, milestones inside a task.
 - Messaging, notifications, email.
 - Mainnet.

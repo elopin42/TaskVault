@@ -67,6 +67,7 @@ __all__ = [
     "add_task",
     "apply",
     "can_dispute",
+    "cancel_project",
     "can_request_changes",
     "choose",
     "clean_hash",
@@ -272,9 +273,36 @@ def create_project(company, title, description) -> Project:
     description = str(description or "").strip()
     if not description:
         raise ProjectError("invalid", "Describe the project in a few lines.")
-    project = Project.objects.create(company=company, title=title, description=description)
-    logger.info("project created project=%s company=%s", project.pk, company.pk)
+    project = Project.objects.create(
+        company=company, title=title, description=description, published_at=initial_published_at()
+    )
+    logger.info("project created project=%s company=%s published=%s", project.pk, company.pk, project.published_at is not None)
     return project
+
+
+def initial_published_at():
+    """`published_at` of a new project: now when publication deposits are NOT active (direct mode keeps
+    today's behaviour), None otherwise — funding the deposit publishes it (payments.deposits)."""
+    from payments.deposits import deposits_active  # lazy: payments imports this module
+
+    return None if deposits_active() else timezone.now()
+
+
+def cancel_project(project: Project, company) -> Project:
+    """Only the company (`forbidden`); refused (`wrong_state`) once closed / cancelled or as soon as a
+    freelance was chosen for any task. The project becomes `cancelled`; once committed, payments settles
+    its deposit (refund without application, forfeit otherwise — payments.deposits.on_project_saved)."""
+    _require_company(project, company)
+    with transaction.atomic():
+        locked = Project.objects.select_for_update().get(pk=project.pk)
+        if locked.status in (Project.Status.CLOSED, Project.Status.CANCELLED):
+            raise ProjectError("wrong_state", f"The project is already {locked.get_status_display().lower()}.")
+        if locked.tasks.exclude(status=Task.Status.OPEN).exists():
+            raise ProjectError("wrong_state", "A freelancer has been chosen: the project can no longer be cancelled.")
+        locked.status = Project.Status.CANCELLED
+        locked.save(update_fields=["status", "updated_at"])
+    logger.info("project cancelled project=%s company=%s", locked.pk, company.pk)
+    return locked
 
 
 def add_task(project: Project, company, title, description, price, tags) -> Task:
@@ -287,8 +315,8 @@ def add_task(project: Project, company, title, description, price, tags) -> Task
     description = str(description or "").strip()
     with transaction.atomic():
         locked = Project.objects.select_for_update().get(pk=project.pk)
-        if locked.status == Project.Status.CLOSED:
-            raise ProjectError("wrong_state", "The project is closed: no new tasks.")
+        if locked.status in (Project.Status.CLOSED, Project.Status.CANCELLED):
+            raise ProjectError("wrong_state", f"The project is {locked.get_status_display().lower()}: no new tasks.")
         position = (locked.tasks.count() or 0) + 1
         task = Task.objects.create(
             project=locked, title=title, description=description, price=price, tags=tags, position=position
@@ -321,6 +349,7 @@ def apply(task: Task, freelancer, message, tags) -> Application:
         locked = _locked_task(task)
         if locked.status != Task.Status.OPEN:
             raise ProjectError("wrong_state", "This task is no longer open to applications.")
+        _check_applications_open(locked)
         if locked.project.company_id == freelancer.pk:
             raise ProjectError("own_task", "You cannot apply to your own task.")
         if locked.applications.filter(freelancer=freelancer).exists():
@@ -344,6 +373,8 @@ def choose(task: Task, application: Application, company) -> Task:
         locked = _locked_task(task)
         if locked.status != Task.Status.OPEN:
             raise ProjectError("wrong_state", "A freelancer has already been chosen for this task.")
+        if locked.project.status == Project.Status.CANCELLED:
+            raise ProjectError("wrong_state", "This project was cancelled.")
         fresh = Application.objects.filter(pk=application.pk, task=locked).select_related("freelancer").first()
         if fresh is None:
             raise ProjectError("invalid", "This application does not exist on this task.")
@@ -683,6 +714,17 @@ def _after_validate(task: Task) -> None:
     from payments import services as payments  # lazy: payments.services imports this module
 
     payments.on_task_validated(task)
+
+
+def _check_applications_open(task: Task) -> None:
+    """Deposit hook, inside apply()'s transaction: payments.deposits.check_can_apply refuses a cancelled
+    project, an unpublished one (`not_published`) and a task the deposit does not cover (`not_covered`)."""
+    from payments import deposits  # lazy: payments imports this module
+
+    try:
+        deposits.check_can_apply(task)
+    except deposits.PaymentError as exc:
+        raise ProjectError(exc.code, exc.message) from None
 
 
 def _before_deliver(task: Task) -> None:

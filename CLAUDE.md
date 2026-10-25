@@ -9,7 +9,7 @@ There is **no GSD workflow** in this repo. Edit files directly, run `make check`
 - Python 3.13 · Django 5.2 (server-rendered templates, function views, no DRF) · SQLite by default (`data/db.sqlite3`, moved by `LOWBID_SQLITE_PATH`), PostgreSQL when `DJANGO_DB_HOST` is set · whitenoise for static files · gunicorn in Docker.
 - Frontend: **self-hosted Tailwind v3** compiled into the committed `static/css/tailwind.css`, two hand-written CSS files (`lowbid-tokens.css`, `lowbid-components.css`), vanilla JS (`static/js/lowbid-*.js`). Vendored under `static/vendor/`: Font Awesome, `@stellar/freighter-api` (global `freighterApi`), `@stellar/stellar-sdk` (global `StellarSdk`). **Nothing loads from a CDN.**
 - Stellar: the Freighter wallet is the identity (SEP-53 `signMessage` login). The payment asset is `STELLAR_ASSET_CODE` / `STELLAR_ASSET_ISSUER` (default: Circle testnet USDC; `XLM` with an empty issuer means native XLM, which forces direct mode). Trustless Work v1 REST runs the escrow; Horizon serves balances, trustlines and direct payments. Python side: `stellar-sdk`.
-- Tests: Django test runner (`manage.py test`, 225 tests, network mocked) and a Playwright e2e run with a simulated Freighter and a fake Horizon (`make e2e`). Linter: ruff (baseline rules only, see `ruff.toml`).
+- Tests: Django test runner (`manage.py test`, 293 tests, network mocked) and a Playwright e2e run with a simulated Freighter and a fake Horizon (`make e2e`). Linter: ruff (baseline rules only, see `ruff.toml`).
 
 ## Commands
 
@@ -22,7 +22,7 @@ make lint       # ruff check .
 make css        # npm ci (once) + tailwind build → static/css/tailwind.css  (COMMIT the output)
 make css-check  # rebuild and fail if the committed tailwind.css is stale (same as CI)
 make check      # lint + test + css-check — run before every commit
-make seed       # python manage.py seed_demo --flush (3 wallets, 2 projects: the pitch state + a draft)
+make seed       # python manage.py seed_demo --flush (4 wallets, 2 projects: the pitch state + a draft, plus a small trust network)
 make e2e        # Playwright task-board scenario, fake Freighter + fake Horizon, direct mode, throwaway SQLite; screenshots → docs/screenshots/ (E2E_SHOTS_DIR overrides; Chromium fetched once by `make playwright`)
 make shots      # alias of e2e (regenerates the pitch screenshots)
 npm run build:css / npm run watch:css / npm run vendor
@@ -41,14 +41,15 @@ npm run build:css / npm run watch:css / npm run vendor
 | `accounts/` | `WalletUser`, Freighter login (`/auth/challenge/`, `/auth/verify/`, `/auth/logout/`), `signing.py` (SEP-53 verify), `decorators.wallet_required`, `identity.get_wallet()` |
 | `projects/` | `Project` / `Task` / `Application` / `Rating` models, `services.py` (the task-board rules, the only place that decides; payment hooks `mark_paid` / `_after_validate` / `_before_deliver`), `scoring.py` (40 + 8 × note + 20 × tags score, `Validé` / `Recommandé`), `forms.py` (`ProjectForm`), pages + JSON endpoints under `/projets/…`, `/taches/…`, `/mes-projets/`, `seed_demo` command |
 | `payments/` | `Escrow` (1-1 `Task`), `services.py` (`prepare_<step>` / `confirm_<step>`, both modes, `next_action`, `project_funding`, `on_task_validated`; **the state table is its docstring**), `trustless_work.py`, `stellar.py` (asset, mode switch, XDR, Horizon), JSON endpoints under `/pay/`, `{% escrow_panel task wallet %}` tag |
+| `network/` | trust network: `Follow` / `Recommendation` models (one per pair, never yourself, PROTECT), `services.py` (`follow` / `unfollow` / `recommend` (upsert, ≤280) / `unrecommend`, one-hop `signals(viewer, targets)` in 3 queries → `NetworkSignal` (`level`, `label`, `as_json`), `network_feed`, `profile_network`), 4 JSON endpoints under `/profil/<address>/…`. Read by views only: `projects.services` never imports it |
 | `dashboard/` | no models: `/tableau-de-bord/` (`dashboard:home`, signed-in home: to-do list, KPIs as company and as freelance, activity) and `/profil/<address>/` (`dashboard:profile`, public wallet profile, the owner edits the display name). Templates live in `dashboard/templates/dashboard/` |
 | `templates/` | `base.html`, `partials/` (navbar, tabbar, toasts, modal, page_header), `components/` (reusable includes), `core/`, `projects/` (pages + `_board_card`, `_candidates`, `_funding_panel`, `_project_card`, `_task_form`, `_task_row`), `payments/_escrow_panel.html`, error pages |
 | `static/css/` | `lowbid-tokens.css` → `lowbid-components.css` → `tailwind.css` (built) |
-| `static/js/` | `lowbid-base.js` (theme, toasts, `Lowbid.api`, `formatUsdc`), `lowbid-ui.js` (confirm modal, menus, identicons, `Lowbid.poll`, `refreshUI`), `lowbid-wallet.js` (Freighter), `lowbid-pay.js` (prepare → sign → send, `runChain`, `fundProject`, trustline, live balance), `lowbid-projects.js` (add/delete task, apply, candidates polling, choose, validate + rate → payment chain) |
+| `static/js/` | `lowbid-base.js` (theme, toasts, `Lowbid.api`, `formatUsdc`), `lowbid-ui.js` (confirm modal, menus, identicons, `Lowbid.poll`, `refreshUI`), `lowbid-wallet.js` (Freighter), `lowbid-pay.js` (prepare → sign → send, `runChain`, `fundProject`, trustline, live balance), `lowbid-projects.js` (add/delete task, apply, candidates polling, choose, validate + rate → payment chain), `lowbid-network.js` (profile `#network-panel`: follow / unfollow, recommend / withdraw) |
 | `tests/e2e/` | `run.js` (Playwright scenario) + `fake-freighter.js` + `fake-horizon.js` |
 | `docs/` | `PRODUCT.md` (spec, rules, score, states), `ARCHITECTURE.md`, `FRONTEND.md` (design system), `STELLAR_NOTES.md`, `DEMO_RUNBOOK.md`, `PITCH.md`, `HACKATHON_DAY.md` |
 
-URL mounts (`lowbid/urls.py`): `/auth/` accounts · `/pay/` payments · `/` core + projects + dashboard · `/django-admin/`.
+URL mounts (`lowbid/urls.py`): `/auth/` accounts · `/pay/` payments · `/` core + projects + network + dashboard · `/django-admin/`. Network endpoints (POST, JSON): `/profil/<address>/suivre/` · `/profil/<address>/ne-plus-suivre/` · `/profil/<address>/recommander/` · `/profil/<address>/retirer-recommandation/`.
 
 Pages: `/projets/` (list, public) · `/projets/nouveau/` · `/projets/<pk>/` (public) · `/taches/` (freelance kanban) · `/taches/<pk>/` (public) · `/mes-projets/` · `/tableau-de-bord/` · `/profil/<address>/` (public).
 
@@ -68,7 +69,7 @@ Pages: `/projets/` (list, public) · `/projets/nouveau/` · `/projets/<pk>/` (pu
 1. **Load order is law:** `lowbid-tokens.css` (the `:root` base palette = the light « Papier » values, overridden by the « Coffre » dark palette under `html[data-theme="dark"]` and on `.theme-coffre`; Signal yellow means money, on-chain figures are mono) → `lowbid-components.css` (the `ui-` vocabulary) → `tailwind.css`. Components read `var(--*)` only; **never hardcode a colour**. **The site is dark only**: `base.html` renders `<html data-theme="dark">`, there is no theme toggle.
 2. **Tailwind is a build artifact.** Any new utility class in a template or `static/js/*.js` needs `npm run build:css` and the rebuilt `static/css/tailwind.css` committed, or the `tailwind-in-sync` CI job fails. Classes assembled at runtime must be in the `safelist` of `tailwind.config.js`.
 3. Prefer the vocabulary over utilities: `.ui-panel`, `.ui-btn*`, `.ui-badge*`, `.ui-field/.ui-input/.ui-form-grid`, `.ui-kpi-*`, `.ui-toolbar/.ui-search`, `.ui-pager`, `.ui-timeline`, `.ui-next-card`, `.ui-modal`, `.ui-menu`, `.ui-wallet/.ui-identicon`, `.ui-stepper`, `.ui-stars`, `.ui-scorebar`, `.cand-row`, `.kanban*`, `.ui-progress`, `.seg-tabs`, `.rcard`, `.empty-state`. Full reference with markup: `docs/FRONTEND.md`.
-4. Reuse the includes in `templates/components/` (`wallet`, `status_badge`, `tags`, `kpi`, `price`, `empty_state`, `pager`, `next_card`, `section_head`) instead of re-typing markup; their parameters are documented in each file's `{% comment %}` header.
+4. Reuse the includes in `templates/components/` (`wallet`, `status_badge`, `tags`, `kpi`, `price`, `empty_state`, `pager`, `next_card`, `section_head`, `network_badges`) instead of re-typing markup; their parameters are documented in each file's `{% comment %}` header.
 5. JS: one global `window.Lowbid` (`api`, `toast`, `confirm`, `modal`, `identicon`, `timeAgo`, `sparkline`, `poll`, `refreshUI`, `setBusy`, `parseTags`, `wallet`, `signTransaction`, `pay`). Per-request values reach the static JS only through `window.LOWBID` (base.html: network, `asset`, `paymentMode`, `walletAddress`, `urls`), `window.LOWBID_PROJECT` (project page) and `window.LOWBID_TASK` (task page). After swapping a fragment with `innerHTML`, call `Lowbid.refreshUI(root)`.
 6. Mobile: dense tables go in a `.rcard` wrapper with `data-label` on every `<td>` (stacked cards under 720px of container width; a multi-block cell such as title + tags + description gets `td.is-stack` — never horizontal scroll; the kanban is the one deliberate exception, snap-scrolling full-width columns); form actions in `.ui-sticky-actions` inside a `.ui-form-scope`; the signed-in bottom tab bar (`partials/tabbar.html`) is fed by `NAV_LINKS` (Projects · Board · Create · My projects · Home). Touch targets are 44px.
 7. Confirmations use `Lowbid.confirm({...})` (the `#lb-confirm` dialog in `partials/modal.html`), never `window.confirm`.
@@ -95,6 +96,7 @@ The escrow / direct-payment state table (who signs, Escrow status, Task status, 
   - task page: `#apply-message/#apply-tags/[data-apply-submit]`, `#my-application`, `#candidates-panel`, `[data-candidates][data-count="N"]`, `.cand-row[data-freelancer]` (`.is-chosen` / `.is-rejected`), `[data-score]`, `[data-recommended]`, `[data-badge="valide"]` / `.badge-validated`, `[data-choose]`, `[data-kpi-count]`, `[data-live-dot]`, `[data-delivery-link]`, `[data-rating]`;
   - payment panel: `#escrow-panel[data-mode][data-escrow-status]`, `[data-pay-step]`, `[data-pay-error]`, `[data-last-error]`, `[data-pay-trustline]`, `[data-explorer-links]`, `[data-usdc-balance="G…"]`, `#deliver-panel #deliver-link [data-deliver]`, `#validate-panel #validate-form[data-validate] [data-rate] #validate-comment [data-validate-submit]`;
   - kanban, lists, dashboard, profile: `.kanban-col[data-col]`, `.kanban-card[data-task-id]`, `.kanban-empty`, `.project-card`, `.ui-chip-row .ui-tag`, `select[name="sort"]`, `.empty-state`, `tbody tr` on Mes projets, `#todo`, `[data-todo-list] .ui-next-card(.act)`, `#activity .ui-timeline-item`, `.ui-kpi-tile`, `[data-avg-note]`, `#edit-name` + `#display_name`.
+  - trust network: `#network-panel`, `[data-follow]`, `[data-recommend]`, `#recommend-message`, `[data-recommend-submit]`, `[data-unrecommend]`, `[data-followers-count]`, `[data-recommendations-count]`, `[data-known-followers]`, `#recommendations`, `#network-feed`, `.ui-netbadge[data-network-badge]`, `.cand-row.is-network` / `.cand-row.is-network-strong`.
 - Any uncaught page error or unexpected `console.error` fails the e2e run.
 
 ## Don'ts
@@ -105,4 +107,5 @@ The escrow / direct-payment state table (who signs, Escrow status, Task status, 
 - No business rule in a view or a template.
 - Never flip `Task.status` to `paid` outside `projects.services.mark_paid`, and never move money from `projects`.
 - Never commit `static/css/tailwind.css` out of sync with the templates, and never edit it by hand.
+- The trust-network badge never changes the score or the candidate order, and is never the bare word "Recommended" (it always names someone: "Yanis recommends").
 - No cron or background worker: every state change happens in a request (there is no timer anywhere in the task board).

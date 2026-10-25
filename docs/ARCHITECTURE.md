@@ -49,7 +49,7 @@ make lint         # ruff check .
 make css          # npm ci + tailwind build  (commit static/css/tailwind.css!)
 make css-check    # rebuild and fail when the committed tailwind.css is stale (= CI tailwind-in-sync)
 make check        # lint + test + css-check — the pre-commit gate
-make seed         # python manage.py seed_demo --flush (3 wallets, the pitch-state project, a draft project)
+make seed         # python manage.py seed_demo --flush (4 wallets, the pitch-state project, a draft project, a 3-edge trust network)
 make vendor       # re-copy Font Awesome / freighter-api / stellar-sdk from node_modules
 make e2e          # Playwright end-to-end (see E2E below); `make shots` is an alias
 ```
@@ -89,6 +89,7 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 | `accounts` | `WalletUser(stellar_address, display_name, created_at, last_login_at)`, wallet auth, `wallet_required`, `get_wallet()`; context processor `wallet` (`wallet_address`, `wallet_user`) | `/auth/challenge/`, `/auth/verify/`, `/auth/logout/` |
 | `projects` | the task board: models, `services.py` (every rule + the payment hooks), `scoring.py`, pages + JSON endpoints, `seed_demo` | `/projets/…`, `/taches/…`, `/mes-projets/` |
 | `payments` | `Escrow` (1-1 `Task`), `services.py`, `trustless_work.py`, `stellar.py`, `{% escrow_panel task wallet %}` | `/pay/…` |
+| `network` | the trust network: `Follow` / `Recommendation` models, `services.py` (follow / recommend rules, one-hop `signals`, `network_feed`, `profile_network`), 4 JSON endpoints called from the profile page | `/profil/<address>/suivre/`, `/ne-plus-suivre/`, `/recommander/`, `/retirer-recommandation/` |
 | `dashboard` | no models. `home` (`@wallet_required`): to-do list built from `payments.services.next_action()` and the projects data, KPIs as company and as freelance, recent activity. `profile` (public): identicon, display name (POST by its owner), projects posted, tasks paid, ratings received | `/tableau-de-bord/`, `/profil/<address>/` |
 
 ### Routes
@@ -113,12 +114,51 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 | `POST /pay/trustline/prepare/`, `POST /pay/trustline/send/` | trustline of the session wallet | `payments:trustline_prepare` / `_send` | wallet |
 | `GET /pay/project/<pk>/pending.json` | `project_pending` → the tasks « Financer le projet » chains | `payments:project_pending` | wallet (company) |
 | `GET /pay/<task_pk>/` | `task_pay` → 302 to the task page `#paiement` | `payments:task_pay` | public |
+| `POST /profil/<address>/suivre/`, `/ne-plus-suivre/` | `network.views.follow_view` / `unfollow_view` | `network:follow` / `network:unfollow` | wallet |
+| `POST /profil/<address>/recommander/` (body `{message}`), `/retirer-recommandation/` | `network.views.recommend_view` / `unrecommend_view` | `network:recommend` / `network:unrecommend` | wallet |
 | `GET /tableau-de-bord/`, `GET/POST /profil/<address>/` | `dashboard.views.home` / `profile` | `dashboard:home` / `dashboard:profile` | wallet / public |
 
 Projects refusals are 4xx `{ok:false, error, message}` (`ERROR_STATUS` in `projects/views.py`: 403 `forbidden`
 `own_task` `not_assigned`, 409 `wrong_state` `duplicate`, 400 `invalid` `bad_tags`). Payments refusals are HTTP 200
 `{ok:false, error, message}` so `Lowbid.api` resolves and the panel shows `message`. A `fetch` caller without a session
 gets 401 `{ok:false, error:"wallet_required"}`; a browser gets a 302 to `/?next=…`.
+
+## Trust network (`network/`)
+
+Who vouches for whom, seen one hop away. It never feeds the score: `projects.services` and `projects/scoring.py`
+never import `network`; only views do (`projects/views.py`, `dashboard/views.py`).
+
+**Models** (both FKs to `WalletUser`, `on_delete=PROTECT`):
+
+| Model | Fields | Constraints |
+|-------|--------|-------------|
+| `network.Follow` | `follower`, `followed`, `created_at` | `UniqueConstraint(follower, followed)` `network_follow_unique_pair`; `CheckConstraint(~Q(follower=F("followed")))` `network_follow_not_self` |
+| `network.Recommendation` | `author`, `subject`, `message` (≤280, blank), `created_at`, `updated_at` | `UniqueConstraint(author, subject)` `network_recommendation_unique_pair`; `CheckConstraint` not self `network_recommendation_not_self` |
+
+**Services** (`network/services.py`, raise `NetworkError(code, message)`, codes `self` / `invalid` / `not_found`):
+
+| Function | Does |
+|----------|------|
+| `follow(viewer, target)` / `unfollow(viewer, target) -> bool` | idempotent `get_or_create` / delete |
+| `recommend(viewer, target, message="")` / `unrecommend(viewer, target) -> bool` | upsert (`update_or_create`) after strip + 280-char check / delete |
+| `signals(viewer, targets) -> {target_pk: NetworkSignal}` | a signal for **every** target; `{}` for an anonymous viewer; empty signal for the viewer's own wallet. **3 queries whatever the number of targets**: the viewer's follows (with the followed wallets, for names), the recommendations those wallets wrote on the targets, the follows those wallets have on the targets |
+| `NetworkSignal` | `recommenders`, `followers` (sorted by name), `following`; `level` (`strong` / `weak` / `following` / `""`), `label`, `recommend_label`, `followed_by_label`, `as_json()`, falsy when nothing to show |
+| `network_feed(viewer, limit=12)` | recent recommendations, follows and projects of the wallets the viewer follows, newest first (dashboard `#network-feed`) |
+| `profile_network(profile, viewer)` | counters, received recommendations, `viewer_follows`, `viewer_recommendation`, `known_followers`, `known_recommenders`, `signal`, `can_act` (profile `#network-panel`) |
+
+**Endpoints** (`network/views.py`, `@require_POST @wallet_required`, called through `Lowbid.api` by `lowbid-network.js`):
+200 `{ok:true, following, followers_count, recommendation: {message}|null, recommendations_count, message}`;
+400 `{ok:false, error:"self"|"invalid", message}`; 404 `{ok:false, error:"not_found"}`; 401 JSON without a session.
+
+**How pages attach the signals** (one `signals()` call per page or per candidate list, never per row):
+- `projects.views._candidate_rows` sets `row["network"]` (the `NetworkSignal`) and `row["network_class"]`
+  (`is-network` / `is-network-strong` on `.cand-row`); `_candidate_json` adds `"network": sig.as_json()` (or `null`).
+  The candidates **fingerprint includes each row's network level**, so the 5 s poll re-renders when a badge appears.
+  The row order stays `-score, created_at`.
+- `projects.views._company_signals` sets `company_signal` on each project (list, project page) or on each task's
+  project (kanban, task page) for the company chip.
+- `dashboard.views.home` passes `network_feed(wallet)`; `dashboard.views.profile` passes `net = profile_network(...)`.
+- Every template renders badges through `components/network_badges.html` only.
 
 ## Data model
 
@@ -127,6 +167,8 @@ WalletUser ─┬─< Project (company, PROTECT) ──< Task (CASCADE) ──< 
             │                                   │  └── assigned_to ─> WalletUser (PROTECT, null until chosen)
             │                                   ├── Rating (1-1, CASCADE): company, freelancer, note 1–5, comment
             │                                   └── Escrow (1-1, CASCADE, payments): mode, status, contract_id, hashes
+            ├─< Follow (follower / followed, PROTECT)              network: one per pair, never yourself
+            └─< Recommendation (author / subject, PROTECT)      network: one per pair, message ≤280
 ```
 
 | Model | Fields that matter |

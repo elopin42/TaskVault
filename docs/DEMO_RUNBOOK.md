@@ -75,11 +75,12 @@ LOWBID_PLATFORM_FEE=1
 ### 1.7 Run + demo data
 
 - [ ] Terminal 1: `make dev` → `Starting development server at http://0.0.0.0:8000/`. The landing shows the `testnet` badge.
-- [ ] Terminal 2: `make seed` (= `python manage.py seed_demo --flush`). It prints the payment mode, the asset, the 3 wallets and the project ids (ids keep counting after `--flush`).
+- [ ] Terminal 2: `make seed` (= `python manage.py seed_demo --flush`). It prints the payment mode, the asset, the 4 wallets, the trust-network graph and the project ids (ids keep counting after `--flush`).
 
 What `seed_demo` creates:
 
-- Studio Nova's project « Plateforme de réservation pour un studio de yoga » **at the pitch state**, « Financé » (as a live direct payment leaves it): T1 « Landing page » paid to A (rating 5, a direct-mode escrow row with a demo hash so the explorer links render — nothing is on chain), T2 « Intégration Freighter » open with A (90.0, « Validé » + « Recommandé ») and B (20.0), T3 « Dashboard » open.
+- Studio Nova's project « Plateforme de réservation pour un studio de yoga » **at the pitch state**, « Financé » (as a live direct payment leaves it): T1 « Landing page » paid to A (rating 5, a direct-mode escrow row with a demo hash so the explorer links render — nothing is on chain), T2 « Intégration Freighter » open with A (90.0, « Validé » + « Recommandé ») and B (20.0), T3 « Dashboard » open with C (Chloé) applying.
+- A small trust network: the company follows A, A recommends C, A follows B. Signed in as the company: « Yanis (freelancer A) recommends » on C's row (T3), « Followed by Yanis (freelancer A) » on B's row (T2).
 - A draft project « Refonte de la charte et du site vitrine d’une boulangerie » with three open tasks and no candidate.
 
 > **Seed with random wallets before the recording.** The score's history is per company: if `LOWBID_DEMO_CLIENT` / `LOWBID_DEMO_FREELANCE1` / `LOWBID_DEMO_FREELANCE2` point at your real Freighter accounts, the seed gives A a paid, 5-star task with **your** company, and in the live project A would already score 100 on T1. For the live run, leave those three variables empty (random actors fill the lists). Seed **with** your real wallets only to prepare the Plan C screen (§4.3), and run `make seed` again (it flushes projects and ratings) before recording.

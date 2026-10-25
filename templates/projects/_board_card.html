@@ -1,5 +1,5 @@
 {% load lowbid_extras %}
-{% comment %}One card of the freelance kanban. Context: task (select_related project__company, annotated app_count; `applied` set on the open column), col (open|taken|delivered|paid).{% endcomment %}
+{% comment %}One card of the freelance kanban. Context: task (select_related project__company, annotated app_count; `applied` set on the open column), col (open|taken|delivered|paid). A disputed task sits in the Delivered column and a resolved one in Paid, each with its own status badge (projects.views.BOARD_COLUMN_OF).{% endcomment %}
 <article class="kanban-card glass-card{% if task.applied %} is-applied{% endif %}" data-task-id="{{ task.pk }}" data-status="{{ task.status }}">
   <div class="flex items-start justify-between gap-2">
     <h3 class="kanban-card-title min-w-0"><a href="{% url 'projects:task_detail' task.pk %}" class="text-strong hover:underline">{{ task.title }}</a></h3>
@@ -15,6 +15,10 @@
       {% else %}<a href="{% url 'projects:task_detail' task.pk %}#apply-panel" class="ui-btn ui-btn-sm ui-btn-primary">Apply</a>{% endif %}
     {% elif col == 'taken' %}
       <a href="{% url 'projects:task_detail' task.pk %}#deliver-panel" class="ui-btn ui-btn-sm ui-btn-primary"><i class="fa-solid fa-truck-fast" aria-hidden="true"></i> Deliver</a>
+    {% elif task.status == 'disputed' %}
+      <span class="ui-badge ui-badge-danger" title="Dispute open: the arbiter decides" data-kanban-disputed><i class="fa-solid fa-gavel" aria-hidden="true"></i> Disputed</span>
+    {% elif task.status == 'resolved' %}
+      <span class="ui-badge ui-badge-brand" title="Resolved by the arbiter" data-kanban-resolved><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> {% if task.resolved_at %}Resolved {{ task.resolved_at|date:"M j" }}{% else %}Resolved{% endif %}</span>
     {% elif col == 'delivered' %}
       <span class="ui-badge ui-badge-attn" title="Awaiting validation"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> To validate</span>
     {% else %}

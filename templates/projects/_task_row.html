@@ -23,6 +23,8 @@ can_delete / my_application / is_mine set by the view), viewer_is_company.
     <span class="inline-flex flex-wrap gap-1 justify-end">
       {% if viewer_is_company and task.status == 'delivered' %}
         <a href="{% url 'projects:task_detail' task.pk %}#validate-panel" class="ui-btn ui-btn-sm ui-btn-primary"><i class="fa-solid fa-star" aria-hidden="true"></i> Validate + rate</a>
+      {% elif task.status == 'disputed' %}
+        <a href="{% url 'projects:task_detail' task.pk %}#paiement" class="ui-btn ui-btn-sm"><i class="fa-solid fa-gavel" aria-hidden="true"></i> Dispute</a>
       {% elif viewer_is_company and task.status == 'open' and task.pending_count %}
         <a href="#candidates-{{ task.pk }}" class="ui-btn ui-btn-sm ui-btn-primary"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Choose</a>
       {% elif task.is_mine and task.status == 'taken' %}

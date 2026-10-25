@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% load static lowbid_extras %}
+{% block title %}Disputes · TaskVault{% endblock %}
+{% block meta_description %}The arbiter's desk: open disputes with their delivery history, and the split signed on Stellar.{% endblock %}
+
+{% block content %}
+{% comment %}
+/litiges/ — arbiter wallet only (projects.views.disputes answers 403 otherwise). Context: open_rows / closed_rows
+(each: dispute, task, project, escrow, amount, links, history, by_company, open, action (the arbiter's `resolve`
+next_action or None), last_error), wallet, arbiter_address.
+DOM contract (e2e / tests): #resolve-form-<task_pk> · [data-freelance-pct] · [data-split-freelance] ·
+[data-split-company] · [data-pay-step="resolve"][data-prepare-url] · [data-pay-error] · .dispute-card[data-task-id].
+{% endcomment %}
+{% include "partials/page_header.html" with title="Disputes" subtitle="Escrows frozen by a party, waiting for your split. One Freighter signature settles each one on Stellar." %}
+
+<section class="ui-kpi-band mb-6" aria-label="Summary">
+  {% include "components/kpi.html" with label="Open disputes" value=open_rows|length icon="fa-gavel" %}
+  {% include "components/kpi.html" with label="Resolved" value=closed_rows|length icon="fa-scale-balanced" %}
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Arbiter wallet</span><span class="ui-kpi-value text-base font-mono" title="{{ arbiter_address }}">{{ arbiter_address|short_addr:6 }}</span><span class="ui-kpi-hint ui-meta">LOWBID_DISPUTE_RESOLVER · signs resolve-dispute</span></div>
+</section>
+
+{% if not open_rows and not closed_rows %}
+  {% url 'projects:project_list' as list_url %}
+  {% include "components/empty_state.html" with icon="fa-gavel" title="No dispute" desc="No escrow is frozen. A party opens a dispute from a delivered task's payment panel; it lands here." cta_href=list_url cta_label="Browse the projects" cta_icon="fa-diagram-project" %}
+{% endif %}
+
+{% for row in open_rows %}
+  <article class="ui-panel dispute-card mb-5" id="dispute-{{ row.task.pk }}" data-task-id="{{ row.task.pk }}" data-status="{{ row.task.status }}" style="border-color: var(--error-soft)">
+    <div class="ui-panel-head">
+      <div class="min-w-0">
+        <p class="ui-meta mb-1"><a href="{% url 'projects:project_detail' row.project.pk %}" class="ui-link">{{ row.project.title }}</a> · task #{{ row.task.pk }}</p>
+        <h2 class="ui-panel-title flex flex-wrap items-center gap-2"><a href="{% url 'projects:task_detail' row.task.pk %}#paiement" class="hover:underline">{{ row.task.title }}</a> {% include "components/status_badge.html" with obj=row.task %}</h2>
+        <p class="ui-panel-sub">Opened by <strong class="text-strong">{% if row.by_company %}the company{% else %}the freelancer{% endif %}</strong> ({{ row.dispute.opened_by.display_name|default:row.dispute.opened_by.short_address }}) <span data-time-ago="{{ row.dispute.created_at|date:'c' }}">{{ row.dispute.created_at|date:"M j, Y H:i" }}</span></p>
+      </div>
+      {% include "components/price.html" with amount=row.amount size="text-xl" %}
+    </div>
+
+    {% if row.dispute.reason %}
+      <div class="ui-alert ui-alert-danger" data-dispute-reason><i class="fa-solid fa-gavel" aria-hidden="true"></i><span>"{{ row.dispute.reason }}"</span></div>
+    {% endif %}
+
+    <div class="ui-split mt-4">
+      <div class="ui-stack">
+        <dl class="ui-facts">
+          <dt>Company</dt><dd>{% include "components/wallet.html" with address=row.project.company.stellar_address name=row.project.company.display_name label="Company" %}</dd>
+          <dt>Freelancer</dt><dd>{% include "components/wallet.html" with address=row.task.assigned_to.stellar_address name=row.task.assigned_to.display_name label="Freelancer" %}</dd>
+          <dt>Delivery link</dt><dd>{% if row.task.delivery_link %}<a href="{{ row.task.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-delivery-link>{{ row.task.delivery_link|truncatechars:48 }}</a>{% else %}<span class="ui-meta">none</span>{% endif %}</dd>
+          <dt>Fingerprint</dt><dd>{% if row.task.delivery_hash %}<code class="font-mono text-xs break-all" data-delivery-hash="{{ row.task.delivery_hash }}">{{ row.task.delivery_hash }}</code>{% else %}<span class="ui-meta">none declared</span>{% endif %}</dd>
+          <dt>Revisions requested</dt><dd class="ui-num">{{ row.task.revision_count }}</dd>
+          {% for l in row.links %}
+            <dt>{{ l.label }}</dt>
+            <dd><a href="{{ l.url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ l.value }}">{{ l.value|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% if l.at %} <span class="ui-meta whitespace-nowrap">{{ l.at|date:"M j, H:i" }}</span>{% endif %}</dd>
+          {% endfor %}
+        </dl>
+
+        {% if row.history %}
+          <h3 class="ui-label mt-2">History</h3>
+          <ol class="ui-timeline" data-delivery-history data-count="{{ row.history|length }}">
+            {% for h in row.history %}
+              {% if h.kind == 'delivery' %}
+                <li class="ui-timeline-item is-brand" data-kind="delivery">
+                  <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-truck-fast"></i></span>
+                  <div class="ui-timeline-body">
+                    <span class="ui-timeline-title">Delivery declared</span> — <a href="{{ h.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer">{{ h.delivery_link|truncatechars:60 }}</a>{% if h.delivery_hash %} <code class="font-mono text-xs" title="{{ h.delivery_hash }}">{{ h.delivery_hash|short_addr:8 }}</code>{% endif %}{% if h.tx_hash %} · <a href="{{ h.explorer_url }}" class="ui-link font-mono" target="_blank" rel="noopener" title="{{ h.tx_hash }}">on Stellar <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% endif %}
+                    <div class="ui-timeline-time"><span data-time-ago="{{ h.when|date:'c' }}">{{ h.when|date:"M j, Y H:i" }}</span></div>
+                  </div>
+                </li>
+              {% elif h.kind == 'revision' %}
+                <li class="ui-timeline-item" data-kind="revision">
+                  <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-rotate-left"></i></span>
+                  <div class="ui-timeline-body">
+                    <span class="ui-timeline-title">Changes requested</span>{% if h.message %} — "{{ h.message }}"{% endif %}
+                    <div class="ui-timeline-time"><span data-time-ago="{{ h.when|date:'c' }}">{{ h.when|date:"M j, Y H:i" }}</span></div>
+                  </div>
+                </li>
+              {% elif h.kind == 'dispute' %}
+                <li class="ui-timeline-item is-danger" data-kind="dispute">
+                  <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-gavel"></i></span>
+                  <div class="ui-timeline-body">
+                    <span class="ui-timeline-title">Dispute opened</span> by {% if h.by_company %}the company{% else %}the freelancer{% endif %}{% if h.tx_hash %} · <a href="{{ h.explorer_url }}" class="ui-link font-mono" target="_blank" rel="noopener" title="{{ h.tx_hash }}">on Stellar <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% endif %}
+                    <div class="ui-timeline-time"><span data-time-ago="{{ h.when|date:'c' }}">{{ h.when|date:"M j, Y H:i" }}</span></div>
+                  </div>
+                </li>
+              {% endif %}
+            {% endfor %}
+          </ol>
+        {% endif %}
+      </div>
+
+      <aside class="ui-stack">
+        {% if row.last_error %}
+          <div class="ui-alert ui-alert-attn" role="status" data-last-error><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>{{ row.last_error }}</span></div>
+        {% endif %}
+        {% if row.action %}
+        <section class="ui-panel ui-form-scope theme-coffre" style="border-color: var(--brand-500)">
+          <div class="ui-panel-head"><div><h3 class="ui-panel-title"><i class="fa-solid fa-scale-balanced" style="color: var(--icon-accent)" aria-hidden="true"></i> Your decision</h3><p class="ui-panel-sub">Split the escrow balance. Fees are deducted proportionally on chain.</p></div></div>
+          <form id="resolve-form-{{ row.task.pk }}" class="ui-form-grid" data-pay-form data-resolve-form data-amount="{{ row.amount|plain }}" novalidate onsubmit="return false">
+            <div class="ui-field ui-field-wide">
+              <label for="freelance-pct-{{ row.task.pk }}" class="ui-label">Share to the freelancer <span class="normal-case font-normal">(0–100 %)</span></label>
+              <input id="freelance-pct-{{ row.task.pk }}" name="freelance_pct" type="range" class="ui-range" min="0" max="100" step="1" value="50" data-freelance-pct aria-describedby="split-{{ row.task.pk }}" style="--range-pct: 50%">
+              <div class="ui-split-preview" id="split-{{ row.task.pk }}" aria-live="polite">
+                <div class="ui-split-side"><span class="ui-split-label">Freelancer <span class="ui-split-pct" data-split-freelance-pct>50%</span></span><span class="ui-split-amount" data-split-freelance>{{ row.amount|usdc }}</span></div>
+                <div class="ui-split-side"><span class="ui-split-label">Company <span class="ui-split-pct" data-split-company-pct>50%</span></span><span class="ui-split-amount" data-split-company>{{ row.amount|usdc }}</span></div>
+              </div>
+              <span class="ui-help">Preview on the locked amount; the transaction uses the escrow's current on-chain balance. A 0 % or 100 % split sends everything to one side.</span>
+            </div>
+            <div class="ui-field-wide">
+              <p class="ui-error" data-pay-error hidden></p>
+              <div class="ui-sticky-actions">
+                <button type="button" class="ui-btn ui-btn-primary ui-btn-block" data-pay-step="resolve" data-prepare-url="{{ row.action.prepare_url }}" data-loading-label="Signing…" data-confirm-title="Resolve the dispute?" data-confirm-message="Split 50% / 50%, signed in Freighter." data-confirm-label="Sign the split"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> Resolve the dispute</button>
+              </div>
+            </div>
+          </form>
+        </section>
+        {% else %}
+          <div class="ui-alert ui-alert-info"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>This escrow's dispute resolver is not your wallet: nothing to sign here.</span></div>
+        {% endif %}
+      </aside>
+    </div>
+  </article>
+{% endfor %}
+
+{% if closed_rows %}
+<section class="ui-panel" id="resolved-disputes">
+  <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-scale-balanced" style="color: var(--icon-accent)" aria-hidden="true"></i> Resolved</h2><p class="ui-panel-sub">{{ closed_rows|length }} dispute{{ closed_rows|length|pluralize }} settled on Stellar.</p></div></div>
+  <div class="rcard">
+    <table>
+      <thead><tr><th>Task</th><th>Amount</th><th>Split</th><th>Opened by</th><th>Resolved</th><th>On Stellar</th></tr></thead>
+      <tbody>
+        {% for row in closed_rows %}
+          <tr class="dispute-card" data-task-id="{{ row.task.pk }}" data-status="{{ row.task.status }}">
+            <td data-label="Task" class="is-stack"><a href="{% url 'projects:task_detail' row.task.pk %}#paiement" class="ui-link font-semibold">{{ row.task.title }}</a><p class="ui-meta mt-1">{{ row.project.title }}{% if row.dispute.reason %} — "{{ row.dispute.reason|truncatechars:80 }}"{% endif %}</p></td>
+            <td data-label="Amount" class="ui-num">{% include "components/price.html" with amount=row.amount %}</td>
+            <td data-label="Split"><span class="ui-badge ui-badge-brand" data-split="{{ row.dispute.freelance_pct }}">{{ row.dispute.freelance_pct }}% freelancer / {{ row.dispute.company_pct }}% company</span></td>
+            <td data-label="Opened by">{% if row.by_company %}Company{% else %}Freelancer{% endif %}</td>
+            <td data-label="Resolved">{% if row.dispute.resolved_at %}<span data-time-ago="{{ row.dispute.resolved_at|date:'c' }}">{{ row.dispute.resolved_at|date:"M j, Y H:i" }}</span>{% endif %}</td>
+            <td data-label="On Stellar">{% for l in row.links %}{% if l.key == 'resolve_tx_hash' %}<a href="{{ l.url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ l.value }}">{{ l.value|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% endif %}{% endfor %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}<script src="{% static 'js/lowbid-disputes.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

@@ -8,12 +8,15 @@ last_error, pending_hash, asset_code, asset_native, validate_url, trustline_url,
 delivery_hash, hash_kind, deliver_tx_hash, deliver_tx_url, delivered_at, source_visible (this viewer may see
 task.source_link), source_pending (the company, before payment), and the review window: review_deadline,
 review_overdue, can_request_changes, revision_count, max_revisions, revisions_left, latest_revision,
-request_changes_url.
+request_changes_url, and the dispute: can_dispute, dispute_why, dispute_for_no_response (the freelance's "no response"
+case), dispute_prepare_url, dispute (the Dispute row or None), dispute_by_company, dispute_tx_url, resolve_tx_url,
+disputes_url, is_arbiter, direct_warning (direct mode, non-open task: unprotected payment).
 DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-url] · [data-pay-error] ·
 #deliver-panel #deliver-link #deliver-hash #deliver-source [data-deliver] [data-changes-requested] · [data-delivery-hash] ·
 [data-source-link] · #validate-panel form[data-validate] [data-rate] [data-validate-submit] · [data-request-changes]
 #request-changes-form #request-changes-message [data-request-changes-submit] · [data-review-deadline][data-deadline] ·
-[data-pay-trustline] · [data-usdc-balance].
+[data-pay-trustline] · [data-usdc-balance] · [data-open-dispute] #dispute-form #dispute-reason [data-dispute-submit] ·
+[data-disputed] · [data-resolved] · [data-direct-warning].
 {% endcomment %}
 <section class="glass-card ui-receipt-card" id="escrow-panel" data-task="{{ task.pk }}" data-status="{{ task.status }}" data-escrow-status="{{ status }}" data-mode="{{ mode }}">
   <a id="paiement" class="block -mt-20 pt-20 pointer-events-none" aria-hidden="true"></a>
@@ -94,7 +97,7 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
           {% if source_visible %}
             <a href="{{ task.source_link }}" target="_blank" rel="noopener noreferrer" class="ui-link break-all" data-source-link>{{ task.source_link|truncatechars:48 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>
           {% elif source_pending %}
-            <span class="ui-meta" data-source-pending><i class="fa-solid fa-lock text-[10px]" aria-hidden="true"></i> revealed once the task is paid</span>
+            <span class="ui-meta" data-source-pending><i class="fa-solid fa-lock text-[10px]" aria-hidden="true"></i> revealed once the task is paid or resolved</span>
           {% else %}
             <span class="ui-meta">private</span>
           {% endif %}
@@ -119,9 +122,37 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
     </div>
   {% endif %}
 
+  {% if direct_warning %}
+    <div class="ui-alert ui-alert-attn mt-4" role="status" data-direct-warning>
+      <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+      <span><strong class="text-strong">Direct mode: unprotected payment</strong> — nothing is locked, no dispute is possible. The company pays on validation, wallet to wallet.</span>
+    </div>
+  {% endif %}
+
+  {% if dispute and task.status == 'disputed' %}
+    <div class="ui-alert ui-alert-danger mt-4" role="status" data-disputed>
+      <i class="fa-solid fa-gavel" aria-hidden="true"></i>
+      <span>
+        <strong class="text-strong">Dispute open</strong> — opened by {% if dispute_by_company %}the company{% else %}the freelancer{% endif %} ({{ dispute.opened_by.display_name|default:dispute.opened_by.short_address }}) <span class="ui-meta whitespace-nowrap">{{ dispute.created_at|date:"M j, Y H:i" }}</span>{% if dispute.reason %}: "{{ dispute.reason }}"{% endif %}.
+        The {{ amount|usdc:asset_code }} stay locked in the escrow. <strong class="text-strong">Waiting for the arbiter</strong>{% if is_arbiter %} — that is you: <a href="{{ disputes_url }}#resolve-form-{{ task.pk }}" class="ui-link">resolve it from the disputes desk</a>{% endif %}.
+        {% if dispute_tx_url %}<a href="{{ dispute_tx_url }}" target="_blank" rel="noopener" class="ui-link whitespace-nowrap" data-dispute-tx>dispute on Stellar <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% endif %}
+      </span>
+    </div>
+  {% elif dispute and task.status == 'resolved' %}
+    <div class="ui-alert ui-alert-info mt-4" role="status" data-resolved data-freelance-pct="{{ dispute.freelance_pct }}">
+      <i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>
+      <span>
+        <strong class="text-strong">Resolved by the arbiter</strong>{% if dispute.resolved_at %} <span class="ui-meta whitespace-nowrap">{{ dispute.resolved_at|date:"M j, Y H:i" }}</span>{% endif %}: <strong class="text-strong">{{ dispute.freelance_pct }}% to the freelancer / {{ dispute.company_pct }}% to the company</strong> of the escrow balance ({{ amount|usdc:asset_code }} locked{% if dispute.reason %}; dispute opened by {% if dispute_by_company %}the company{% else %}the freelancer{% endif %}: "{{ dispute.reason }}"{% endif %}).
+        {% if resolve_tx_url %}<a href="{{ resolve_tx_url }}" target="_blank" rel="noopener" class="ui-link whitespace-nowrap" data-resolve-tx>resolution on Stellar <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% endif %}
+      </span>
+    </div>
+  {% endif %}
+
   {# Next action #}
   <div class="mt-4" data-pay-action>
-    {% if is_done %}
+    {% if is_done and task.status == 'resolved' %}
+      <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Escrow settled by the arbiter{% if task.resolved_at %} on {{ task.resolved_at|date:"M j, Y H:i" }}{% endif %}. Nothing left to sign.</span></div>
+    {% elif is_done %}
       <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>{% if is_direct %}Payment sent to the freelancer.{% else %}Funds released to the freelancer.{% endif %} Task paid{% if task.paid_at %} on {{ task.paid_at|date:"M j, Y H:i" }}{% endif %}.</span></div>
     {% elif action and action.mine and action.step == 'validate' %}
       <div id="validate-panel" class="ui-form-scope">
@@ -149,6 +180,9 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
               {% if can_request_changes %}
                 <button type="button" class="ui-btn" data-request-changes{% if revisions_left == 0 %} disabled title="No change request left ({{ revision_count }}/{{ max_revisions }}): validate the delivery" aria-disabled="true"{% else %} title="Send the delivery back ({{ revisions_left }} request{{ revisions_left|pluralize }} left)"{% endif %} aria-controls="request-changes-form" aria-expanded="false"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Request changes</button>
               {% endif %}
+              {% if can_dispute %}
+                <button type="button" class="ui-btn ui-btn-danger" data-open-dispute title="Freeze the escrow until the arbiter decides" aria-controls="dispute-form" aria-expanded="false"><i class="fa-solid fa-gavel" aria-hidden="true"></i> Open a dispute</button>
+              {% endif %}
               <button type="submit" class="ui-btn ui-btn-primary" data-validate-submit data-loading-label="Validating…"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> {% if is_direct %}Validate and pay {{ amount|usdc:asset_code }}{% else %}Validate and release {{ amount|usdc:asset_code }}{% endif %}</button>
             </div>
             {% if can_request_changes and revisions_left == 0 %}<p class="ui-help mt-2" data-revisions-exhausted>Revisions requested: {{ revision_count }}/{{ max_revisions }} — no change request left, validate the delivery.</p>{% endif %}
@@ -170,6 +204,17 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
           </div>
         </form>
         {% endif %}
+        {% if can_dispute %}{% include "payments/_dispute_form.html" %}{% endif %}
+      </div>
+    {% elif can_dispute and dispute_for_no_response %}
+      {# The chosen freelance, once the review window is over and nothing was validated: dispute for no response #}
+      <div id="dispute-panel" class="ui-form-scope">
+        <div class="ui-alert ui-alert-attn mb-3" role="status" data-review-overdue>
+          <i class="fa-regular fa-clock" aria-hidden="true"></i>
+          <span><strong class="text-strong">Dispute for no response:</strong> the company has not answered within the review window. You can freeze the escrow and let the arbiter split the {{ amount|usdc:asset_code }}.</span>
+        </div>
+        <button type="button" class="ui-btn ui-btn-danger ui-btn-block" data-open-dispute aria-controls="dispute-form" aria-expanded="false"><i class="fa-solid fa-gavel" aria-hidden="true"></i> Open a dispute</button>
+        {% include "payments/_dispute_form.html" %}
       </div>
     {% elif action and action.mine and action.evidence %}
       <div id="deliver-panel" class="ui-form-scope">

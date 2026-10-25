@@ -66,25 +66,33 @@ The rules below are derived from `projects/services.py`, `projects/scoring.py` a
 ### Delivery
 - **R13** Only the chosen freelance delivers (`not_assigned`: 403 on the database endpoint, HTTP 200 `{ok:false}` on the payment endpoints), only a `taken` task (`wrong_state`). The link is required, starts with `http://` or `https://` and has at most 500 characters (`invalid`). In escrow mode the delivery is an on-chain milestone change signed by the freelance, possible only once the escrow is funded (a database-only delivery is refused); the evidence (R32) goes on chain. In direct mode the delivery is a declaration with no transaction.
 - **R30** *Fingerprint.* The delivery may carry a fingerprint of the work (`Task.delivery_hash`): empty, or exactly 40 hexadecimal characters (a git commit SHA) or 64 (a SHA-256), normalised to lowercase; anything else is refused (`invalid`, on the database endpoint and on both payment endpoints, before anything is written or signed). Once delivered, the fingerprint is public (task page and payment panel, with a copy button); in escrow mode it is part of the on-chain evidence, in direct mode it exists in the database only and the panel says so.
-- **R31** *Two-step delivery.* The delivery link (`Task.delivery_link`, demo / preview, required) is public once the task is delivered. The full deliverable (`Task.source_link`, optional, same http(s) / 500-character rules as the link) is visible to the chosen freelance always, to the company **only once the task is `paid`**, and to nobody else (`projects.services.source_visible`; the templates only read the boolean the view computed). Before payment the company sees "Full deliverable revealed once the task is paid" and the fingerprint, so it can later verify the revealed work is the one declared.
+- **R31** *Two-step delivery.* The delivery link (`Task.delivery_link`, demo / preview, required) is public once the task is delivered. The full deliverable (`Task.source_link`, optional, same http(s) / 500-character rules as the link) is visible to the chosen freelance always, to the company **only once the task is settled** (`paid`, or `resolved` by the arbiter, R41), and to nobody else (`projects.services.source_visible`; the templates only read the boolean the view computed). Before payment the company sees "Full deliverable revealed once the task is paid" and the fingerprint, so it can later verify the revealed work is the one declared.
 - **R32** *Evidence format.* What goes on chain as the milestone evidence (`newEvidence`) and is kept in `Escrow.delivery_note` is `payments.services.build_evidence(link, hash)`: `sha256:<64 hex> <link>` or `git:<40 hex> <link>` when a fingerprint was given, else `<link>`, cut at 280 characters (the fingerprint comes first, so a truncation only ever shortens the link). The full deliverable link never goes on chain.
 
 ### Review window and revisions
-- **R33** *Review window.* Once a task is `delivered`, the company has `LOWBID_REVIEW_DAYS` days (default 7) to validate or to request changes: `review_deadline(task)` = `delivered_at` + that many days while the task is `delivered` (None otherwise), computed when a page is read — nothing runs on a timer. The deadline is shown to everyone on the task page and in the payment panel (`[data-review-deadline]`, with a live countdown; "Review window over" once passed). `is_review_overdue(task)` is true when the task is delivered, unrated and the deadline is past — the freelance's protection (a later phase opens a dispute from there). A change request clears `delivered_at`: the window restarts at the next delivery.
+- **R33** *Review window.* Once a task is `delivered`, the company has `LOWBID_REVIEW_DAYS` days (default 7) to validate or to request changes: `review_deadline(task)` = `delivered_at` + that many days while the task is `delivered` (None otherwise), computed when a page is read — nothing runs on a timer. The deadline is shown to everyone on the task page and in the payment panel (`[data-review-deadline]`, with a live countdown; "Review window over" once passed). `is_review_overdue(task)` is true when the task is delivered, unrated and the deadline is past — the freelance's protection: from there the freelance may open a dispute for no response (R37). A change request clears `delivered_at`: the window restarts at the next delivery.
 - **R34** *Request changes.* Only the company (`forbidden`), only a `delivered` task (`wrong_state`) that is not rated yet (`wrong_state`: "already been validated"), with a non-empty message of at most 280 characters telling the freelance what to change (`invalid`). Effects, in one transaction: a `RevisionRequest` row (company, message), the task goes `delivered → taken`, `revision_count` += 1, `delivered_at` = None; then the payments hook moves the escrow row back — `delivered → funded` in escrow mode (the money stays locked, every transaction hash is kept), `delivered → created` in direct mode; an escrow at any other stage refuses the request (`wrong_state`). The chosen freelance then delivers again ("Deliver again"), through the same deliver step: in escrow mode a second `change-milestone-status` with the new evidence (the contract accepts it), in direct mode a declaration.
-- **R35** *Maximum.* At most `LOWBID_MAX_REVISIONS` change requests per task (default 2): the next one is refused with `too_many_revisions` (409, the message states the maximum) and the UI disables "Request changes" with "Revisions requested: n/N". After the maximum the company validates (or, in a later phase, disputes).
+- **R35** *Maximum.* At most `LOWBID_MAX_REVISIONS` change requests per task (default 2): the next one is refused with `too_many_revisions` (409, the message states the maximum) and the UI disables "Request changes" with "Revisions requested: n/N". After the maximum the company validates (or disputes, R37).
 - **R36** *History.* Every (re)delivery is a `Delivery` row (freelance, link, fingerprint, full-deliverable link, the on-chain transaction hash in escrow mode, date) written by `projects.services.deliver`; the task itself holds the latest one. The task page lists deliveries and change requests newest first (`[data-delivery-history]`), visible to everyone; a delivery's full-deliverable link obeys R31 (never in the markup otherwise). A replay of a previous delivery's signed transaction is refused (`tampered`): the new delivery needs its own signature.
 
+### Disputes (escrow mode only)
+- **R37** *Who may open a dispute.* `payments.services.can_dispute(task, wallet)` → `(allowed, why)`: escrow mode only, then `projects.services.can_dispute`. The **company** while the task is `delivered` and **not rated yet** (a rated delivery is validated: it releases the funds instead); the **chosen freelance** only once the review window is over (`is_review_overdue`, "Dispute for no response"); anybody else never (`forbidden`). Out of these windows a party is refused with `wrong_state` and the reason ("You validated this delivery…", "The company still has until … to answer…"). The panel shows "Open a dispute" (`[data-open-dispute]`) only when `can_dispute` says so.
+- **R38** *Opening.* A reason is required, 1 to 280 characters once stripped (`invalid`, checked at prepare and again at send, before anything is signed or submitted). The session wallet signs Trustless Work `dispute-escrow` as `signer` — the escrow row's `payer_address` (company) or `payee_address` (freelance), never a body field. Trustless Work v1 has **no reason field**: the reason lives in TaskVault only (`projects.Dispute`). The dispute freezes the **whole** escrow. Once confirmed: Escrow `delivered|approved → disputed` (`dispute_tx_hash`, `disputed_at`), Task `delivered → disputed`, one `Dispute` row (task, opened_by, reason). From then on approve, release, validate, request changes and a second dispute are `wrong_state`; the funds stay locked (`holds_funds`).
+- **R39** *The arbiter.* `LOWBID_DISPUTE_RESOLVER` (default: `LOWBID_PLATFORM_ADDRESS`) is the escrow's `disputeResolver`, stored on the row as `resolver_address` when the row is created and sent at deploy. Only that wallet resolves (`forbidden` otherwise, and also when the session wallet is not the row's `resolver_address`), only a `disputed` task (`wrong_state`). It alone sees `/litiges/` (403 for everyone else) and the "Disputes" nav entry. A party keeps its party role even if it is also the arbiter wallet.
+- **R40** *The split.* The arbiter picks `freelance_pct`, a whole number from 0 to 100 (`invalid` otherwise). The balance is read on chain (`get-escrow`, `validateOnChain=true`); if the read fails or returns no usable balance, the stored `Escrow.amount` is used and a warning logged. `freelance_amount = balance × pct / 100` rounded **down** to 7 decimals, `company_amount = balance − freelance_amount`, so the two always sum exactly to the balance (Trustless Work requires it; its fees are then deducted proportionally from each entry). `distributions` keeps only the entries > 0, and its addresses come from the escrow row only (`payee_address` for the freelance, `payer_address` for the company) — never from the request, never the same address twice. Every receiving address needs the asset trustline.
+- **R41** *Resolution.* Once `resolve-dispute` is confirmed: Escrow `disputed → resolved` (`resolve_tx_hash`, `resolved_at`, terminal), Task `disputed → resolved` (`resolved_at`) through `projects.services.mark_resolved(task, pct)` — the **only** gate to `resolved`, idempotent, refused on a task that is not disputed — and the `Dispute` row gets `freelance_pct` and `resolved_at`. A resolved task counts as **settled, not paid** (dashboards: "paid" and "earned" stay release/direct-payment figures). A project closes when every task is `paid` **or** `resolved` (`mark_paid` and `mark_resolved` apply the same rule). A replayed signed transaction (one already stored for another step) is refused (`tampered`); the same resolve sent twice is "Step already confirmed.".
+- **R42** *Direct mode = no protection.* In direct mode nothing is locked, so there is nothing to arbitrate: `dispute` / `resolve` answer `wrong_mode` ("Direct mode: nothing is locked, so there is no dispute."), and every non-open task's payment panel shows `[data-direct-warning]`: "Direct mode: unprotected payment — nothing is locked, no dispute is possible."
+
 ### Validation and rating
-- **R14** Only the company validates (`forbidden`), only a `delivered` task (`wrong_state`). The rating is an integer from 1 to 5 (`invalid` otherwise); the comment is optional and cut at 280 characters. One rating per task (`duplicate`). Validating stores the rating and pays nothing by itself.
+- **R14** Only the company validates (`forbidden`), only a `delivered` task (`wrong_state`; a disputed task can no longer be validated). The rating is an integer from 1 to 5 (`invalid` otherwise); the comment is optional and cut at 280 characters. One rating per task (`duplicate`). Validating stores the rating and pays nothing by itself.
 - **R15** No payment step (approve, release, direct payment) is possible before the rating exists: "Validate and rate the delivery before the payment." (`wrong_state`).
 - **R16** Right after the rating the page chains the company's signatures: approve → release in escrow mode, the direct payment in direct mode. Stopping half-way is safe: the payment panel shows the remaining step as a button, and the dashboard lists it.
 
 ### Payment
-- **R17** Every payment step has exactly one signer: the company for deploy, fund, approve, release and direct payment; the chosen freelance for deliver (`forbidden` otherwise). The role is checked against the session wallet when the transaction is prepared **and** when it is sent, and every address put in a transaction comes from the task's escrow row (the project's company, the chosen freelance, the platform wallet), never from the request body.
+- **R17** Every payment step has exactly one signer: the company for deploy, fund, approve, release and direct payment; the chosen freelance for deliver; the company or the chosen freelance for dispute (R37); the arbiter wallet for resolve (R39) (`forbidden` otherwise). The role is checked against the session wallet when the transaction is prepared **and** when it is sent, and every address put in a transaction comes from the task's escrow row (the project's company, the chosen freelance, the platform wallet, the arbiter), never from the request body.
 - **R18** Every step also checks the escrow status and the task status (state table §5); a step out of order is refused (`wrong_state`), a step that does not exist in the current mode too (`wrong_mode`), an unknown step name with `unknown_step`.
 - **R19** For a direct payment, the signed transaction must be exactly one `payment` from the company to the chosen freelance, for the task's price, in the configured asset; anything else is refused (`tampered`).
-- **R20** A task becomes `paid` only through the confirmed release (escrow) or the confirmed direct payment, and only once (`projects.services.mark_paid` is idempotent). When every task of the project is paid, the project becomes `closed` ("Closed").
+- **R20** A task becomes `paid` only through the confirmed release (escrow) or the confirmed direct payment, and only once (`projects.services.mark_paid` is idempotent). When every task of the project is paid or resolved (R41), the project becomes `closed` ("Closed").
 - **R21** Sending the same signed transaction twice answers "Step already confirmed." and writes nothing twice.
 - **R22** A Trustless Work or Horizon failure never changes a status: the vendor message is kept (`Escrow.last_error`) and shown in the panel, and the user retries. When Horizon times out on a direct payment, the hash is stored as pending and the next attempt reconciles it without asking for a new signature.
 - **R23** The payment mode is frozen on a task's escrow row when the row is created (first payment step, or the rating). It may still change while nothing is on chain (status `created`), so switching to direct mode after a failed deploy works. A native-XLM asset always means direct mode (Trustless Work v1 needs an issuer).
@@ -95,12 +103,12 @@ The rules below are derived from `projects/services.py`, `projects/scoring.py` a
 | Code | HTTP (projects) | Meaning |
 |------|-----------------|---------|
 | `forbidden`, `own_task`, `not_assigned` | 403 | wrong role for this action |
-| `wrong_state`, `duplicate` | 409 | not possible at this stage / already done |
+| `wrong_state`, `duplicate` | 409 | not possible at this stage / already done (e.g. validating or requesting changes on a disputed task) |
 | `too_many_revisions` | 409 | the task already had `LOWBID_MAX_REVISIONS` change requests (R35) |
 | `invalid`, `bad_tags` | 400 | bad input |
 | `wallet_required` | 401 | no session (any `@wallet_required` endpoint called with `fetch` or `Accept: application/json`) |
 
-Payment refusals (`/pay/…`) answer HTTP **200** `{ok: false, error, message}` with the codes `not_chosen · forbidden · wrong_state · wrong_mode · unknown_step · tampered · provider · stellar · invalid · not_assigned`.
+Payment refusals (`/pay/…`) answer HTTP **200** `{ok: false, error, message}` with the codes `not_chosen · forbidden · wrong_state · wrong_mode · unknown_step · tampered · provider · stellar · invalid · not_assigned`. For disputes: `forbidden` (not a party / not the arbiter), `wrong_state` (outside the R37 windows, or not disputed for resolve), `wrong_mode` (direct mode, R42), `invalid` (reason empty or > 280, `freelance_pct` outside 0–100), `tampered` (replayed transaction).
 
 ## 4. The score
 
@@ -144,9 +152,9 @@ Studio Nova chooses Yanis. He delivers, the company rates him **5/5**, and T1 is
 
 | Status | Label | Enters when | Leaves when |
 |--------|-------|-------------|-------------|
-| `draft` | "Draft" | created | every assigned task holds its money in escrow, or the first direct payment → `funded`; the last task paid → `closed` |
-| `funded` | "Funded" | see above | every task paid → `closed` |
-| `closed` | "Closed" | every task `paid` | — |
+| `draft` | "Draft" | created | every assigned task holds its money in escrow (funded, delivered, approved, released, disputed or resolved), or the first direct payment → `funded`; the last task paid or resolved → `closed` |
+| `funded` | "Funded" | see above | every task paid or resolved → `closed` |
+| `closed` | "Closed" | every task `paid` or `resolved` | — |
 
 Tasks can be added until `closed`; only an `open` task can be deleted. A project with a single task paid directly goes from `draft` straight to `closed`.
 
@@ -156,10 +164,12 @@ Tasks can be added until `closed`; only an `open` task can be deleted. A project
 |--------|-------|-------------|------|
 | `open` | "Open" | added | the company chooses → `taken` (or deleted while still open) |
 | `taken` | "Taken" | a freelance is chosen, or the company requested changes (R34, `revision_count` += 1) | the freelance delivers (again) → `delivered` |
-| `delivered` | "Delivered" | delivery confirmed (on chain in escrow mode); the review window (R33) runs | the company rates, then the payment is confirmed → `paid`; or the company requests changes (before the rating, at most R35 times) → `taken` |
+| `delivered` | "Delivered" | delivery confirmed (on chain in escrow mode); the review window (R33) runs | the company rates, then the payment is confirmed → `paid`; or the company requests changes (before the rating, at most R35 times) → `taken`; or a party's dispute is confirmed (escrow mode, R37) → `disputed` |
 | `paid` | "Paid" | release / direct payment confirmed | — |
+| `disputed` | "Disputed" | the dispute-escrow transaction is confirmed (R38); funds locked | the arbiter's resolve-dispute is confirmed → `resolved` |
+| `resolved` | "Resolved" | resolve-dispute confirmed (`mark_resolved`, R41) | — (settled, like `paid`) |
 
-There is no cancellation and no re-assignment. Every delivery is kept as a `Delivery` row and every change request as a `RevisionRequest` row (R36).
+There is no cancellation and no re-assignment. Every delivery is kept as a `Delivery` row and every change request as a `RevisionRequest` row (R36), the dispute (at most one per task) as a `Dispute` row (R38).
 
 ### Application
 
@@ -183,6 +193,8 @@ Escrow mode (Trustless Work single-release, one milestone):
 | validate | company | — (Rating saved) | `delivered` | "Validate + rate" |
 | approve | company | `delivered → approved` | `delivered` | "Validate the delivery" (chained) |
 | release | company | `approved → released` | `delivered → paid` | "Release the funds" (chained) |
+| dispute | company (delivered, unrated) or freelance (review window over) | `delivered`/`approved → disputed` | `delivered → disputed` | "Open a dispute" (reason required) |
+| resolve | arbiter (`LOWBID_DISPUTE_RESOLVER`) | `disputed → resolved` | `disputed → resolved` | "Resolve the dispute" (on `/litiges/`, split slider) |
 
 Direct mode (no `deployed`, `funded` or `approved`):
 
@@ -193,13 +205,15 @@ Direct mode (no `deployed`, `funded` or `approved`):
 | validate | company | — (Rating saved) | `delivered` | "Validate + rate" |
 | direct_pay | company | `created`/`delivered → paid` | `delivered → paid` | "Pay the freelancer" (chained) |
 
-Status labels in the UI: `created` "Preparing", `deployed` "Escrow created", `funded` "Funds locked", `delivered` "Delivered", `approved` "Delivery validated", `released` "Funds released", `paid` "Paid". `failed` ("Failed") exists in the status choices but no step sets it: a failure leaves the status unchanged (R22).
+Direct mode has no dispute step (R42): nothing is locked, the panel warns "unprotected payment".
 
-Signatures for one task: escrow mode = 4 by the company (deploy, fund, approve, release) + 1 by the freelance (deliver); direct mode = 1 by the company.
+Status labels in the UI: `created` "Preparing", `deployed` "Escrow created", `funded` "Funds locked", `delivered` "Delivered", `approved` "Delivery validated", `released` "Funds released", `paid` "Paid", `disputed` "In dispute", `resolved` "Resolved by the arbiter". `failed` ("Failed") exists in the status choices but no step sets it: a failure leaves the status unchanged (R22).
+
+Signatures for one task: escrow mode = 4 by the company (deploy, fund, approve, release) + 1 by the freelance (deliver); a disputed task = deploy, fund, deliver, then 1 by the party who disputes + 1 by the arbiter; direct mode = 1 by the company.
 
 ## 6. Screens
 
-The site is dark only and responsive down to phone width; below 1024 px a signed-in wallet gets a bottom tab bar (Projects · Board · Create · My projects · Home).
+The site is dark only and responsive down to phone width; below 1024 px a signed-in wallet gets a bottom tab bar (Projects · Board · Create · My projects · Home, plus Disputes for the arbiter wallet).
 
 | URL | Who | What | Screenshot |
 |-----|-----|------|------------|
@@ -208,14 +222,15 @@ The site is dark only and responsive down to phone width; below 1024 px a signed
 | `/projets/nouveau/` | signed in | New project form (title, description) | — |
 | `/projets/<pk>/` | everyone | Project page: KPIs (total budget, tasks, pending applications, paid tasks), the task table with each task's status and payment status, the inline add-task form (company, until the project is closed), candidates per open task with "Choose" (company), the funding banner and "Fund the project" (company, escrow mode) | `03-projet-entreprise.png`, `15-financement-projet.png`, `mobile-projet.png` |
 | `/taches/<pk>/` | everyone | Task page: KPIs (fixed price, candidates, project, stage), tags, the apply form (freelance), the ranked candidates with badges and score bars (polled every 5 s while open), the payment panel (stepper, next step, delivery form, rating form, trustline, live balance, stellar.expert links), the project's other tasks | `04-tache-candidats.png`, `05-tache-livree-freelance.png`, `06-valider-noter.png`, `08-tache-valide-recommande.png`, `12-tache-dark.png`, `13-paiement-echec.png`, `14-paiement-tache.png`, `mobile-tache-candidats.png` |
-| `/taches/` | signed in | Freelance kanban: Open (every open task of other companies, the ones I applied to first), Taken, Delivered, Paid (my tasks) | `07-tableau-kanban.png`, `mobile-kanban.png` |
+| `/taches/` | signed in | Freelance kanban: Open (every open task of other companies, the ones I applied to first), Taken, Delivered, Paid (my tasks; a disputed task sits in Delivered and a resolved one in Paid, each with its own badge) | `07-tableau-kanban.png`, `mobile-kanban.png` |
 | `/mes-projets/` | signed in | The company's projects: KPIs (drafts, tasks to choose for, deliveries to validate, closed), tabs In progress / Closed / All, a row per project (status, tasks, applications, budget) with its next action | `09-mes-projets.png` |
 | `/tableau-de-bord/` | signed in | Dashboard: to-do list (choose, fund, validate, pay, deliver, add tasks to an empty draft, waiting on the other side), KPIs as company and as freelance, recent activity | `10-tableau-de-bord.png`, `mobile-tableau-de-bord.png` |
+| `/litiges/` | the arbiter wallet only (403 otherwise) | Disputes desk: KPIs (open, resolved, the arbiter address), one card per open dispute (project, task, amount, fingerprint, delivery link, history, reason, who opened it, stellar.expert links) with the split form `#resolve-form-<task>` (slider `[data-freelance-pct]` 0–100, live preview of both amounts, "Resolve the dispute" behind a confirm dialog), then the resolved disputes with their split | — |
 | `/profil/<address>/` | everyone | Public profile: identicon, display name (editable by its owner, up to 80 characters), member since / last login, projects posted, tasks paid, earned, average rating, latest projects and tasks, ratings received | `11-profil.png` |
 
 ## 7. Out of scope for the hackathon
 
-- Disputes (Trustless Work supports them; the dispute resolver role is set to the platform wallet, but no screen raises or resolves a dispute).
+- A multisig arbiter driven by the UI: `LOWBID_DISPUTE_RESOLVER` may be a multisig account, but the site collects one Freighter signature — sequential signatures on one XDR need a validity window Trustless Work does not document (docs/STELLAR_NOTES.md §1.3). Disputes themselves are in (R37–R42).
 - Cancelling a project or a task, un-choosing a freelance, editing a task after creation.
 - Several freelances on one task, partial payments, milestones inside a task.
 - Messaging, notifications, email.

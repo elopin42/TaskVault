@@ -12,6 +12,7 @@ urlpatterns = [
     path("taches/", views.board, name="board"),
     path("taches/<int:pk>/", views.task_detail, name="task_detail"),
     path("mes-projets/", views.my_projects, name="my_projects"),
+    path("litiges/", views.disputes, name="disputes"),
     # JSON (fetch via Lowbid.api)
     path("projets/<int:pk>/taches/ajouter/", views.task_add, name="task_add"),
     path("taches/<int:pk>/supprimer/", views.task_delete, name="task_delete"),

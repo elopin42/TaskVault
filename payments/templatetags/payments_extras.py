@@ -1,7 +1,8 @@
 """`{% escrow_panel task wallet %}` — renders templates/payments/_escrow_panel.html with the
 payment view-model (escrow row, mode, stepper, next action for this viewer, explorer links, the
-delivery fingerprint, whether this viewer may see the full deliverable, the review window and the
-change requests). Keeps the projects views free of payment logic."""
+delivery fingerprint, whether this viewer may see the full deliverable, the review window, the
+change requests and the dispute: who may open one, the open / resolved dispute row). Keeps the
+projects views free of payment logic."""
 
 from django import template
 from django.urls import reverse
@@ -9,6 +10,7 @@ from django.urls import reverse
 from payments import services, stellar
 from payments.models import STATUS_BADGES, STATUS_LABELS, Escrow
 from projects import services as projects
+from projects.models import Dispute
 from projects.services import source_visible
 
 register = template.Library()
@@ -26,8 +28,10 @@ def escrow_panel(context, task, wallet=None):
     amount = escrow.amount if escrow is not None else task.price
     action = services.next_action(task, wallet)
     rated = services.is_rated(task)
-    is_done = task.status == task.Status.PAID
+    is_done = task.status in (task.Status.PAID, task.Status.RESOLVED)
     visible = source_visible(task, wallet)
+    can_dispute, dispute_why = services.can_dispute(task, wallet)
+    dispute = Dispute.objects.select_related("opened_by").filter(task=task).first()
     return {
         "request": context.get("request"),
         "task": task,
@@ -43,6 +47,7 @@ def escrow_panel(context, task, wallet=None):
         "action": action,
         "role": role,
         "is_party": role in ("company", "freelance"),
+        "is_arbiter": role == "arbiter",
         "rated": rated,
         "platform_fallback": services.platform_fallback_in_use(task, escrow, mode),
         "amount": amount,
@@ -73,4 +78,16 @@ def escrow_panel(context, task, wallet=None):
         "revisions_left": projects.revisions_left(task),
         "latest_revision": task.revision_requests.first() if task.revision_count else None,
         "request_changes_url": reverse("projects:task_request_changes", kwargs={"pk": task.pk}),
+        # Dispute (payments.services.can_dispute decides: mode + projects.services.can_dispute; the template reads booleans).
+        "can_dispute": can_dispute,
+        "dispute_why": dispute_why,
+        "dispute_for_no_response": can_dispute and role == "freelance",
+        "dispute_prepare_url": reverse("payments:prepare", kwargs={"task_pk": task.pk, "step": "dispute"}),
+        "dispute": dispute,
+        "dispute_by_company": dispute is not None and dispute.opened_by_id == task.project.company_id,
+        "dispute_tx_url": stellar.explorer_tx_url(escrow.dispute_tx_hash) if escrow is not None and escrow.dispute_tx_hash else "",
+        "resolve_tx_url": stellar.explorer_tx_url(escrow.resolve_tx_hash) if escrow is not None and escrow.resolve_tx_hash else "",
+        "disputes_url": reverse("projects:disputes"),
+        # Direct mode = unprotected payment: shown on every non-open task in direct mode, to everyone.
+        "direct_warning": mode == Escrow.Mode.DIRECT and task.status != task.Status.OPEN,
     }

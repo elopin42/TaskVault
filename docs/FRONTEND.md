@@ -57,7 +57,7 @@ Golden rules: components only read `var(--*)` (never a hardcoded colour); any ne
 
 ### Forms
 
-`.ui-field` · `.ui-input` `.ui-select` `.ui-textarea` (42px, surface fill, 8px radius; focus = `--ink` border + 3px `--focus-ring`; `aria-invalid="true"` → red border; `.ui-textarea` 120px min) · `.ui-help` · `.ui-error` · `.ui-form-grid` (1 column, 2 from 640px, `.ui-field-wide` for full width) · `.ui-input-group` + `.ui-input-addon` (the asset-code suffix of the task price) · `.ui-search` (a 40px input with the 30px ink-square `.ui-search-btn` submit at its end, optional `.ui-search-clear[data-search-clear]`, optional leading `<i>` icon) · `.ui-select-inline` (compact label + select).
+`.ui-field` · `.ui-input` `.ui-select` `.ui-textarea` (42px, surface fill, 8px radius; focus = `--ink` border + 3px `--focus-ring`; `aria-invalid="true"` → red border; `.ui-textarea` 120px min) · `.ui-help` · `.ui-error` · `.ui-form-grid` (1 column, 2 from 640px, `.ui-field-wide` for full width) · `.ui-input-group` + `.ui-input-addon` (the asset-code suffix of the task price) · `.ui-search` (a 40px input with the 30px ink-square `.ui-search-btn` submit at its end, optional `.ui-search-clear[data-search-clear]`, optional leading `<i>` icon) · `.ui-select-inline` (compact label + select). · `.ui-range` (a 44px-tall range slider, mint thumb, the filled part driven by `--range-pct`; the arbiter's split on `/litiges/`) + `.ui-split-preview` › `.ui-split-side` (`.ui-split-label`, `.ui-split-pct`, `.ui-split-amount`): the two-sided amount preview under it.
 
 Server-side field errors from `Lowbid.api` land in `<span|p class="ui-error" data-error-for="<field>" hidden>` (add-task form: `title`, `price`, `tags`; apply form: `message`, `tags`; validate form: `note`; `_` for the rest). `<span class="ui-help" data-tags-help="<input id>">` turns into a live « n / 3 skills: a, b » counter (red above 3).
 
@@ -229,7 +229,7 @@ Five visually hidden radios, the labels are 44px stars (`--border-strong`); hove
 <ol class="ui-timeline">
   <li class="ui-timeline-item is-ok"><span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-money-bill-transfer"></i></span>
     <div class="ui-timeline-body"><a href="…" class="ui-timeline-title">Payment received — "Landing page" (300.00 USDC)</a><div class="ui-timeline-time"><span data-time-ago="2026-10-24T21:00:00+00:00">Oct 24 21:00</span></div></div></li>
-  <li class="ui-timeline-item is-brand">…</li>      <!-- is-brand = mint dot · is-ok = lime · none = neutral (is-muted: defined, unused) -->
+  <li class="ui-timeline-item is-brand">…</li>      <!-- is-brand = mint dot · is-ok = lime · is-danger = red (a dispute) · none = neutral (is-muted: defined, unused) -->
 </ol>
 ```
 Used by the dashboard activity (`#activity`), the profile ratings and the project form aside.

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Application, Delivery, Project, Rating, RevisionRequest, Task
+from .models import Application, Delivery, Dispute, Project, Rating, RevisionRequest, Task
 
 
 class TaskInline(admin.TabularInline):
@@ -34,7 +34,7 @@ class TaskAdmin(admin.ModelAdmin):
     list_display = ("id", "title", "project", "price", "status", "assigned_to", "created_at")
     list_filter = ("status",)
     search_fields = ("title", "project__title")
-    readonly_fields = ("created_at", "updated_at", "delivered_at", "paid_at")
+    readonly_fields = ("created_at", "updated_at", "delivered_at", "paid_at", "resolved_at")
     raw_id_fields = ("project", "assigned_to")
     inlines = [ApplicationInline]
 
@@ -65,4 +65,11 @@ class DeliveryAdmin(admin.ModelAdmin):
 class RevisionRequestAdmin(admin.ModelAdmin):
     list_display = ("id", "task", "company", "message", "created_at")
     raw_id_fields = ("task", "company")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(Dispute)
+class DisputeAdmin(admin.ModelAdmin):
+    list_display = ("id", "task", "opened_by", "reason", "freelance_pct", "created_at", "resolved_at")
+    raw_id_fields = ("task", "opened_by")
     readonly_fields = ("created_at",)

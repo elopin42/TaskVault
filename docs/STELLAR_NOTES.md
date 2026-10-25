@@ -116,6 +116,7 @@ Requires every milestone approved, no open dispute, balance ≥ amount. Pays `am
 ```json
 { "contractId": "C<ESCROW>", "signer": "G<COMPANY or FREELANCER>" }
 ```
+Verified 2026-10-25 (docs, SDK 3.0.5, contract `single-release-main`): **no `reason` field in v1** — TaskVault keeps the reason in `projects.Dispute` only. The dispute covers the **whole** escrow (single release, one milestone). The contract refuses only an escrow already disputed or resolved; it checks neither funding nor delivery, so Django gates who may dispute and when (PRODUCT R37: the company while delivered + unrated, the freelance once the review window is over). An open dispute blocks `release-funds`. TaskVault calls it as `tw.dispute_escrow(contract_id, signer)` with `signer` = the session wallet (the escrow row's payer or payee).
 
 **Resolve (optional) — `POST /escrow/single-release/resolve-dispute` — signs: `disputeResolver` (platform)**
 ```json
@@ -123,6 +124,13 @@ Requires every milestone approved, no open dispute, balance ≥ amount. Pays `am
   "distributions": [ { "address": "G<FREELANCER>", "amount": 15 }, { "address": "G<COMPANY>", "amount": 10 } ] }
 ```
 Amounts positive and **must sum exactly to the current escrow balance**; every address needs the USDC trustline.
+Verified 2026-10-25: amounts are JSON numbers in asset units (not stroops, not strings), each > 0, at most 50 entries; the sum is compared with the contract's **current token balance** (gross) — the 0.3 % protocol fee and the `platformFee` are then deducted **proportionally** from each distribution; the same address twice collapses into one entry (a Map), so never send it twice; every receiving address needs the asset trustline. Terminal: `flags.resolved = true`. TaskVault reads the balance with `get-escrow?validateOnChain=true` (fallback `Escrow.amount`, warning logged), gives `freelance_pct` % rounded down to a stroop to the payee and the exact remainder to the payer, drops zero entries, and takes both addresses from the Escrow row (`payments.services.prepare_resolve`).
+
+*Multisig arbiter (not implemented).* `LOWBID_DISPUTE_RESOLVER` may be a Stellar multisig account (e.g. 3 signers, medium threshold 2, set with `set_options`), so no single person can split an escrow.
+The UI does not drive it: it collects one Freighter signature on one XDR and submits it right away.
+Collecting several signatures means passing the unsigned XDR between signers, and Trustless Work does not document how long a built XDR stays valid.
+Each build also embeds the resolver account's sequence number, so any other transaction from that account in the meantime invalidates it.
+A multisig setup would therefore need an out-of-band signing flow (e.g. Stellar Laboratory) — documented, not built.
 
 **Submit — `POST /helper/send-transaction`**
 ```json

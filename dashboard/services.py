@@ -15,7 +15,7 @@ from django.utils.formats import date_format
 from payments import services as payments
 from payments.stellar import asset_code
 from projects import services as projects
-from projects.models import Application, Project, Rating, Task
+from projects.models import Application, Dispute, Project, Rating, Task
 
 ZERO = Decimal("0")
 MAX_DISPLAY_NAME = 80
@@ -29,6 +29,8 @@ COMPANY_PAY_STEPS = {
     "release": ("Payment", 'Release the funds for "{title}"', "Delivery validated on-chain: sign the release of the {amount} {code}.", "Release", "fa-money-bill-transfer", "#paiement"),
     "direct_pay": ("Payment", 'Pay "{title}"', "Rating saved: sign the payment of {amount} {code} in Freighter.", "Pay", "fa-money-bill-transfer", "#paiement"),
 }
+# A disputed task: both parties wait for the arbiter (same copy for the company and the freelance).
+DISPUTE_WAIT = ("Dispute open", 'Dispute open on "{title}"', "The {amount} {code} stay locked in the escrow until the arbiter splits them.")
 FREELANCE_WAIT_STEPS = {
     "deploy": ("Funding awaited", '"{title}": waiting for the company to fund it', "You can declare the delivery once the {amount} {code} are locked in escrow."),
     "fund": ("Funding awaited", '"{title}": waiting for the company to fund it', "Escrow created, funds not locked yet."),
@@ -83,7 +85,9 @@ def todo_items(wallet) -> list[dict]:
         .annotate(pending_count=Count("applications", filter=Q(applications__status=Application.Status.PENDING)))
     )
     for task in company_tasks:
-        if task.status in (Task.Status.TAKEN, Task.Status.DELIVERED):
+        if task.status == Task.Status.DISPUTED:
+            items.append(_dispute_wait_item(task))
+        elif task.status in (Task.Status.TAKEN, Task.Status.DELIVERED):
             action = payments.next_action(task, wallet)
             if action and action["mine"] and action["step"] == "validate":
                 who = task.assigned_to.display_name or task.assigned_to.short_address if task.assigned_to else "the freelancer"
@@ -146,8 +150,11 @@ def todo_items(wallet) -> list[dict]:
                 }
             )
 
-    # Freelance side: tasks to deliver, funding / validation / payment awaited, pending applications.
+    # Freelance side: tasks to deliver, funding / validation / payment awaited, disputes, pending applications.
     for task in Task.objects.filter(assigned_to=wallet).select_related("project__company"):
+        if task.status == Task.Status.DISPUTED:
+            items.append(_dispute_wait_item(task))
+            continue
         if task.status not in (Task.Status.TAKEN, Task.Status.DELIVERED):
             continue
         action = payments.next_action(task, wallet)
@@ -163,6 +170,19 @@ def todo_items(wallet) -> list[dict]:
                     "cta": "Deliver again",
                     "icon": "fa-rotate-left",
                     "when": latest.created_at if latest else task.updated_at,
+                }
+            )
+        elif action and action["step"] == "validate" and projects.is_review_overdue(task) and payments.can_dispute(task, wallet)[0]:
+            items.append(
+                {
+                    "tone": "act",
+                    "kicker": "No response",
+                    "headline": f'Open a dispute on "{task.title}"',
+                    "body": "The company has not answered within the review window: freeze the escrow and let the arbiter decide.",
+                    "href": _task_url(task, "#paiement"),
+                    "cta": "Dispute",
+                    "icon": "fa-gavel",
+                    "when": task.delivered_at or task.updated_at,
                 }
             )
         elif action and action["mine"] and action["step"] == "deliver":
@@ -211,8 +231,43 @@ def todo_items(wallet) -> list[dict]:
             }
         )
 
+    # Arbiter side: every open dispute is an action (the resolve step is theirs).
+    if payments.is_arbiter(wallet):
+        for dispute in Dispute.objects.filter(task__status=Task.Status.DISPUTED).select_related("task__project", "opened_by"):
+            task = dispute.task
+            action = payments.next_action(task, wallet)
+            if not (action and action["mine"] and action["step"] == "resolve"):
+                continue
+            items.append(
+                {
+                    "tone": "act",
+                    "kicker": "Dispute",
+                    "headline": f'Resolve the dispute on "{task.title}"',
+                    "body": f'Opened by {"the company" if dispute.opened_by_id == task.project.company_id else "the freelancer"}'
+                    f'{": " + chr(34) + dispute.reason + chr(34) if dispute.reason else ""} — {task.price:,.2f} {asset_code()} locked.',
+                    "href": reverse("projects:disputes") + f"#resolve-form-{task.pk}",
+                    "cta": "Resolve",
+                    "icon": "fa-scale-balanced",
+                    "when": dispute.created_at,
+                }
+            )
+
     items.sort(key=lambda it: (0 if it["tone"] == "act" else 1, -(it["when"].timestamp() if it["when"] else 0)))
     return items
+
+
+def _dispute_wait_item(task: Task) -> dict:
+    kicker, headline, body = DISPUTE_WAIT
+    return {
+        "tone": "wait",
+        "kicker": kicker,
+        "headline": _fmt(headline, task),
+        "body": _fmt(body, task),
+        "href": _task_url(task, "#paiement"),
+        "cta": "View",
+        "icon": "fa-gavel",
+        "when": task.updated_at,
+    }
 
 
 # --- stats ------------------------------------------------------------------------
@@ -226,6 +281,8 @@ def company_stats(wallet) -> dict:
         taken=Count("pk", filter=Q(status=Task.Status.TAKEN)),
         delivered=Count("pk", filter=Q(status=Task.Status.DELIVERED)),
         paid=Count("pk", filter=Q(status=Task.Status.PAID)),
+        disputed=Count("pk", filter=Q(status=Task.Status.DISPUTED)),
+        resolved=Count("pk", filter=Q(status=Task.Status.RESOLVED)),
         paid_usdc=Sum("price", filter=Q(status=Task.Status.PAID)),
     )
     to_choose = (
@@ -242,6 +299,9 @@ def company_stats(wallet) -> dict:
         "in_progress": agg["taken"],
         "to_validate": agg["delivered"],
         "paid": agg["paid"],
+        "disputed": agg["disputed"],
+        "resolved": agg["resolved"],
+        "settled": agg["paid"] + agg["resolved"],
         "committed_usdc": sum((p.total_amount for p in projects), ZERO),
         "paid_usdc": agg["paid_usdc"] or ZERO,
         "applications_received": Application.objects.filter(task__project__company=wallet).count(),
@@ -259,6 +319,8 @@ def freelancer_stats(wallet) -> dict:
         taken=Count("pk", filter=Q(status=Task.Status.TAKEN)),
         delivered=Count("pk", filter=Q(status=Task.Status.DELIVERED)),
         paid=Count("pk", filter=Q(status=Task.Status.PAID)),
+        disputed=Count("pk", filter=Q(status=Task.Status.DISPUTED)),
+        resolved=Count("pk", filter=Q(status=Task.Status.RESOLVED)),
         earned=Sum("price", filter=Q(status=Task.Status.PAID)),
     )
     avg_note, ratings = _avg_note(wallet)
@@ -271,6 +333,9 @@ def freelancer_stats(wallet) -> dict:
         "in_progress": tasks["taken"],
         "delivered": tasks["delivered"],
         "paid": tasks["paid"],
+        "disputed": tasks["disputed"],
+        "resolved": tasks["resolved"],
+        "settled": tasks["paid"] + tasks["resolved"],
         "earned_usdc": tasks["earned"] or ZERO,
         "avg_note": avg_note,
         "ratings": ratings,
@@ -338,6 +403,27 @@ def recent_activity(wallet, limit: int = 12) -> list[dict]:
                     "tone": "ok",
                     "text": f"{'Payment sent' if mine_as_company else 'Payment received'} — \"{task.title}\" ({task.price:,.2f} {asset_code()})",
                     "href": _task_url(task),
+                }
+            )
+
+    for dispute in Dispute.objects.filter(Q(task__project__company=wallet) | Q(task__assigned_to=wallet)).select_related("task"):
+        events.append(
+            {
+                "when": dispute.created_at,
+                "icon": "fa-gavel",
+                "tone": "",
+                "text": f'Dispute opened — "{dispute.task.title}"',
+                "href": _task_url(dispute.task, "#paiement"),
+            }
+        )
+        if dispute.resolved_at:
+            events.append(
+                {
+                    "when": dispute.resolved_at,
+                    "icon": "fa-scale-balanced",
+                    "tone": "ok",
+                    "text": f'Dispute resolved — "{dispute.task.title}" ({dispute.freelance_pct}% to the freelancer)',
+                    "href": _task_url(dispute.task, "#paiement"),
                 }
             )
 

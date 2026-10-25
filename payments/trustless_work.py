@@ -17,12 +17,15 @@ Lifecycle of one TaskVault TASK (one single-release escrow per task, one milesto
     deliver   POST /escrow/single-release/change-milestone-status freelance (serviceProvider; delivery link = evidence)
     approve   POST /escrow/single-release/approve-milestone       company   (approver)
     release   POST /escrow/single-release/release-funds           company   (releaseSigner) -> receiver gets amount - fees
-    read      GET  /escrow/single-release/get-escrow              nobody    (platformFee / flags / balance)
+    dispute   POST /escrow/single-release/dispute-escrow          a party   (any role but disputeResolver; whole escrow, no reason field)
+    resolve   POST /escrow/single-release/resolve-dispute         arbiter   (disputeResolver; distributions sum = on-chain balance)
+    read      GET  /escrow/single-release/get-escrow              nobody    (platformFee / flags / balance; validateOnChain=true before resolve)
 
 Role mapping: company = signer / approver / releaseSigner; the chosen freelance =
 serviceProvider / receiver (needs the asset trustline BEFORE release — Trustless Work fixes the
 receiver AT DEPLOY, which is why an escrow exists per task and only once a freelance is chosen);
-``settings.LOWBID_PLATFORM_ADDRESS`` = disputeResolver / platformAddress.
+``settings.LOWBID_PLATFORM_ADDRESS`` = platformAddress; ``settings.LOWBID_DISPUTE_RESOLVER``
+(default: the platform address) = disputeResolver, the arbiter wallet that signs resolve-dispute.
 
 Every function returns the same envelope and never raises on HTTP or transport
 errors::
@@ -68,6 +71,8 @@ PATH_FUND = "/escrow/single-release/fund-escrow"
 PATH_CHANGE_MILESTONE = "/escrow/single-release/change-milestone-status"
 PATH_APPROVE_MILESTONE = "/escrow/single-release/approve-milestone"
 PATH_RELEASE = "/escrow/single-release/release-funds"
+PATH_DISPUTE = "/escrow/single-release/dispute-escrow"
+PATH_RESOLVE = "/escrow/single-release/resolve-dispute"
 PATH_GET_ESCROW = "/escrow/single-release/get-escrow"
 PATH_SEND = "/helper/send-transaction"
 PATH_SET_TRUSTLINE = "/helper/set-trustline"
@@ -250,6 +255,29 @@ def approve_milestone(*, contract_id: str, milestone_index: str = "0", approver:
 def release_funds(*, contract_id: str, release_signer: str) -> Envelope:
     """Release to `receiver`. Signs: `release_signer`. Needs every milestone approved + balance >= amount."""
     return _post(PATH_RELEASE, {"contractId": contract_id, "releaseSigner": release_signer})
+
+
+def dispute_escrow(*, contract_id: str, signer: str) -> Envelope:
+    """Open a dispute on the WHOLE escrow. Signs: `signer` = any role except the disputeResolver (company or
+    freelance here). v1 has no reason field: the reason lives in the TaskVault database. The contract refuses
+    only an escrow already disputed / resolved; the business gates are Django's."""
+    return _post(PATH_DISPUTE, {"contractId": contract_id, "signer": signer})
+
+
+def resolve_dispute(*, contract_id: str, dispute_resolver: str, distributions: list[dict]) -> Envelope:
+    """Settle a dispute. Signs: `dispute_resolver` (the role fixed at deploy). `distributions` =
+    [{"address": G…, "amount": Decimal}] — amounts > 0 in asset units (JSON numbers), at most 50 entries,
+    the same address never twice (the contract collapses duplicates), and the sum must EXACTLY equal the
+    escrow's current token balance (fees are deducted proportionally from each entry). Every receiving
+    address needs the asset trustline."""
+    return _post(
+        PATH_RESOLVE,
+        {
+            "contractId": contract_id,
+            "disputeResolver": dispute_resolver,
+            "distributions": [{"address": d["address"], "amount": _number(d["amount"])} for d in distributions],
+        },
+    )
 
 
 def send_transaction(*, signed_xdr: str) -> Envelope:

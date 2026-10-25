@@ -11,7 +11,9 @@
    Forms: #task-form [data-task-add] · #apply-form [data-apply-submit] ·
           #validate-form[data-validate] [data-rate] radios + [data-validate-submit] (escrow panel) ·
           [data-request-changes] reveals #request-changes-form (#request-changes-message, [data-request-changes-submit]):
-          the company sends the delivery back, behind Lowbid.confirm (POST urls.requestChanges).
+          the company sends the delivery back, behind Lowbid.confirm (POST urls.requestChanges) ·
+          [data-open-dispute] reveals #dispute-form (#dispute-reason, [data-dispute-submit] = a [data-pay-step="dispute"]
+          button driven by lowbid-pay.js; this file only checks the reason is not empty before the confirm dialog).
    Review window: every [data-review-deadline][data-deadline="ISO"] gets a live countdown in its [data-countdown]
    (Lowbid.countdown), refreshed each minute — computed in the browser from the server's deadline, no timer server-side.
    The deliver form (#deliver-form, #deliver-link) and the funding button ([data-fund]) are payment
@@ -295,6 +297,32 @@
         });
       });
     });
+  }
+
+  /* ----- open a dispute (company while unrated, freelance once the review window is over): reveal the form ----- */
+  var disputeForm = document.getElementById("dispute-form");
+  var disputeButtons = document.querySelectorAll("[data-open-dispute]");
+  if (disputeForm && disputeButtons.length) {
+    function toggleDispute(show) {
+      if (show) disputeForm.removeAttribute("hidden"); else disputeForm.setAttribute("hidden", "");
+      disputeButtons.forEach(function (b) { b.setAttribute("aria-expanded", show ? "true" : "false"); });
+      if (show) { var ta = document.getElementById("dispute-reason"); if (ta) ta.focus(); }
+    }
+    disputeButtons.forEach(function (b) { b.addEventListener("click", function () { toggleDispute(disputeForm.hasAttribute("hidden")); }); });
+    var disputeCancel = disputeForm.querySelector("[data-dispute-cancel]");
+    if (disputeCancel) disputeCancel.addEventListener("click", function () { toggleDispute(false); });
+    var reason = document.getElementById("dispute-reason");
+    if (reason) reason.addEventListener("input", function () { if (reason.value.trim()) fieldError(disputeForm, "reason", ""); });
+    // An empty reason never reaches the confirm dialog nor the server: stop the lowbid-pay.js driver (capture phase).
+    document.addEventListener("click", function (ev) {
+      var submit = ev.target.closest("[data-dispute-submit]");
+      if (!submit || !disputeForm.contains(submit)) return;
+      if (reason && !reason.value.trim()) {
+        ev.preventDefault(); ev.stopPropagation();
+        fieldError(disputeForm, "reason", "Explain why you open the dispute (a few words are enough).");
+        reason.focus();
+      }
+    }, true);
   }
 
   /* ----- validate + rate form (company) → saves the Rating, then chains the payment signatures ----- */

@@ -28,7 +28,7 @@ TaskVault/
 │                           # + _project_card, _task_row, _task_form, _candidates, _funding_panel, _board_card
 ├── static/
 │   ├── css/  lowbid-tokens.css  lowbid-components.css  tailwind.src.css  tailwind.css (BUILT, committed)
-│   ├── js/   lowbid-base.js  lowbid-ui.js  lowbid-wallet.js  lowbid-pay.js  lowbid-projects.js  lowbid-landing.js
+│   ├── js/   lowbid-base.js  lowbid-ui.js  lowbid-wallet.js  lowbid-pay.js  lowbid-projects.js  lowbid-disputes.js  lowbid-landing.js
 │   ├── vendor/  fontawesome/  freighter-api.js (→ window.freighterApi)  stellar-sdk.min.js (→ window.StellarSdk)  anime.umd.min.js (→ window.anime, landing only)
 │   └── img/favicon.svg
 ├── tests/e2e/              # run.js (Playwright scenario), fake-freighter.js, fake-horizon.js
@@ -107,6 +107,7 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 | `GET /taches/` | `board` (kanban) | `projects:board` | wallet |
 | `GET /taches/<pk>/` | `task_detail` | `projects:task_detail` | public |
 | `GET /mes-projets/` | `my_projects` | `projects:my_projects` | wallet |
+| `GET /litiges/` | `disputes` (the arbiter's desk: open disputes with `#resolve-form-<task>`, then the resolved ones) | `projects:disputes` | wallet; 403 unless `payments.services.is_arbiter` |
 | `POST /projets/<pk>/taches/ajouter/` | `task_add` → 201 `{ok, task, count, total, message}` | `projects:task_add` | wallet |
 | `POST /taches/<pk>/supprimer/` | `task_delete` → `{ok, message, redirect}` | `projects:task_delete` | wallet |
 | `POST /taches/<pk>/postuler/` | `apply_create` → 201 `{ok, application{id, score, tags}, message}` | `projects:apply_create` | wallet |
@@ -115,7 +116,7 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 | `POST /taches/<pk>/valider/` | `task_validate` → `{ok, status, project_status, next, message}` | `projects:task_validate` | wallet |
 | `POST /taches/<pk>/modifications/` | `task_request_changes` `{message}` → `{ok, status, revision_count, revisions_left, message}` (the company sends the delivery back; 409 `too_many_revisions` after `LOWBID_MAX_REVISIONS`) | `projects:task_request_changes` | wallet |
 | `GET /taches/<pk>/candidats.json` | `task_candidates_json` → `{ok, task, status, count, fingerprint, candidates[], html}` | `projects:task_candidates_json` | public |
-| `POST /pay/prepare/<task_pk>/<step>/` | `payments.views.prepare` | `payments:prepare` | wallet |
+| `POST /pay/prepare/<task_pk>/<step>/` | `payments.views.prepare` (steps `deploy fund deliver approve release direct_pay dispute resolve`) | `payments:prepare` | wallet |
 | `POST /pay/send/<task_pk>/<step>/` | `payments.views.send` | `payments:send` | wallet |
 | `POST /pay/trustline/prepare/`, `POST /pay/trustline/send/` | trustline of the session wallet | `payments:trustline_prepare` / `_send` | wallet |
 | `GET /pay/project/<pk>/pending.json` | `project_pending` → `{ok, project, mode, total, funded, can_fund, hint, tasks[]}`: the tasks "Fund the project" chains | `payments:project_pending` | wallet (company) |
@@ -135,17 +136,19 @@ project / task / application is a 404). Payments refusals are HTTP 200
 WalletUser ─┬─< Project (company, PROTECT) ──< Task (CASCADE) ──< Application (CASCADE) >── WalletUser (freelancer, PROTECT)
             │                                   │  └── assigned_to ─> WalletUser (PROTECT, null until chosen)
             │                                   ├── Rating (1-1, CASCADE): company, freelancer, note 1–5, comment
+            │                                   ├── Dispute (1-1, CASCADE): opened_by (PROTECT), reason, freelance_pct, resolved_at
             │                                   └── Escrow (1-1, CASCADE, payments): mode, status, contract_id, hashes
 ```
 
 | Model | Fields that matter |
 |-------|--------------------|
 | `accounts.WalletUser` | `stellar_address` (unique, 56), `display_name` (≤80), `created_at`, `last_login_at` |
-| `projects.Project` | `company` (FK WalletUser), `title` (≤120), `description`, `status` `draft`/`funded`/`closed`; default ordering `-created_at`. `Project.objects.with_totals()` annotates `total` (Σ task prices), `tasks_total`, `paid_total`, `open_total` in one query; `progress_pct` = paid / tasks |
-| `projects.Task` | `project`, `title`, `description`, `price` `Decimal(18,7)`, `tags` (JSON list, ≤3 enforced by `services.clean_tags`), `status` `open`/`taken`/`delivered`/`paid`, `assigned_to`, `delivery_link` (≤500), `delivered_at`, `paid_at`, `position` (1-based order in the project) |
+| `projects.Project` | `company` (FK WalletUser), `title` (≤120), `description`, `status` `draft`/`funded`/`closed`; default ordering `-created_at`. `Project.objects.with_totals()` annotates `total` (Σ task prices), `tasks_total`, `paid_total`, `resolved_total`, `open_total` in one query; `progress_pct` = settled (paid + resolved) / tasks |
+| `projects.Task` | `project`, `title`, `description`, `price` `Decimal(18,7)`, `tags` (JSON list, ≤3 enforced by `services.clean_tags`), `status` `open`/`taken`/`delivered`/`paid`/`disputed`/`resolved`, `assigned_to`, `delivery_link` (≤500), `delivered_at`, `paid_at`, `resolved_at`, `position` (1-based order in the project) |
 | `projects.Application` | `task`, `freelancer`, `message` (≤280), `tags`, `score` `Decimal(5,1)` (stored, refreshed by `services.rescore`), `status` `pending`/`chosen`/`rejected`; unique (`task`, `freelancer`); default ordering `-score, created_at, pk` |
 | `projects.Rating` | `task` (1-1), `company`, `freelancer`, `note` 1–5, `comment` (≤280) |
-| `payments.Escrow` | `task` (1-1, `related_name="escrow"`), `mode` `escrow`/`direct` (frozen when the row is created), `amount` (= task price), `payer_address` (company), `payee_address` (freelance), `platform_address`, `contract_id`, `engagement_id` (`taskvault-task-<pk>`), `deploy/fund/deliver/approve/release/payment_tx_hash`, `status` `created`/`deployed`/`funded`/`delivered`/`approved`/`released`/`paid`/`failed` (`failed` is never set), `delivery_note` (the evidence sent on chain, ≤280), `last_error`, `funded_at`, `delivered_at`, `released_at` |
+| `projects.Dispute` | `task` (1-1, `related_name="dispute"`), `opened_by` (FK WalletUser, PROTECT: the party who signed dispute-escrow), `reason` (≤280, database only: Trustless Work v1 has no reason field), `freelance_pct` (0–100, null until resolved), `created_at`, `resolved_at` — written by `mark_disputed` / `mark_resolved` |
+| `payments.Escrow` | `task` (1-1, `related_name="escrow"`), `mode` `escrow`/`direct` (frozen when the row is created), `amount` (= task price), `payer_address` (company), `payee_address` (freelance), `platform_address`, `resolver_address` (the `disputeResolver` fixed at deploy = `LOWBID_DISPUTE_RESOLVER`), `contract_id`, `engagement_id` (`taskvault-task-<pk>`), `deploy/fund/deliver/approve/release/payment/dispute/resolve_tx_hash`, `status` `created`/`deployed`/`funded`/`delivered`/`approved`/`released`/`paid`/`disputed`/`resolved`/`failed` (`failed` is never set), `delivery_note` (the evidence sent on chain, ≤280), `last_error`, `funded_at`, `delivered_at`, `released_at`, `disputed_at`, `resolved_at` |
 
 Nothing Stellar-related is stored on the projects models: the escrow row is the only on-chain record.
 
@@ -204,6 +207,10 @@ def my_projects(request):
 ### Company: validate, rate, pay
 `#validate-form` → `POST /taches/<pk>/valider/ {note, comment}` → `services.validate`: stores the `Rating`, rescores the company's open tasks, calls `_after_validate` → `payments.services.on_task_validated` (makes sure the `Escrow` row exists, logs the next step, **pays nothing**) → the view answers `next` = `payments.services.next_action(task, company)`. `lowbid-projects.js` then runs `Lowbid.pay.runChain(next)`: `approve` → `release` (escrow) or `direct_pay` (direct), each a prepare → Freighter → send round trip. `confirm_release` / `confirm_direct_pay` call `projects.services.mark_paid(task)` and `sync_project_status`. If the chain stops (declined signature, Horizon down), the panel shows the remaining step as a `[data-pay-step]` button and the error in `[data-pay-error]` / `[data-last-error]`.
 
+### Dispute and resolution (escrow mode)
+- A party, from the payment panel: `[data-open-dispute]` (shown when `payments.services.can_dispute`) reveals `#dispute-form` (`#dispute-reason`) → `[data-dispute-submit]` = `[data-pay-step="dispute"]` inside `form[data-pay-form]` → `Lowbid.confirm` → `POST /pay/prepare/<task>/dispute/ {reason}` → Trustless Work `dispute-escrow {contractId, signer}` (signer = the session wallet = the row's payer or payee) → Freighter → `POST /pay/send/<task>/dispute/ {signed_xdr, reason}` → `confirm_dispute` sends it and calls `projects.services.mark_disputed(task, wallet, reason)`.
+- The arbiter, on `/litiges/`: `#resolve-form-<task>` (slider `[data-freelance-pct]`, live split preview in `lowbid-disputes.js`) → `[data-pay-step="resolve"]` → `POST /pay/prepare/<task>/resolve/ {freelance_pct}` → `get-escrow?validateOnChain=true` for the balance (fallback `Escrow.amount`) → `resolve-dispute {contractId, disputeResolver, distributions}` (addresses from the row, zero entries dropped, sum = balance) → Freighter → `send` → `confirm_resolve` → `projects.services.mark_resolved(task, pct)` + `sync_project_status`.
+
 ### Trustline
 `[data-pay-trustline]` → `POST /pay/trustline/prepare/` → nothing to sign when Horizon already shows the trustline (or the asset is native), else a `changeTrust` XDR → Freighter → `POST /pay/trustline/send/` → Horizon. Nothing is persisted.
 
@@ -237,8 +244,25 @@ validate    company    —                          delivered (+Rating)  (projec
 approve     company    delivered → approved       delivered            TW approve-milestone → approve_tx_hash
 release     company    approved → released        delivered → paid     TW release-funds → release_tx_hash, released_at;
                                                                        confirm calls projects.services.mark_paid(task)
+dispute     a party    delivered|approved         delivered → disputed TW dispute-escrow (signer = the session wallet, which
+            (company   → disputed                                      must be payer_address or payee_address; no reason field
+            or                                                         in v1, the reason stays in the DB) → dispute_tx_hash,
+            freelance)                                                 disputed_at; confirm calls projects.services
+                                                                       .mark_disputed(task, wallet, reason) → Dispute row.
+                                                                       Gate = projects.services.can_dispute: the company while
+                                                                       unrated, the freelance once the review window is over.
+                                                                       Funds stay locked (holds_funds); approve / release /
+                                                                       request_changes / validate are now wrong_state
+resolve     arbiter    disputed → resolved        disputed → resolved  TW resolve-dispute (disputeResolver = resolver_address =
+                                                                       the session wallet; distributions = balance read with
+                                                                       get-escrow validateOnChain=true (fallback: amount) split
+                                                                       freelance_pct % to payee_address, the rest to
+                                                                       payer_address, zero entries dropped) → resolve_tx_hash,
+                                                                       resolved_at; confirm calls projects.services
+                                                                       .mark_resolved(task, pct) (the ONLY gate to `resolved`);
+                                                                       project closes when every task is paid or resolved
 
-DIRECT mode (fallback: one `payment` op; "funded" and "approved" do not exist)
+DIRECT mode (fallback: one `payment` op; "funded" and "approved" do not exist; no dispute step: nothing is locked)
 deliver     freelance  created → delivered        taken → delivered    NO transaction: projects.services.deliver(link, hash,
                                                                        source_link); delivery_note = build_evidence(link, hash)
                                                                        (database only — nothing on chain)
@@ -264,6 +288,15 @@ time, no timer) bounds the company's review; `projects.services.request_changes`
 signed XDR (`tampered`). Every delivery is a `projects.Delivery` row (with its tx hash), every request a
 `projects.RevisionRequest` row.
 
+Disputes (escrow mode only; direct mode answers `wrong_mode` and the panel shows `[data-direct-warning]`): `dispute` is a
+`who="party"` step (`_gate` accepts the company or the chosen freelance, then `projects.services.can_dispute` decides:
+the company while delivered + unrated, the freelance once `is_review_overdue`); it is an alternative (`alt`), never the
+`next` step. `resolve` is `who="arbiter"`: the session wallet must be `LOWBID_DISPUTE_RESOLVER` (`is_arbiter`,
+`viewer_role` → `"arbiter"` for a non-party) and the row's `resolver_address`. `split_amounts(balance, pct)` rounds the
+freelance share down to a stroop; the company gets the exact remainder. Once disputed, the stepper switches to
+… Delivered → In dispute → Resolved, and `next_action` answers `resolve` (mine for the arbiter, "Waiting for the
+arbiter's decision." for the parties).
+
 ### Modes
 
 - `payments.stellar.payment_mode()` is **the** switch: `LOWBID_PAYMENT_MODE=escrow` | `direct` | empty (or any other
@@ -277,22 +310,25 @@ signed XDR (`tampered`). Every delivery is a `projects.Delivery` row (with its t
   direct-mode task delivered through the DB endpoint read as `delivered`, and a paid task always terminal (`paid` in
   direct mode, `released` in escrow mode). `project_funding` and "Fund the project" follow the **configured** mode.
 - Escrow mode roles (Trustless Work): company = deploy signer, `approver`, `releaseSigner`, funder; chosen freelance =
-  `serviceProvider` + `receiver`; `LOWBID_PLATFORM_ADDRESS` = `disputeResolver` + `platformAddress` (fee
-  `LOWBID_PLATFORM_FEE`). When `LOWBID_PLATFORM_ADDRESS` is empty the company wallet takes both platform roles (warning
+  `serviceProvider` + `receiver`; `LOWBID_PLATFORM_ADDRESS` = `platformAddress` (fee `LOWBID_PLATFORM_FEE`);
+  `LOWBID_DISPUTE_RESOLVER` (default: the platform address) = `disputeResolver`, stored on the row as
+  `resolver_address`. When `LOWBID_PLATFORM_ADDRESS` is empty the company wallet takes both platform roles (warning
   logged, `[data-platform-fallback]` alert in the panel); Trustless Work may refuse that.
 
 ### Hooks between `projects` and `payments`
 
 | Hook | Where | Called by | Does |
 |------|-------|-----------|------|
-| `projects.services.mark_paid(task)` | projects | `payments.services.confirm_release`, `_finalize_direct_pay` (and `seed_demo`) | the **only** function that flips a task to `paid` (idempotent); closes the project when every task is paid; rescores the company's open tasks |
+| `projects.services.mark_paid(task)` | projects | `payments.services.confirm_release`, `_finalize_direct_pay` (and `seed_demo`) | the **only** function that flips a task to `paid` (idempotent); closes the project when every task is paid or resolved; rescores the company's open tasks |
+| `projects.services.mark_disputed(task, opened_by, reason)` | projects | `payments.services.confirm_dispute`, once dispute-escrow is confirmed | re-checks `can_dispute` and the reason, Task `delivered → disputed`, writes the `Dispute` row |
+| `projects.services.mark_resolved(task, freelance_share)` | projects | `payments.services.confirm_resolve`, once resolve-dispute is confirmed | the **only** function that flips a task to `resolved` (idempotent; `wrong_state` on a non-disputed task); stores `freelance_pct` + `resolved_at`; closes the project when every task is paid or resolved; rescores the company's open tasks |
 | `projects.services._after_validate(task)` | projects | `projects.services.validate`, inside its transaction, after the Rating | lazily imports `payments.services` and calls `on_task_validated(task)` |
 | `payments.services.on_task_validated(task)` | payments | `_after_validate` | `ensure_escrow(task)` and logs the next step (approve → release, or direct_pay). Pays nothing |
 | `projects.services._before_deliver(task)` | projects | `projects.services.deliver` when `on_chain=False` | calls `payments.services.check_db_deliver(task)`, which refuses a DB-only delivery in escrow mode |
 | `projects.services.deliver(...)` | projects | `payments.services.confirm_deliver` (escrow, `on_chain=True`, `tx_hash`), `prepare_deliver` (direct `no_tx`, `on_chain=False`), the `task_deliver` view | records the delivery (link, fingerprint, source, `delivered_at`, task `delivered`) and writes the `Delivery` history row |
 | `projects.services._after_request_changes(task)` | projects | `projects.services.request_changes`, inside its transaction, once the task is back to `taken` | lazily imports `payments.services` and calls `on_changes_requested(task)`; a `PaymentError` becomes `ProjectError("wrong_state")` |
 | `payments.services.on_changes_requested(task)` | payments | `_after_request_changes` | Escrow `delivered → funded` (escrow mode) / `delivered → created` (direct mode), `last_error` cleared, every hash kept; no row = nothing to move; any other stage → `wrong_state` |
-| `payments.services.sync_project_status(project)` | payments | `confirm_fund`, `confirm_release`, `_finalize_direct_pay` (and `seed_demo`) | project `draft → funded` (escrow: every assigned task holds funds; direct: first payment) |
+| `payments.services.sync_project_status(project)` | payments | `confirm_fund`, `confirm_release`, `confirm_resolve`, `_finalize_direct_pay` (and `seed_demo`) | project `draft → funded` (escrow: every assigned task holds funds; direct: first payment) |
 
 `payments.services` imports `projects.services` at module level; the projects hooks import `payments.services` lazily to
 avoid the cycle.
@@ -311,7 +347,7 @@ per project.
 
 ### Endpoints and response shapes (`payments/views.py`)
 
-- `POST /pay/prepare/<task_pk>/<step>/` (body `{delivery_link}` for `deliver`) → `{ok, xdr, send_url, extra}`, or
+- `POST /pay/prepare/<task_pk>/<step>/` (body `{delivery_link}` for `deliver`, `{reason}` for `dispute`, `{freelance_pct}` for `resolve`) → `{ok, xdr, send_url, extra}`, or
   `{ok, redirect, message, next}` when there is nothing to sign (direct delivery, reconciled payment).
 - `POST /pay/send/<task_pk>/<step>/ {signed_xdr, ...extra}` → `{ok, redirect, status, task_status, tx_hash, hash,
   contract_id, explorer_url, message, pending, next}`.
@@ -330,6 +366,10 @@ per project.
   payer → payee of `amount` in the configured asset (`tampered`); the payment Django builds carries the memo
   `taskvault:task:<pk>`. `confirm_trustline` likewise requires one `change_trust` from the session wallet for the asset code and issuer of the
   configured issuer.
+- Disputes: the dispute signer is the session wallet and must equal the row's payer or payee address; every address in
+  the resolve `distributions` is the row's `payee_address` / `payer_address` (a body field is ignored), the amounts sum
+  to the balance read on chain, zero entries are dropped; `confirm_dispute` / `confirm_resolve` refuse a signed XDR whose
+  hash is already stored for another step of the escrow (`tampered`). `mark_resolved` is the only gate to `resolved`.
 - Idempotency: a replayed send for a step already recorded with the same hash answers "Step already confirmed." (checked
   before the state gate, so it is not a `wrong_state`).
 - A provider failure never flips a status; the message is stored in `Escrow.last_error` (directly when a prepare fails,

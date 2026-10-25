@@ -180,7 +180,7 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 30
 
 # Bump whenever css/lowbid-*.css or js/lowbid-*.js changes (30-day static cache).
-LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-review"
+LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-dispute"
 
 # --- Stellar ------------------------------------------------------------------
 
@@ -210,6 +210,9 @@ LOWBID_PLATFORM_ADDRESS = os.environ.get("LOWBID_PLATFORM_ADDRESS", "").strip()
 # Trustless Work v1 `platformFee` (JSON number). Unit unverified (bps vs percent) — keep 1 until
 # a get-escrow read-back on testnet settles it (docs/STELLAR_NOTES.md §1.3).
 LOWBID_PLATFORM_FEE = Decimal(os.environ.get("LOWBID_PLATFORM_FEE", "1").strip() or "1")
+# Arbiter wallet (G…): the escrow `disputeResolver`, the only wallet that signs resolve-dispute and sees /litiges/.
+# Defaults to the platform wallet. May be a Stellar multisig account (docs/STELLAR_NOTES.md §1.3, not driven by the UI).
+LOWBID_DISPUTE_RESOLVER = os.environ.get("LOWBID_DISPUTE_RESOLVER", "").strip() or LOWBID_PLATFORM_ADDRESS
 # Review window: days the company has to validate (or request changes) after a delivery; the deadline
 # is computed at read time (projects.services.review_deadline), nothing runs on a timer.
 LOWBID_REVIEW_DAYS = _int("LOWBID_REVIEW_DAYS", 7)

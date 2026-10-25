@@ -10,7 +10,17 @@ Payment hooks (wired to the payments app, imported lazily to avoid an import cyc
   - `_before_deliver(task)` a DB-only delivery is refused in escrow mode (the freelance signs the
     milestone change instead; payments calls `deliver(..., on_chain=True)` after that);
   - `_after_request_changes(task)` called by `request_changes()` once the task is back to `taken` →
-    `payments.services.on_changes_requested(task)` moves the Escrow row back as well.
+    `payments.services.on_changes_requested(task)` moves the Escrow row back as well;
+  - `mark_disputed(task, opened_by, reason)` called by payments once a party's dispute-escrow
+    transaction is confirmed (Task `delivered → disputed`, a `Dispute` row);
+  - `mark_resolved(task, freelance_share)` the ONLY function that flips a task to `resolved`
+    (idempotent); payments calls it once the arbiter's resolve-dispute transaction is confirmed.
+
+Disputes (escrow mode only — the mode gate is payments'): `can_dispute(task, wallet)` says who may
+open one: the company while the task is `delivered` and not rated yet, the chosen freelance once the
+review window is over (`is_review_overdue`, "dispute for no response"). A disputed task can no longer
+be validated nor sent back for changes; the arbiter's split (`Dispute.freelance_pct`) settles it and
+a project closes when every task is `paid` OR `resolved`.
 
 Review window and revisions: once delivered, the company has `LOWBID_REVIEW_DAYS` days
 (`review_deadline`, computed at read time — no timer anywhere) to validate or to send the delivery
@@ -31,11 +41,12 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
-from .models import Application, Delivery, Project, Rating, RevisionRequest, Task
+from .models import SETTLED_STATUSES, Application, Delivery, Dispute, Project, Rating, RevisionRequest, Task
 from .scoring import company_history, score_application
 
 logger = logging.getLogger(__name__)
@@ -53,10 +64,12 @@ __all__ = [
     "ProjectError",
     "add_task",
     "apply",
+    "can_dispute",
     "can_request_changes",
     "choose",
     "clean_hash",
     "clean_link",
+    "clean_reason",
     "clean_source_link",
     "clean_tags",
     "company_history",
@@ -66,7 +79,9 @@ __all__ = [
     "deliver",
     "delivery_history",
     "is_review_overdue",
+    "mark_disputed",
     "mark_paid",
+    "mark_resolved",
     "max_revisions",
     "parse_note",
     "parse_price",
@@ -190,6 +205,16 @@ def clean_hash(raw) -> str:
             "The fingerprint must be a 40-character git commit SHA or a 64-character SHA-256 (hex).",
         )
     return value
+
+
+def clean_reason(raw) -> str:
+    """The dispute reason: required, 1–280 characters once stripped. Raises ProjectError('invalid')."""
+    reason = str(raw or "").strip()
+    if not reason:
+        raise ProjectError("invalid", "Explain why you open the dispute (a few words are enough).")
+    if len(reason) > MAX_MESSAGE:
+        raise ProjectError("invalid", f"The reason is at most {MAX_MESSAGE} characters.")
+    return reason
 
 
 def _require_company(project: Project, wallet) -> None:
@@ -345,13 +370,14 @@ def deliver(
 
 def source_visible(task: Task, wallet) -> bool:
     """Who may see `Task.source_link` (the full deliverable): the assignee always, the company only
-    once the task is `paid`, anyone else never. Views pass the result to the templates."""
+    once the task is settled (`paid`, or `resolved` by the arbiter — the company then paid its share),
+    anyone else never. Views pass the result to the templates."""
     if wallet is None:
         return False
     if task.assigned_to_id is not None and task.assigned_to_id == wallet.pk:
         return True
     if task.project.company_id == wallet.pk:
-        return task.status == Task.Status.PAID
+        return task.status in SETTLED_STATUSES
     return False
 
 
@@ -385,8 +411,9 @@ def is_review_overdue(task: Task) -> bool:
 
 def can_request_changes(task: Task, wallet) -> bool:
     """Whether the "Request changes" control is shown to this viewer: the company, while the task is
-    `delivered` and not rated yet. The max-revisions gate is `request_changes`' (the button is disabled
-    with a hint when `revisions_left` is 0). Views pass the result to the templates."""
+    `delivered` and not rated yet (so never once disputed or resolved). The max-revisions gate is
+    `request_changes`' (the button is disabled with a hint when `revisions_left` is 0). Views pass the
+    result to the templates."""
     if wallet is None or task.project.company_id != wallet.pk or task.status != Task.Status.DELIVERED:
         return False
     return not Rating.objects.filter(task=task).exists()
@@ -407,6 +434,8 @@ def request_changes(task: Task, company, message) -> Task:
         raise ProjectError("invalid", f"The message is at most {MAX_MESSAGE} characters.")
     with transaction.atomic():
         locked = _locked_task(task)
+        if locked.status == Task.Status.DISPUTED:
+            raise ProjectError("wrong_state", "This task is in dispute: the arbiter decides, nothing can be sent back.")
         if locked.status != Task.Status.DELIVERED:
             raise ProjectError("wrong_state", "Only a delivered task can be sent back for changes.")
         if Rating.objects.filter(task=locked).exists():
@@ -429,10 +458,21 @@ def request_changes(task: Task, company, message) -> Task:
     return locked
 
 
+def _escrow_hashes(task: Task) -> dict:
+    """The dispute / resolve tx hashes of the task's Escrow row (payments), read through the reverse
+    one-to-one — no payments import needed; {} without a row."""
+    try:
+        escrow = task.escrow
+    except ObjectDoesNotExist:
+        return {}
+    return {"dispute": escrow.dispute_tx_hash, "resolve": escrow.resolve_tx_hash}
+
+
 def delivery_history(task: Task, *, source_visible: bool = False) -> list[dict]:
-    """Every Delivery and RevisionRequest of the task, newest first, as plain dicts for the templates:
-    {kind: "delivery" | "revision", when, ...}. `source_link` is included only when the caller may see
-    it (`source_visible`), so it never reaches the markup otherwise."""
+    """Every Delivery, RevisionRequest and the Dispute (opening + resolution) of the task, newest
+    first, as plain dicts for the templates: {kind: "delivery" | "revision" | "dispute" | "resolution",
+    when, who, ...}. `source_link` is included only when the caller may see it (`source_visible`), so it
+    never reaches the markup otherwise."""
     rows: list[dict] = []
     for d in task.deliveries.select_related("freelancer"):
         rows.append(
@@ -448,8 +488,123 @@ def delivery_history(task: Task, *, source_visible: bool = False) -> list[dict]:
         )
     for r in task.revision_requests.select_related("company"):
         rows.append({"kind": "revision", "when": r.created_at, "who": r.company, "message": r.message})
+    dispute = Dispute.objects.filter(task=task).select_related("opened_by").first()
+    if dispute is not None:
+        hashes = _escrow_hashes(task)
+        rows.append(
+            {
+                "kind": "dispute",
+                "when": dispute.created_at,
+                "who": dispute.opened_by,
+                "reason": dispute.reason,
+                "by_company": dispute.opened_by_id == task.project.company_id,
+                "tx_hash": hashes.get("dispute", ""),
+            }
+        )
+        if dispute.resolved_at is not None:
+            rows.append(
+                {
+                    "kind": "resolution",
+                    "when": dispute.resolved_at,
+                    "who": None,
+                    "freelance_pct": dispute.freelance_pct,
+                    "company_pct": dispute.company_pct,
+                    "tx_hash": hashes.get("resolve", ""),
+                }
+            )
     rows.sort(key=lambda row: row["when"], reverse=True)
     return rows
+
+
+# --- disputes (escrow mode; payments owns the on-chain side and the mode gate) --------------------
+
+def can_dispute(task: Task, wallet) -> tuple[bool, str]:
+    """Who may open a dispute and, when not, why (English UI copy): the company while the task is
+    `delivered` and NOT rated yet (a rated delivery is validated: release the funds); the chosen
+    freelance only once the review window is over (`is_review_overdue` — "dispute for no response");
+    nobody else, and nothing outside `delivered`. The payment mode is payments' business
+    (`payments.services.can_dispute` wraps this one and refuses direct mode)."""
+    if wallet is None:
+        return False, "Connect your wallet to open a dispute."
+    is_company = task.project.company_id == wallet.pk
+    is_assignee = task.assigned_to_id is not None and task.assigned_to_id == wallet.pk
+    if not (is_company or is_assignee):
+        return False, "Only the company or the chosen freelancer can open a dispute."
+    if task.status == Task.Status.DISPUTED:
+        return False, "A dispute is already open on this task: the arbiter decides."
+    if task.status == Task.Status.RESOLVED:
+        return False, "This dispute has been resolved by the arbiter."
+    if task.status != Task.Status.DELIVERED:
+        return False, "Only a delivered task can be disputed."
+    if is_company:
+        if Rating.objects.filter(task=task).exists():
+            return False, "You validated this delivery: release the funds instead of disputing it."
+        return True, ""
+    if not is_review_overdue(task):
+        deadline = review_deadline(task)
+        when = f" until {timezone.localtime(deadline):%b %d, %Y %H:%M}" if deadline else ""
+        return False, f"The company still has{when} to answer: a dispute for no response opens once the review window is over."
+    return True, ""
+
+
+def mark_disputed(task: Task, opened_by, reason: str) -> Task:
+    """Called by payments (`confirm_dispute`) once the dispute-escrow transaction is confirmed: Task
+    `delivered → disputed` and the `Dispute` row (who, why). `opened_by` must be a party and the
+    task `delivered` (`wrong_state` otherwise — payments gates before signing, this is the last check)."""
+    reason = clean_reason(reason)
+    with transaction.atomic():
+        locked = _locked_task(task)
+        allowed, why = can_dispute(locked, opened_by)
+        if not allowed:
+            raise ProjectError("wrong_state", why)
+        Dispute.objects.create(task=locked, opened_by=opened_by, reason=reason)
+        locked.status = Task.Status.DISPUTED
+        locked.save(update_fields=["status", "updated_at"])
+    logger.info("task disputed task=%s opened_by=%s", locked.pk, opened_by.pk)
+    return locked
+
+
+def mark_resolved(task: Task, freelance_share) -> Task:
+    """The ONLY way a task becomes `resolved` (idempotent). `freelance_share` is the percentage of the
+    escrow balance the arbiter sent to the freelance (int 0–100); the company got the rest. Stores it
+    on the Dispute row with `resolved_at`, flips the task `disputed → resolved`, closes the project when
+    every task is paid or resolved, and refreshes the company's open tasks' scores. Called by payments
+    once the resolve-dispute transaction is confirmed."""
+    try:
+        pct = int(str(freelance_share).strip())
+    except (TypeError, ValueError):
+        raise ProjectError("invalid", "The freelancer's share must be a whole percentage (0–100).") from None
+    if pct < 0 or pct > 100:
+        raise ProjectError("invalid", "The freelancer's share must be between 0 and 100 %.")
+    with transaction.atomic():
+        locked = _locked_task(task)
+        if locked.status == Task.Status.RESOLVED:
+            return locked
+        if locked.status != Task.Status.DISPUTED:
+            raise ProjectError("wrong_state", "Only a disputed task can be resolved.")
+        now = timezone.now()
+        dispute = Dispute.objects.select_for_update().filter(task=locked).first()
+        if dispute is None:  # defensive: a disputed task always has its row (mark_disputed)
+            dispute = Dispute.objects.create(task=locked, opened_by=locked.project.company, reason="")
+        dispute.freelance_pct = pct
+        dispute.resolved_at = now
+        dispute.save(update_fields=["freelance_pct", "resolved_at"])
+        locked.status = Task.Status.RESOLVED
+        locked.resolved_at = now
+        locked.save(update_fields=["status", "resolved_at", "updated_at"])
+        _close_if_settled(locked.project_id)
+        logger.info("task resolved task=%s freelance_pct=%s", locked.pk, pct)
+        _rescore_company(locked.project.company_id)
+    return locked
+
+
+def _close_if_settled(project_id: int) -> None:
+    """A project closes when every task is `paid` or `resolved` (the money of each task left its escrow)."""
+    project = Project.objects.select_for_update().get(pk=project_id)
+    if project.status != Project.Status.CLOSED and not project.tasks.exclude(status__in=SETTLED_STATUSES).exists():
+        project.status = Project.Status.CLOSED
+        project.save(update_fields=["status", "updated_at"])
+        logger.info("project closed project=%s", project.pk)
 
 
 # --- company: validate + rate → payment hook ----------------------------------------------------
@@ -510,7 +665,7 @@ def _after_request_changes(task: Task) -> None:
 
 
 def mark_paid(task: Task) -> Task:
-    """Flip a task to `paid` (idempotent). Closes the project when every task is paid.
+    """Flip a task to `paid` (idempotent). Closes the project when every task is paid or resolved.
     Called by payments once the on-chain release / direct payment is confirmed."""
     with transaction.atomic():
         locked = _locked_task(task)
@@ -519,13 +674,9 @@ def mark_paid(task: Task) -> Task:
         locked.status = Task.Status.PAID
         locked.paid_at = timezone.now()
         locked.save(update_fields=["status", "paid_at", "updated_at"])
-        project = Project.objects.select_for_update().get(pk=locked.project_id)
-        if not project.tasks.exclude(status=Task.Status.PAID).exists():
-            project.status = Project.Status.CLOSED
-            project.save(update_fields=["status", "updated_at"])
-            logger.info("project closed project=%s", project.pk)
+        _close_if_settled(locked.project_id)
         logger.info("task paid task=%s freelancer=%s", locked.pk, locked.assigned_to_id)
-        _rescore_company(project.company_id)
+        _rescore_company(locked.project.company_id)
     return locked
 
 

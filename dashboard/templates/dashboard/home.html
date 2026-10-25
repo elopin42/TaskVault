@@ -79,6 +79,7 @@
         <dt>Applications received</dt><dd class="ui-num">{{ company_stats.applications_received }}</dd>
         <dt>Projects budget</dt><dd>{% include "components/price.html" with amount=company_stats.committed_usdc %}</dd>
         <dt>Paid out to freelancers</dt><dd>{% include "components/price.html" with amount=company_stats.paid_usdc %}</dd>
+        {% if company_stats.disputed or company_stats.resolved %}<dt>Disputes</dt><dd class="ui-num" data-company-disputes>{{ company_stats.disputed }} open · {{ company_stats.resolved }} resolved</dd>{% endif %}
       </dl>
     </section>
 
@@ -97,6 +98,7 @@
       <dl class="ui-facts mt-4">
         <dt>Applications sent</dt><dd class="ui-num">{{ freelancer_stats.total }}</dd>
         <dt>Pick rate</dt><dd class="ui-num">{% if freelancer_stats.success_rate is not None %}{{ freelancer_stats.success_rate }}%{% else %}—{% endif %}</dd>
+        {% if freelancer_stats.disputed or freelancer_stats.resolved %}<dt>Disputes</dt><dd class="ui-num" data-freelance-disputes>{{ freelancer_stats.disputed }} open · {{ freelancer_stats.resolved }} resolved</dd>{% endif %}
         <dt>Average rating</dt><dd class="ui-num" data-avg-note>{% if freelancer_stats.avg_note is not None %}<i class="fa-solid fa-star text-[10px]" style="color: var(--icon-accent)" aria-hidden="true"></i> {{ freelancer_stats.avg_note|stringformat:".1f" }}/5 <span class="ui-meta">({{ freelancer_stats.ratings }})</span>{% else %}—{% endif %}</dd>
       </dl>
     </section>

@@ -24,7 +24,7 @@ from payments.views import next_json
 
 from . import services
 from .forms import ProjectForm
-from .models import Application, Project, Task
+from .models import Application, Dispute, Project, Task
 from .scoring import company_history, is_validated, recommended_pk, score_parts
 from .services import ProjectError, dec_str
 
@@ -43,9 +43,20 @@ MY_TABS = (("active", "In progress"), ("done", "Closed"), ("all", "All"))
 BOARD_COLUMNS = (
     ("open", "Open", "Every open task, available to take."),
     ("taken", "Taken", "Your tasks in progress: deliver a link."),
-    ("delivered", "Delivered", "Waiting for the company to validate."),
-    ("paid", "Paid", "Validated and paid."),
+    ("delivered", "Delivered", "Waiting for the company to validate — or for the arbiter, once disputed."),
+    ("paid", "Paid", "Validated and paid, or settled by the arbiter."),
 )
+# The kanban keeps its four columns (the mobile snap-scroll and the e2e contract rely on them): a disputed task
+# still sits in "Delivered" (the money is locked, a decision is pending), a resolved one in "Paid" (settled).
+# Each carries its own status badge (_board_card.html), so the column never hides the state.
+BOARD_COLUMN_OF = {
+    Task.Status.OPEN: "open",
+    Task.Status.TAKEN: "taken",
+    Task.Status.DELIVERED: "delivered",
+    Task.Status.DISPUTED: "delivered",
+    Task.Status.PAID: "paid",
+    Task.Status.RESOLVED: "paid",
+}
 # HTTP status for a refused action, by error code (anything else → 400).
 ERROR_STATUS = {
     "forbidden": 403,
@@ -295,8 +306,9 @@ def task_detail(request: HttpRequest, pk: int) -> HttpResponse:
         rating = None
     source_visible = services.source_visible(task, wallet)
     history = services.delivery_history(task, source_visible=source_visible)
-    for row in history:  # explorer link of the on-chain delivery declaration (escrow mode)
+    for row in history:  # explorer link of each on-chain event (delivery declaration, dispute, resolution)
         row["explorer_url"] = stellar.explorer_tx_url(row["tx_hash"]) if row.get("tx_hash") else ""
+    dispute = Dispute.objects.select_related("opened_by").filter(task=task).first()
     ctx.update(
         {
             "project": task.project,
@@ -313,6 +325,8 @@ def task_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "revisions_left": services.revisions_left(task),
             "latest_revision": task.revision_requests.first() if task.revision_count else None,
             "history": history,
+            "dispute": dispute,
+            "is_arbiter": payments.is_arbiter(wallet),
             "pay_action": payments.next_action(task, wallet),
             "pay_mode": payments.effective_mode(payments.get_escrow(task)),
             "candidates_url": reverse("projects:task_candidates_json", kwargs={"pk": task.pk}),
@@ -348,10 +362,11 @@ def board(request: HttpRequest) -> HttpResponse:
     by_status = {key: [] for key, _, _ in BOARD_COLUMNS}
     by_status["open"] = open_tasks
     for t in mine:
-        if t.status in by_status:
-            by_status[t.status].append(t)
+        column = BOARD_COLUMN_OF.get(t.status)
+        if column and column != "open":
+            by_status[column].append(t)
     columns = [{"key": key, "label": label, "hint": hint, "tasks": by_status[key]} for key, label, hint in BOARD_COLUMNS]
-    earned = sum((t.price for t in by_status["paid"]), Decimal("0"))
+    earned = sum((t.price for t in by_status["paid"] if t.status == Task.Status.PAID), Decimal("0"))
     return render(
         request,
         "projects/board.html",
@@ -389,6 +404,7 @@ def my_projects(request: HttpRequest) -> HttpResponse:
         tasks = list(project.tasks.all())
         project.to_choose = sum(1 for t in tasks if t.is_open and t.pending_count)
         project.to_validate = sum(1 for t in tasks if t.status == Task.Status.DELIVERED)
+        project.disputed = sum(1 for t in tasks if t.status == Task.Status.DISPUTED)
         project.pending_apps = sum(t.pending_count for t in tasks)
         project.attention = bool(project.to_choose or project.to_validate)
         kpis["to_choose"] += project.to_choose
@@ -398,6 +414,51 @@ def my_projects(request: HttpRequest) -> HttpResponse:
             continue
         projects.append(project)
     return render(request, "projects/my_projects.html", {"projects": projects, "tab": tab, "tabs": MY_TABS, "kpis": kpis})
+
+
+@wallet_required
+def disputes(request: HttpRequest) -> HttpResponse:
+    """`/litiges/` — the arbiter's desk: every disputed task (newest first) with its resolution form, then the
+    resolved ones. 403 for any other wallet (the rule is payments.services.is_arbiter; nothing here decides)."""
+    wallet = get_wallet(request)
+    if not payments.is_arbiter(wallet):
+        logger.info("disputes page refused wallet=%s", wallet.stellar_address)
+        return render(request, "403.html", {"reason": "Only the arbiter wallet can open the disputes desk."}, status=403)
+    rows = []
+    disputes_qs = (
+        Dispute.objects.select_related("task__project__company", "task__assigned_to", "opened_by")
+        .filter(task__status__in=(Task.Status.DISPUTED, Task.Status.RESOLVED))
+        .order_by("-created_at", "-pk")
+    )
+    for dispute in disputes_qs:
+        task = dispute.task
+        escrow = payments.get_escrow(task)
+        action = payments.next_action(task, wallet)
+        rows.append(
+            {
+                "dispute": dispute,
+                "task": task,
+                "project": task.project,
+                "escrow": escrow,
+                "amount": escrow.amount if escrow is not None else task.price,
+                "links": escrow.explorer_links() if escrow is not None else [],
+                "history": services.delivery_history(task, source_visible=False),
+                "by_company": dispute.opened_by_id == task.project.company_id,
+                "open": task.status == Task.Status.DISPUTED,
+                "action": action if action and action["mine"] and action["step"] == "resolve" else None,
+                "last_error": escrow.last_error if escrow is not None else "",
+            }
+        )
+    for row in rows:
+        for h in row["history"]:
+            h["explorer_url"] = stellar.explorer_tx_url(h["tx_hash"]) if h.get("tx_hash") else ""
+    open_rows = [r for r in rows if r["open"]]
+    closed_rows = [r for r in rows if not r["open"]]
+    return render(
+        request,
+        "projects/disputes.html",
+        {"open_rows": open_rows, "closed_rows": closed_rows, "wallet": wallet, "arbiter_address": payments.resolver_address()},
+    )
 
 
 # --- JSON -------------------------------------------------------------------------

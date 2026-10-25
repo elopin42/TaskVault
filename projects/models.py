@@ -1,12 +1,15 @@
-"""Project → Task → Application (+ Rating, Delivery, RevisionRequest): the task-board domain.
+"""Project → Task → Application (+ Rating, Delivery, RevisionRequest, Dispute): the task-board domain.
 
 A company splits a Project into fixed-price Tasks; freelances apply to open tasks; the
 company picks one freelance per task; the chosen one delivers; the company validates and
 rates — or sends the delivery back for changes (at most LOWBID_MAX_REVISIONS times, before the
-Rating). Every (re)delivery is a Delivery row and every change request a RevisionRequest row, so the
-task's history is readable; Task itself holds the LATEST delivery. The payments app attaches one
-Escrow row to each Task (one Trustless Work escrow per task, or one direct payment) — nothing
-Stellar-related is stored here except the tx hash a Delivery was declared with.
+Rating) — or either party opens a dispute (escrow mode: the company while the delivery is
+unrated, the freelance once the review window is over) that the arbiter wallet settles with a split
+of the locked funds. Every (re)delivery is a Delivery row, every change request a RevisionRequest
+row and the dispute a Dispute row (one per task), so the task's history is readable; Task itself
+holds the LATEST delivery. The payments app attaches one Escrow row to each Task (one Trustless
+Work escrow per task, or one direct payment) — nothing Stellar-related is stored here except the
+tx hash a Delivery was declared with.
 """
 
 from decimal import Decimal
@@ -21,8 +24,24 @@ ZERO = Decimal("0")
 PROJECT_STATUS_LABELS = {"draft": "Draft", "funded": "Funded", "closed": "Closed"}
 PROJECT_STATUS_BADGES = {"draft": "ui-badge-neutral", "funded": "ui-badge-ok", "closed": "ui-badge-brand"}
 
-STATUS_LABELS = {"open": "Open", "taken": "Taken", "delivered": "Delivered", "paid": "Paid"}
-STATUS_BADGES = {"open": "ui-badge-info", "taken": "ui-badge-brand", "delivered": "ui-badge-attn", "paid": "ui-badge-ok"}
+STATUS_LABELS = {
+    "open": "Open",
+    "taken": "Taken",
+    "delivered": "Delivered",
+    "paid": "Paid",
+    "disputed": "Disputed",
+    "resolved": "Resolved",
+}
+STATUS_BADGES = {
+    "open": "ui-badge-info",
+    "taken": "ui-badge-brand",
+    "delivered": "ui-badge-attn",
+    "paid": "ui-badge-ok",
+    "disputed": "ui-badge-danger",
+    "resolved": "ui-badge-brand",
+}
+# A task is settled when its money has left the escrow for good: paid to the freelance, or split by the arbiter.
+SETTLED_STATUSES = ("paid", "resolved")
 
 APPLICATION_LABELS = {"pending": "Pending", "chosen": "Chosen", "rejected": "Not selected"}
 APPLICATION_BADGES = {"pending": "ui-badge-neutral", "chosen": "ui-badge-ok", "rejected": "ui-badge-neutral"}
@@ -35,6 +54,7 @@ class ProjectQuerySet(models.QuerySet):
             total=Coalesce(Sum("tasks__price"), ZERO, output_field=models.DecimalField(max_digits=18, decimal_places=7)),
             tasks_total=Count("tasks"),
             paid_total=Count("tasks", filter=Q(tasks__status=Task.Status.PAID)),
+            resolved_total=Count("tasks", filter=Q(tasks__status=Task.Status.RESOLVED)),
             open_total=Count("tasks", filter=Q(tasks__status=Task.Status.OPEN)),
         )
 
@@ -46,7 +66,7 @@ class Project(models.Model):
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"  # no task funded / paid yet
         FUNDED = "funded", "Funded"  # every assigned task holds funds (escrow) / a first payment was made (direct)
-        CLOSED = "closed", "Closed"  # every task paid
+        CLOSED = "closed", "Closed"  # every task paid or resolved by the arbiter
 
     company = models.ForeignKey("accounts.WalletUser", on_delete=models.PROTECT, related_name="projects")
     title = models.CharField(max_length=120)
@@ -87,6 +107,18 @@ class Project(models.Model):
         return self.tasks.filter(status=Task.Status.PAID).count()
 
     @property
+    def resolved_count(self) -> int:
+        cached = getattr(self, "resolved_total", None)
+        if cached is not None:
+            return cached
+        return self.tasks.filter(status=Task.Status.RESOLVED).count()
+
+    @property
+    def settled_count(self) -> int:
+        """Tasks whose money left the escrow: paid + resolved by the arbiter (what closes a project)."""
+        return self.paid_count + self.resolved_count
+
+    @property
     def open_count(self) -> int:
         cached = getattr(self, "open_total", None)
         if cached is not None:
@@ -96,7 +128,7 @@ class Project(models.Model):
     @property
     def progress_pct(self) -> int:
         total = self.tasks_count
-        return int(round(100 * self.paid_count / total)) if total else 0
+        return int(round(100 * self.settled_count / total)) if total else 0
 
     @property
     def status_label(self) -> str:
@@ -120,6 +152,11 @@ class Task(models.Model):
         TAKEN = "taken", "Taken"
         DELIVERED = "delivered", "Delivered"
         PAID = "paid", "Paid"
+        # Escrow mode only: a party opened a Trustless Work dispute (projects.services.mark_disputed, called by
+        # payments once the dispute-escrow transaction is confirmed); the funds stay locked.
+        DISPUTED = "disputed", "Disputed"
+        # The arbiter split the locked funds (projects.services.mark_resolved, the ONLY gate): terminal, like `paid`.
+        RESOLVED = "resolved", "Resolved"
 
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tasks")
     title = models.CharField(max_length=120)
@@ -142,6 +179,8 @@ class Task(models.Model):
     # projects.services.review_deadline — only makes sense while the task is `delivered`).
     delivered_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    # Set by projects.services.mark_resolved once the arbiter's resolve-dispute transaction is confirmed.
+    resolved_at = models.DateTimeField(null=True, blank=True)
     # Change requests made by the company so far (projects.services.request_changes, max LOWBID_MAX_REVISIONS).
     revision_count = models.PositiveSmallIntegerField(default=0)
     position = models.PositiveSmallIntegerField(default=0)
@@ -165,6 +204,10 @@ class Task(models.Model):
     @property
     def is_open(self) -> bool:
         return self.status == self.Status.OPEN
+
+    @property
+    def is_settled(self) -> bool:
+        return self.status in SETTLED_STATUSES
 
     @property
     def company_id(self) -> int:
@@ -264,6 +307,38 @@ class RevisionRequest(models.Model):
 
     def __str__(self) -> str:
         return f"Change request #{self.pk} on task #{self.task_id}"
+
+
+class Dispute(models.Model):
+    """One dispute per task (escrow mode). `opened_by` is the party whose Freighter signature sent the
+    Trustless Work dispute-escrow transaction (payments.services.confirm_dispute → projects.services
+    .mark_disputed); `reason` lives here only (v1 has no reason field on chain). `freelance_pct` and
+    `resolved_at` are filled by projects.services.mark_resolved once the arbiter's resolve-dispute
+    transaction is confirmed: the freelance received that percentage of the escrow balance, the company
+    the rest. The transaction hashes are on the payments.Escrow row."""
+
+    task = models.OneToOneField(Task, on_delete=models.CASCADE, related_name="dispute")
+    opened_by = models.ForeignKey("accounts.WalletUser", on_delete=models.PROTECT, related_name="disputes_opened")
+    reason = models.CharField(max_length=280, blank=True)
+    freelance_pct = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(0), MaxValueValidator(100)]
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self) -> str:
+        return f"Dispute on task #{self.task_id}"
+
+    @property
+    def is_resolved(self) -> bool:
+        return self.resolved_at is not None
+
+    @property
+    def company_pct(self) -> int | None:
+        return None if self.freelance_pct is None else 100 - self.freelance_pct
 
 
 class Rating(models.Model):

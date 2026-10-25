@@ -425,6 +425,17 @@ async function main() {
       await shot(pa, "05-tache-livree-freelance");
     });
 
+    // 4a -----------------------------------------------------------------------------------------
+    await step("4a. direct mode: the delivered task warns 'unprotected payment' (no dispute); /litiges/ is 403 for the company", async () => {
+      const warning = pa.locator("#escrow-panel [data-direct-warning]");
+      assert(await warning.count() === 1, "A's delivered task shows [data-direct-warning]");
+      assert(/unprotected payment/.test(await warning.innerText()), "the warning says unprotected payment");
+      assert(await pa.locator("[data-open-dispute]").count() === 0, "no dispute control in direct mode");
+      const resp = await cp.goto("/litiges/");
+      assert(resp && resp.status() === 403, `company gets 403 on /litiges/ (got ${resp && resp.status()})`);
+      assert(await cp.locator(".lb-nav a[href='/litiges/']").count() === 0, "no Disputes nav link for the company");
+    });
+
     // 4b -----------------------------------------------------------------------------------------
     await step("4b. review window: company requests changes, A sees the request + history and delivers again, max revisions enforced (409)", async () => {
       await cp.goto(`/taches/${taskIds[0]}/`);

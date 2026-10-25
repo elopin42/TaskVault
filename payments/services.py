@@ -34,8 +34,25 @@ State table — Escrow.status (payments) and Task.status (projects):
     approve     company    delivered → approved       delivered            TW approve-milestone → approve_tx_hash
     release     company    approved → released        delivered → paid     TW release-funds → release_tx_hash, released_at;
                                                                            confirm calls projects.services.mark_paid(task)
+    dispute     a party    delivered|approved         delivered → disputed TW dispute-escrow (signer = the session wallet, which
+                (company   → disputed                                      must be payer_address or payee_address; no reason field
+                or                                                         in v1, the reason stays in the DB) → dispute_tx_hash,
+                freelance)                                                 disputed_at; confirm calls projects.services
+                                                                           .mark_disputed(task, wallet, reason) → Dispute row.
+                                                                           Gate = projects.services.can_dispute: the company while
+                                                                           unrated, the freelance once the review window is over.
+                                                                           Funds stay locked (holds_funds); approve / release /
+                                                                           request_changes / validate are now wrong_state
+    resolve     arbiter    disputed → resolved        disputed → resolved  TW resolve-dispute (disputeResolver = resolver_address =
+                                                                           the session wallet; distributions = balance read with
+                                                                           get-escrow validateOnChain=true (fallback: amount) split
+                                                                           freelance_pct % to payee_address, the rest to
+                                                                           payer_address, zero entries dropped) → resolve_tx_hash,
+                                                                           resolved_at; confirm calls projects.services
+                                                                           .mark_resolved(task, pct) (the ONLY gate to `resolved`);
+                                                                           project closes when every task is paid or resolved
 
-    DIRECT mode (fallback: one `payment` op; "funded" and "approved" do not exist)
+    DIRECT mode (fallback: one `payment` op; "funded" and "approved" do not exist; no dispute step: nothing is locked)
     deliver     freelance  created → delivered        taken → delivered    NO transaction: projects.services.deliver(link, hash,
                                                                            source_link); delivery_note = build_evidence(link, hash)
                                                                            (database only — nothing on chain)
@@ -50,7 +67,16 @@ State table — Escrow.status (payments) and Task.status (projects):
 
 The validate view saves the Rating FIRST (DB), then the page chains the signatures (approve →
 release, or direct_pay) from the `next` it gets back; stopping half-way is fine, the panel
-shows the remaining step ("Release the funds"). `mark_paid` is the ONLY way a task becomes paid.
+shows the remaining step ("Release the funds"). `mark_paid` is the ONLY way a task becomes paid,
+`mark_resolved` the ONLY way it becomes resolved.
+
+Disputes: escrow mode only (direct mode answers `wrong_mode`: nothing is locked, so there is nothing
+to arbitrate — the panel shows `[data-direct-warning]` instead). The `dispute` step is a `who="party"`
+entry: `_gate` accepts the company or the chosen freelance, then `projects.services.can_dispute`
+decides (company: delivered + unrated; freelance: review window over). The `resolve` step is
+`who="arbiter"`: the session wallet must be `LOWBID_DISPUTE_RESOLVER` (`is_arbiter`) AND the row's
+`resolver_address` (the disputeResolver fixed at deploy). Every address in the resolve body comes from
+the Escrow row, never from the request.
 
 Review window: the company has LOWBID_REVIEW_DAYS days after a delivery (projects.services
 .review_deadline, computed at read time) to validate or request changes. A change request sends the
@@ -68,7 +94,7 @@ failure never flips the status (the user retries); the vendor/Horizon message is
 """
 
 import logging
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from functools import wraps
 
 from django.conf import settings
@@ -87,7 +113,9 @@ logger = logging.getLogger(__name__)
 
 EVIDENCE_MAX = 280
 PENDING_MESSAGE = "Transaction sent, confirmation pending — check the explorer."
+DIRECT_NO_DISPUTE = "Direct mode: nothing is locked, so there is no dispute."
 ZERO = Decimal("0")
+STROOP = Decimal("0.0000001")
 
 S = Escrow.Status
 M = Escrow.Mode
@@ -165,6 +193,29 @@ FLOW = {
             "hint": "The escrow pays the amount to the freelancer (minus fees).",
             "waiting": "Waiting for the company to release the funds.",
         },
+        {
+            # An alternative to validate / release, never "the next step" (`alt`): the panel offers it beside
+            # "Request changes" when projects.services.can_dispute says so.
+            "step": "dispute",
+            "who": "party",
+            "allowed": (S.DELIVERED, S.APPROVED),
+            "task": (T.DELIVERED,),
+            "alt": True,
+            "label": "Open a dispute",
+            "icon": "fa-gavel",
+            "hint": "Freezes the escrow on Stellar until the arbiter splits the funds (one Freighter signature).",
+            "waiting": "Waiting for the arbiter's decision.",
+        },
+        {
+            "step": "resolve",
+            "who": "arbiter",
+            "allowed": (S.DISPUTED,),
+            "task": (T.DISPUTED,),
+            "label": "Resolve the dispute",
+            "icon": "fa-scale-balanced",
+            "hint": "The arbiter splits the locked funds between the freelancer and the company (one Freighter signature).",
+            "waiting": "Waiting for the arbiter's decision.",
+        },
     ],
     M.DIRECT: [
         {
@@ -217,10 +268,19 @@ STEPPER = {
         (S.PAID, "Paid"),
     ],
 }
+# The dispute branch of the escrow stepper (shown instead of the normal path once a dispute is open).
+STEPPER_DISPUTE = [
+    (S.DEPLOYED, "Escrow created"),
+    (S.FUNDED, "Funds locked"),
+    (S.DELIVERED, "Delivered"),
+    (S.DISPUTED, "In dispute"),
+    (S.RESOLVED, "Resolved"),
+]
 STATUS_ORDER = {
     M.ESCROW: [S.CREATED, S.DEPLOYED, S.FUNDED, S.DELIVERED, S.APPROVED, S.RELEASED],
     M.DIRECT: [S.CREATED, S.DELIVERED, S.PAID],
 }
+STATUS_ORDER_DISPUTE = [S.CREATED, S.DEPLOYED, S.FUNDED, S.DELIVERED, S.APPROVED, S.DISPUTED, S.RESOLVED]
 HASH_FIELD = {
     "deploy": "deploy_tx_hash",
     "fund": "fund_tx_hash",
@@ -228,9 +288,16 @@ HASH_FIELD = {
     "approve": "approve_tx_hash",
     "release": "release_tx_hash",
     "direct_pay": "payment_tx_hash",
+    "dispute": "dispute_tx_hash",
+    "resolve": "resolve_tx_hash",
 }
 STEPS = tuple(HASH_FIELD)
 FUNDING_STEPS = ("deploy", "fund")
+DISPUTE_STEPS = ("dispute", "resolve")  # escrow mode only: direct mode answers wrong_mode (DIRECT_NO_DISPUTE)
+# Steps whose confirm reads the send body too (the prepare `extra` travels back with the signed XDR).
+STEPS_WITH_DATA = ("deliver", "dispute", "resolve")
+# `who` values of FLOW that are not a single role: "party" = the company or the chosen freelance.
+PARTY_ROLES = ("company", "freelance")
 
 
 def _flow_entry(mode: str, step: str) -> dict | None:
@@ -243,15 +310,41 @@ def _flow_entry(mode: str, step: str) -> dict | None:
 # --- helpers ---------------------------------------------------------------------
 
 
+def resolver_address() -> str:
+    """The effective arbiter wallet: LOWBID_DISPUTE_RESOLVER, else LOWBID_PLATFORM_ADDRESS, else "" (settings
+    already default the first to the second; this also covers tests that override only the platform)."""
+    return (
+        (getattr(settings, "LOWBID_DISPUTE_RESOLVER", "") or "").strip()
+        or (getattr(settings, "LOWBID_PLATFORM_ADDRESS", "") or "").strip()
+    )
+
+
+def is_arbiter(wallet) -> bool:
+    """True when this wallet IS the configured arbiter (False when nothing is configured)."""
+    address = resolver_address()
+    return bool(address) and wallet is not None and wallet.stellar_address == address
+
+
 def viewer_role(task: Task, wallet) -> str:
-    """'company' | 'freelance' | 'other' | 'anonymous' for the panel and the gates."""
+    """'company' | 'freelance' | 'arbiter' | 'other' | 'anonymous' for the panel and the gates. A party
+    keeps its party role even when it is also the arbiter wallet (Trustless Work refuses the
+    disputeResolver as dispute signer anyway, and such a wallet could not arbitrate its own task)."""
     if wallet is None:
         return "anonymous"
     if task.project.company_id == wallet.pk:
         return "company"
     if task.assigned_to_id and task.assigned_to_id == wallet.pk:
         return "freelance"
+    if is_arbiter(wallet):
+        return "arbiter"
     return "other"
+
+
+def _role_matches(role: str, who: str) -> bool:
+    """Does this viewer role satisfy a FLOW entry's `who` ("company" / "freelance" / "party" / "arbiter")?"""
+    if who == "party":
+        return role in PARTY_ROLES
+    return role == who
 
 
 def get_escrow(task: Task) -> Escrow | None:
@@ -263,7 +356,7 @@ def is_rated(task: Task) -> bool:
 
 
 def _require_chosen(task: Task) -> None:
-    if task.status not in (T.TAKEN, T.DELIVERED, T.PAID) or task.assigned_to_id is None:
+    if task.status not in (T.TAKEN, T.DELIVERED, T.PAID, T.DISPUTED, T.RESOLVED) or task.assigned_to_id is None:
         raise PaymentError("not_chosen", "Payment is only possible once a freelancer has been chosen for the task.")
 
 
@@ -274,6 +367,20 @@ def _platform_address(task: Task) -> str:
         logger.warning(
             "payments: LOWBID_PLATFORM_ADDRESS is empty — using the COMPANY wallet as disputeResolver AND platformAddress "
             "task=%s; Trustless Work may refuse identical roles, set LOWBID_PLATFORM_ADDRESS in .env",
+            task.pk,
+        )
+    return address
+
+
+def _resolver_address(task: Task) -> str:
+    """The arbiter stored on the row at ensure_escrow: LOWBID_DISPUTE_RESOLVER (default = the platform
+    address), falling back to the company wallet with the same warning pattern as `_platform_address`."""
+    address = resolver_address()
+    if not address:
+        address = task.project.company.stellar_address
+        logger.warning(
+            "payments: LOWBID_DISPUTE_RESOLVER and LOWBID_PLATFORM_ADDRESS are empty — using the COMPANY wallet as "
+            "disputeResolver task=%s; no dispute can be arbitrated, set LOWBID_DISPUTE_RESOLVER in .env",
             task.pk,
         )
     return address
@@ -301,6 +408,7 @@ def ensure_escrow(task: Task) -> Escrow:
             "payer_address": task.project.company.stellar_address,
             "payee_address": task.assigned_to.stellar_address,
             "platform_address": _platform_address(task) if mode == M.ESCROW else "",
+            "resolver_address": _resolver_address(task) if mode == M.ESCROW else "",
             "engagement_id": f"taskvault-task-{task.pk}",
         },
     )
@@ -310,7 +418,8 @@ def ensure_escrow(task: Task) -> Escrow:
         logger.warning("payments: mode re-frozen task=%s %s -> %s", task.pk, escrow.mode, mode)
         escrow.mode = mode
         escrow.platform_address = _platform_address(task) if mode == M.ESCROW else ""
-        escrow.save(update_fields=["mode", "platform_address", "updated_at"])
+        escrow.resolver_address = _resolver_address(task) if mode == M.ESCROW else ""
+        escrow.save(update_fields=["mode", "platform_address", "resolver_address", "updated_at"])
     return escrow
 
 
@@ -321,13 +430,19 @@ def _gate(task: Task, wallet, step: str) -> tuple[Escrow, dict]:
         raise PaymentError("unknown_step", "Unknown payment step.")
     entry = _flow_entry(escrow.mode, step)
     if entry is None:
+        if escrow.mode == M.DIRECT and step in DISPUTE_STEPS:
+            raise PaymentError("wrong_mode", DIRECT_NO_DISPUTE)
         label = "direct" if escrow.mode == M.DIRECT else "escrow"
         raise PaymentError("wrong_mode", f"This step does not exist in {label} mode.")
     role = viewer_role(task, wallet)
-    if role != entry["who"]:
+    if not _role_matches(role, entry["who"]):
         if entry["who"] == "freelance":  # same code as projects.services.deliver for the same refusal
             raise PaymentError("not_assigned", "Only the chosen freelancer can deliver this task.")
-        who = "the company" if entry["who"] == "company" else "the chosen freelancer"
+        who = {
+            "company": "the company",
+            "party": "the company or the chosen freelancer",
+            "arbiter": "the arbiter wallet",
+        }.get(entry["who"], "the chosen freelancer")
         raise PaymentError("forbidden", f"Only {who} can do this.")
     if escrow.status not in entry["allowed"] or task.status not in entry["task"]:
         raise PaymentError(
@@ -395,10 +510,18 @@ def _begin(task: Task, wallet, step: str, signed_xdr: str) -> tuple[Escrow, str 
     escrow = ensure_escrow(task)
     tx_hash = _xdr_hash(signed_xdr)
     entry = _flow_entry(escrow.mode, step)
-    if entry is not None and viewer_role(task, wallet) == entry["who"] and _already_done(escrow, task, step, tx_hash):
+    if entry is not None and _role_matches(viewer_role(task, wallet), entry["who"]) and _already_done(escrow, task, step, tx_hash):
         return escrow, tx_hash, _result(escrow, step, tx_hash, "Step already confirmed.")
     escrow, _ = _gate(task, wallet, step)
     return escrow, tx_hash, None
+
+
+def _hash_known(escrow: Escrow, step: str, tx_hash: str | None) -> bool:
+    """A signed XDR whose hash is already stored for ANOTHER step of this escrow (e.g. the dispute
+    transaction replayed as a resolve): never accept it as this step."""
+    if not tx_hash:
+        return False
+    return any(getattr(escrow, field) == tx_hash for s, field in HASH_FIELD.items() if s != step)
 
 
 def _tw_send(task: Task, escrow: Escrow, step: str, signed_xdr: str) -> tuple[str, dict]:
@@ -443,10 +566,11 @@ def _log_confirm(task: Task, step: str, wallet, tx_hash: str | None, extra: str 
 
 def sync_project_status(project: Project) -> Project:
     """draft ↔ funded. Funded when every assigned (non-open) task holds its money on chain
-    (escrow mode: funded / delivered / approved / released) — or, in direct mode, from the first
-    payment, since nothing is locked before. A funded project goes back to draft when a newly
-    chosen task has no locked funds yet (and no direct payment was made), so "Funded" never lies.
-    Closing (every task paid) is projects.services.mark_paid's job; a closed project is left alone."""
+    (escrow mode: funded / delivered / approved / released, and disputed / resolved — the money is
+    locked or already split) — or, in direct mode, from the first payment, since nothing is locked
+    before. A funded project goes back to draft when a newly chosen task has no locked funds yet (and
+    no direct payment was made), so "Funded" never lies. Closing (every task paid or resolved) is
+    projects.services.mark_paid's / mark_resolved's job; a closed project is left alone."""
     locked = Project.objects.select_for_update().get(pk=project.pk)
     if locked.status == Project.Status.CLOSED:
         return locked
@@ -479,7 +603,7 @@ def prepare_deploy(task: Task, wallet, data: dict | None = None) -> dict:
         service_provider=escrow.payee_address,
         receiver=escrow.payee_address,
         release_signer=escrow.payer_address,
-        dispute_resolver=escrow.platform_address,
+        dispute_resolver=escrow.resolver_address or escrow.platform_address,
         platform_address=escrow.platform_address,
         platform_fee=settings.LOWBID_PLATFORM_FEE,
         milestone_description=f"Delivery of task #{task.pk} — {task.title}"[:200],
@@ -704,6 +828,186 @@ def confirm_release(task: Task, wallet, signed_xdr: str) -> dict:
     return _result(escrow, "release", tx_hash, "Funds released to the freelancer. Task paid.")
 
 
+# --- escrow mode: dispute (a party) / resolve (the arbiter) ------------------------------------
+
+
+def can_dispute(task: Task, wallet) -> tuple[bool, str]:
+    """The panel's gate for "Open a dispute": escrow mode only (direct mode: nothing is locked), then
+    projects.services.can_dispute (role + state). Returns (allowed, why not)."""
+    if effective_mode(get_escrow(task)) != M.ESCROW:
+        return False, DIRECT_NO_DISPUTE
+    return projects.can_dispute(task, wallet)
+
+
+def _dispute_gate(task: Task, wallet, escrow: Escrow) -> None:
+    """After _gate (role in the parties, escrow delivered|approved, task delivered): the business rule.
+    A stranger is `forbidden` (already refused by _gate); a party at the wrong moment is `wrong_state`."""
+    allowed, why = projects.can_dispute(task, wallet)
+    if allowed:
+        return
+    role = viewer_role(task, wallet)
+    raise PaymentError("forbidden" if role not in PARTY_ROLES else "wrong_state", why)
+
+
+def _reason(data: dict | None) -> str:
+    try:
+        return projects.clean_reason((data or {}).get("reason"))
+    except projects.ProjectError as exc:
+        raise _project_error(exc) from None
+
+
+def prepare_dispute(task: Task, wallet, data: dict | None = None) -> dict:
+    """TW dispute-escrow XDR signed by the session wallet (the company or the chosen freelance — the
+    signer is the row's payer or payee address, never a body field). The reason (1–280 chars) is checked
+    here and handed back in `extra` so the send body carries it."""
+    escrow, _ = _gate(task, wallet, "dispute")
+    _dispute_gate(task, wallet, escrow)
+    reason = _reason(data)
+    signer = escrow.payer_address if viewer_role(task, wallet) == "company" else escrow.payee_address
+    if wallet.stellar_address != signer:  # defensive: the row and the session must agree on the address
+        raise PaymentError("forbidden", "Only the company or the chosen freelancer can do this.")
+    env = tw.dispute_escrow(contract_id=escrow.contract_id, signer=signer)
+    try:
+        return _prepared(_unsigned_xdr(env), extra={"reason": reason})
+    except PaymentError as exc:
+        _record_error(escrow, exc.message)
+        raise
+
+
+@_records_errors
+def confirm_dispute(task: Task, wallet, signed_xdr: str, data: dict | None = None) -> dict:
+    with transaction.atomic():
+        escrow, tx_hash, done = _begin(task, wallet, "dispute", signed_xdr)
+        if done:
+            return done
+        _dispute_gate(task, wallet, escrow)
+        if _hash_known(escrow, "dispute", tx_hash):
+            logger.warning("payments: replayed xdr refused as dispute task=%s hash=%s", task.pk, tx_hash)
+            raise PaymentError("tampered", "This signed transaction was already submitted for another step.")
+        reason = _reason(data)
+        tx_hash, _ = _tw_send(task, escrow, "dispute", signed_xdr)
+        try:
+            projects.mark_disputed(task, wallet, reason)
+        except projects.ProjectError as exc:
+            raise _project_error(exc) from None
+        escrow.dispute_tx_hash = tx_hash
+        escrow.status = S.DISPUTED
+        escrow.disputed_at = timezone.now()
+        escrow.last_error = ""
+        escrow.save(update_fields=["dispute_tx_hash", "status", "disputed_at", "last_error", "updated_at"])
+    _log_confirm(task, "dispute", wallet, tx_hash, f" by={viewer_role(task, wallet)}")
+    return _result(escrow, "dispute", tx_hash, "Dispute opened on Stellar. The arbiter decides the split.")
+
+
+def _freelance_pct(data: dict | None) -> int:
+    raw = (data or {}).get("freelance_pct")
+    try:
+        pct = int(str(raw).strip())
+    except (TypeError, ValueError):
+        raise PaymentError("invalid", "The freelancer's share must be a whole percentage (0–100).") from None
+    if pct < 0 or pct > 100:
+        raise PaymentError("invalid", "The freelancer's share must be between 0 and 100 %.")
+    return pct
+
+
+def _escrow_balance(escrow: Escrow) -> Decimal:
+    """The escrow's current token balance, read on chain (get-escrow validateOnChain=true) — the sum the
+    distributions must match exactly. Falls back to `Escrow.amount` (warning) when the read fails or
+    carries no usable balance."""
+    env = tw.get_escrow(contract_id=escrow.contract_id, signer=escrow.resolver_address, validate_on_chain=True)
+    data = env.get("data") or {}
+    if isinstance(data.get("result"), list) and data["result"] and isinstance(data["result"][0], dict):
+        data = data["result"][0]  # some indexer reads answer a one-item list
+    raw = data.get("balance")
+    if raw is None and isinstance(data.get("escrow"), dict):
+        raw = data["escrow"].get("balance")
+    balance = None
+    if env.get("ok") and raw not in (None, ""):
+        try:
+            balance = Decimal(str(raw))
+        except (InvalidOperation, ValueError):
+            balance = None  # unusable value: logged below, then the stored amount
+    if balance is not None and balance.is_finite() and balance > 0:
+        return balance
+    logger.warning(
+        "payments: escrow balance unavailable, using the stored amount task=%s contract=%s error=%s balance=%r",
+        escrow.task_id, escrow.contract_id, env.get("error"), raw,
+    )
+    return escrow.amount
+
+
+def split_amounts(balance: Decimal, freelance_pct: int) -> tuple[Decimal, Decimal]:
+    """(freelance_amount, company_amount): `freelance_pct` % of the balance rounded DOWN to a stroop, the
+    company gets the exact remainder — the two always sum to the balance."""
+    freelance = (Decimal(balance) * Decimal(freelance_pct) / Decimal(100)).quantize(STROOP, rounding=ROUND_DOWN)
+    return freelance, Decimal(balance) - freelance
+
+
+def _distributions(escrow: Escrow, balance: Decimal, freelance_pct: int) -> list[dict]:
+    """Only the entries > 0; addresses from the Escrow row (payee = freelance, payer = company), which are
+    distinct by construction (a company cannot be chosen on its own task)."""
+    freelance_amount, company_amount = split_amounts(balance, freelance_pct)
+    rows = []
+    if freelance_amount > 0:
+        rows.append({"address": escrow.payee_address, "amount": freelance_amount})
+    if company_amount > 0:
+        rows.append({"address": escrow.payer_address, "amount": company_amount})
+    return rows
+
+
+def _resolve_gate(task: Task, wallet, escrow: Escrow) -> None:
+    """After _gate (role arbiter, escrow + task disputed): the session wallet must be the disputeResolver
+    fixed at deploy (the row's resolver_address), else the contract would refuse the signature anyway."""
+    if not escrow.resolver_address or wallet.stellar_address != escrow.resolver_address:
+        raise PaymentError("forbidden", "Only the arbiter wallet fixed when this escrow was created can resolve it.")
+
+
+def prepare_resolve(task: Task, wallet, data: dict | None = None) -> dict:
+    """TW resolve-dispute XDR signed by the arbiter: `freelance_pct` (0–100) of the on-chain balance to the
+    freelance, the rest to the company. The pct comes back in `extra` for the send body."""
+    escrow, _ = _gate(task, wallet, "resolve")
+    _resolve_gate(task, wallet, escrow)
+    pct = _freelance_pct(data)
+    balance = _escrow_balance(escrow)
+    distributions = _distributions(escrow, balance, pct)
+    env = tw.resolve_dispute(
+        contract_id=escrow.contract_id, dispute_resolver=escrow.resolver_address, distributions=distributions
+    )
+    try:
+        return _prepared(_unsigned_xdr(env), extra={"freelance_pct": pct, "balance": projects.dec_str(balance)})
+    except PaymentError as exc:
+        _record_error(escrow, exc.message)
+        raise
+
+
+@_records_errors
+def confirm_resolve(task: Task, wallet, signed_xdr: str, data: dict | None = None) -> dict:
+    with transaction.atomic():
+        escrow, tx_hash, done = _begin(task, wallet, "resolve", signed_xdr)
+        if done:
+            return done
+        _resolve_gate(task, wallet, escrow)
+        if _hash_known(escrow, "resolve", tx_hash):
+            logger.warning("payments: replayed xdr refused as resolve task=%s hash=%s", task.pk, tx_hash)
+            raise PaymentError("tampered", "This signed transaction was already submitted for another step.")
+        pct = _freelance_pct(data)
+        tx_hash, _ = _tw_send(task, escrow, "resolve", signed_xdr)
+        try:
+            projects.mark_resolved(task, pct)
+        except projects.ProjectError as exc:
+            raise _project_error(exc) from None
+        escrow.resolve_tx_hash = tx_hash
+        escrow.status = S.RESOLVED
+        escrow.resolved_at = timezone.now()
+        escrow.last_error = ""
+        escrow.save(update_fields=["resolve_tx_hash", "status", "resolved_at", "last_error", "updated_at"])
+        sync_project_status(task.project)
+    _log_confirm(task, "resolve", wallet, tx_hash, f" freelance_pct={pct}")
+    return _result(
+        escrow, "resolve", tx_hash, f"Dispute resolved on Stellar: {pct}% to the freelancer, {100 - pct}% to the company."
+    )
+
+
 # --- direct mode: direct_pay -------------------------------------------------------------
 
 
@@ -882,6 +1186,8 @@ PREPARE = {
     "approve": prepare_approve,
     "release": prepare_release,
     "direct_pay": prepare_direct_pay,
+    "dispute": prepare_dispute,
+    "resolve": prepare_resolve,
 }
 CONFIRM = {
     "deploy": confirm_deploy,
@@ -890,6 +1196,8 @@ CONFIRM = {
     "approve": confirm_approve,
     "release": confirm_release,
     "direct_pay": confirm_direct_pay,
+    "dispute": confirm_dispute,
+    "resolve": confirm_resolve,
 }
 
 
@@ -904,8 +1212,8 @@ def confirm(task: Task, wallet, step: str, signed_xdr: str, data: dict | None = 
         raise PaymentError("unknown_step", "Unknown payment step.")
     if not signed_xdr:
         raise PaymentError("tampered", "Signed transaction missing.")
-    if step == "deliver":
-        return confirm_deliver(task, wallet, signed_xdr, data or {})
+    if step in STEPS_WITH_DATA:
+        return CONFIRM[step](task, wallet, signed_xdr, data or {})
     return CONFIRM[step](task, wallet, signed_xdr)
 
 
@@ -923,6 +1231,10 @@ def display_status(task: Task, escrow: Escrow | None, mode: str) -> str:
     status = escrow.status if escrow is not None else S.CREATED
     if task.status == T.PAID:
         return S.PAID if mode == M.DIRECT else S.RELEASED
+    if task.status == T.RESOLVED:
+        return S.RESOLVED
+    if task.status == T.DISPUTED:
+        return S.DISPUTED
     if mode == M.DIRECT and status == S.CREATED and task.status == T.DELIVERED:
         return S.DELIVERED
     return status
@@ -944,7 +1256,7 @@ def _action_dict(task: Task, entry: dict, role: str, status: str) -> dict:
         "waiting": entry["waiting"],
         "evidence": bool(entry.get("evidence")),
         "no_tx": bool(entry.get("no_tx")),
-        "mine": role == entry["who"],
+        "mine": _role_matches(role, entry["who"]),
         "prepare_url": (
             reverse("payments:prepare", kwargs={"task_pk": task.pk, "step": step}) if step in STEPS else None
         ),
@@ -954,10 +1266,12 @@ def _action_dict(task: Task, entry: dict, role: str, status: str) -> dict:
 
 def next_action(task: Task, wallet) -> dict | None:
     """The pending step, as the panel / dashboard should show it to THIS viewer. None when the
-    task is open, or paid. Keys: step (a payment step, or "validate" for the rating form), who,
-    label, hint, icon, prepare_url (None for "validate"), mine (this wallet must act), waiting
-    (copy for everyone else), evidence (needs the delivery-link form), no_tx."""
-    if task.status in (T.OPEN, T.PAID) or task.assigned_to_id is None:
+    task is open, paid or resolved. Keys: step (a payment step, or "validate" for the rating form),
+    who, label, hint, icon, prepare_url (None for "validate"), mine (this wallet must act), waiting
+    (copy for everyone else), evidence (needs the delivery-link form), no_tx. A disputed task answers
+    `resolve` (mine for the arbiter, "Waiting for the arbiter's decision." for everyone else); the
+    `dispute` step itself is an alternative offered by the panel, never the next step."""
+    if task.status in (T.OPEN, T.PAID, T.RESOLVED) or task.assigned_to_id is None:
         return None
     escrow = get_escrow(task)
     mode = effective_mode(escrow)
@@ -968,16 +1282,31 @@ def next_action(task: Task, wallet) -> dict | None:
     rated = is_rated(task)
     candidates = [
         e for e in FLOW[mode]
-        if status in e["allowed"] and task.status in e["task"] and (not e.get("rated") or rated)
+        if status in e["allowed"] and task.status in e["task"] and (not e.get("rated") or rated) and not e.get("alt")
     ]
     if not candidates:
         return None
-    entry = next((e for e in candidates if e["who"] == role), candidates[0])
+    entry = next((e for e in candidates if _role_matches(role, e["who"])), candidates[0])
     return _action_dict(task, entry, role, status)
 
 
 def stepper(mode: str, status: str) -> list[dict]:
-    """[{label, state: done|current|todo}] for the panel's progress strip."""
+    """[{label, state: done|current|todo}] for the panel's progress strip. The normal path is unchanged
+    for a task that was never disputed; once the escrow is `disputed` / `resolved` the strip switches to
+    the dispute branch: … Delivered → In dispute (current while disputed) → Resolved."""
+    if mode == M.ESCROW and status in (S.DISPUTED, S.RESOLVED):
+        reached = STATUS_ORDER_DISPUTE.index(status)
+        steps = []
+        for milestone, label in STEPPER_DISPUTE:
+            idx = STATUS_ORDER_DISPUTE.index(milestone)
+            if idx < reached or status == S.RESOLVED:
+                state = "done"
+            elif idx == reached:
+                state = "current"
+            else:
+                state = "todo"
+            steps.append({"label": label, "state": state, "status": milestone})
+        return steps
     order = STATUS_ORDER[mode]
     reached = order.index(status) if status in order else -1
     steps = []

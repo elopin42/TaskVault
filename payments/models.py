@@ -1,4 +1,4 @@
-"""Escrow — one payment record per TASK, from "escrow created" to "funds released" / "paid".
+"""Escrow — one payment record per TASK, from "escrow created" to "funds released" / "paid" / "resolved".
 
 Why per task: Trustless Work v1 fixes the milestone receiver at deploy and freezes the escrow once
 it holds funds, so a project-wide escrow funded before the freelances are chosen could never pay
@@ -9,6 +9,10 @@ The row exists from the FIRST prepare call (deploy in escrow mode, deliver / dir
 mode) or from `on_task_validated`, so `mode` is frozen there via `payments.stellar.payment_mode()`.
 Hashes are written by `payments.services.confirm_<step>`; nothing in this module talks to the
 network. The state table for both modes lives in the docstring of `payments/services.py`.
+
+Dispute (escrow mode only): a party signs Trustless Work's dispute-escrow (`disputed`, funds stay
+locked), then the arbiter wallet (`resolver_address` = LOWBID_DISPUTE_RESOLVER, the contract's
+disputeResolver fixed at deploy) signs resolve-dispute with the split (`resolved`, terminal).
 """
 
 from django.db import models
@@ -23,6 +27,8 @@ STATUS_LABELS = {
     "approved": "Delivery validated",
     "released": "Funds released",
     "paid": "Paid",
+    "disputed": "In dispute",
+    "resolved": "Resolved by the arbiter",
     "failed": "Failed",
 }
 STATUS_BADGES = {
@@ -33,6 +39,8 @@ STATUS_BADGES = {
     "approved": "ui-badge-attn",
     "released": "ui-badge-ok",
     "paid": "ui-badge-ok",
+    "disputed": "ui-badge-danger",
+    "resolved": "ui-badge-brand",
     "failed": "ui-badge-danger",
 }
 
@@ -50,6 +58,8 @@ class Escrow(models.Model):
         APPROVED = "approved", "Delivery validated"
         RELEASED = "released", "Funds released"
         PAID = "paid", "Paid"  # direct mode terminal state
+        DISPUTED = "disputed", "In dispute"  # escrow mode: dispute-escrow confirmed, funds locked until the arbiter decides
+        RESOLVED = "resolved", "Resolved by the arbiter"  # escrow mode terminal state: resolve-dispute confirmed
         FAILED = "failed", "Failed"
 
     task = models.OneToOneField("projects.Task", on_delete=models.CASCADE, related_name="escrow")
@@ -58,6 +68,9 @@ class Escrow(models.Model):
     payer_address = models.CharField(max_length=56)
     payee_address = models.CharField(max_length=56)
     platform_address = models.CharField(max_length=56, blank=True)
+    # The arbiter wallet (Trustless Work `disputeResolver`, fixed at deploy): LOWBID_DISPUTE_RESOLVER, else the
+    # platform address, else the company (same fallback as platform_address). Signs resolve-dispute.
+    resolver_address = models.CharField(max_length=56, blank=True)
     # Trustless Work single-release contract (C…); empty in direct mode / before deploy.
     contract_id = models.CharField(max_length=64, blank=True, null=True)
     engagement_id = models.CharField(max_length=40, blank=True)
@@ -67,6 +80,8 @@ class Escrow(models.Model):
     approve_tx_hash = models.CharField(max_length=64, blank=True)
     release_tx_hash = models.CharField(max_length=64, blank=True)
     payment_tx_hash = models.CharField(max_length=64, blank=True)  # direct mode
+    dispute_tx_hash = models.CharField(max_length=64, blank=True)  # escrow mode: dispute-escrow signed by a party
+    resolve_tx_hash = models.CharField(max_length=64, blank=True)  # escrow mode: resolve-dispute signed by the arbiter
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.CREATED, db_index=True)
     # The milestone evidence as sent to Trustless Work (`newEvidence`, ≤ 280 chars): payments.services.build_evidence
     # (`sha256:<hash> <link>` / `git:<hash> <link>` / `<link>`); Task keeps the full link, hash and source link.
@@ -77,6 +92,8 @@ class Escrow(models.Model):
     funded_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
     released_at = models.DateTimeField(null=True, blank=True)
+    disputed_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -92,14 +109,26 @@ class Escrow(models.Model):
 
     @property
     def is_done(self) -> bool:
-        return self.status in (self.Status.RELEASED, self.Status.PAID)
+        return self.status in (self.Status.RELEASED, self.Status.PAID, self.Status.RESOLVED)
+
+    @property
+    def is_disputed(self) -> bool:
+        return self.status == self.Status.DISPUTED
 
     @property
     def holds_funds(self) -> bool:
-        """Escrow mode: the amount is locked on chain (or already released). Direct mode: paid."""
+        """Escrow mode: the amount is locked on chain (or already released / split by the arbiter — the
+        money is accounted for either way). Direct mode: paid."""
         if self.mode == self.Mode.DIRECT:
             return self.status == self.Status.PAID
-        return self.status in (self.Status.FUNDED, self.Status.DELIVERED, self.Status.APPROVED, self.Status.RELEASED)
+        return self.status in (
+            self.Status.FUNDED,
+            self.Status.DELIVERED,
+            self.Status.APPROVED,
+            self.Status.RELEASED,
+            self.Status.DISPUTED,
+            self.Status.RESOLVED,
+        )
 
     @property
     def status_label(self) -> str:
@@ -111,7 +140,8 @@ class Escrow(models.Model):
 
     def explorer_links(self) -> list[dict]:
         """Every stored on-chain reference, in flow order: [{key, label, url, value, at}] — `at` is the
-        step's stored time (funded_at / delivered_at / released_at, None otherwise): the transaction's time."""
+        step's stored time (funded_at / delivered_at / released_at / disputed_at / resolved_at, None otherwise):
+        the transaction's time."""
         links: list[dict] = []
         if self.contract_id:
             links.append(
@@ -129,6 +159,8 @@ class Escrow(models.Model):
             ("approve_tx_hash", "Validation", None),
             ("release_tx_hash", "Funds release", self.released_at),
             ("payment_tx_hash", "Direct payment", self.released_at),
+            ("dispute_tx_hash", "Dispute opened", self.disputed_at),
+            ("resolve_tx_hash", "Dispute resolved", self.resolved_at),
         )
         for field, label, at in labels:
             value = getattr(self, field)

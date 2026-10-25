@@ -1,0 +1,23 @@
+{% load lowbid_extras %}
+{% comment %}
+The dispute form of the payment panel (included by _escrow_panel.html when `can_dispute`): hidden until
+[data-open-dispute] reveals it. The reason (1–280 chars) joins the prepare body through data-pay-form; the button is a
+regular payment step (lowbid-pay.js: confirm → prepare → Freighter → send). Context: task, amount, asset_code,
+dispute_prepare_url, dispute_for_no_response, role.
+DOM contract (e2e): #dispute-form · #dispute-reason · [data-dispute-submit][data-pay-step="dispute"].
+{% endcomment %}
+<form id="dispute-form" class="ui-form-grid mt-4" data-pay-form novalidate hidden onsubmit="return false" data-dispute-form>
+  <div class="ui-field ui-field-wide">
+    <label for="dispute-reason" class="ui-label">Why do you open the dispute? <span class="normal-case font-normal">(280 chars, required)</span></label>
+    <textarea id="dispute-reason" name="reason" class="ui-textarea" rows="3" maxlength="280" required placeholder="{% if dispute_for_no_response %}Delivered on time, no answer from the company within the review window.{% else %}The delivery does not match the brief: the booking form is missing and the mockup was not followed.{% endif %}" style="min-height: 84px"></textarea>
+    <span class="ui-help">The escrow is frozen on Stellar (one Freighter signature); nobody can release or send the delivery back any more. The arbiter reads both sides and splits the {{ amount|usdc:asset_code }} between the freelancer and the company. The reason stays in TaskVault (Trustless Work v1 records no text on chain).</span>
+    <span class="ui-error" data-error-for="reason" hidden></span>
+  </div>
+  <div class="ui-field-wide">
+    <p class="ui-error" data-pay-error hidden></p>
+    <div class="ui-sticky-actions">
+      <button type="button" class="ui-btn ui-btn-ghost" data-dispute-cancel>Cancel</button>
+      <button type="button" class="ui-btn ui-btn-danger" data-pay-step="dispute" data-prepare-url="{{ dispute_prepare_url }}" data-dispute-submit data-loading-label="Signing…" data-confirm-title="Open a dispute on Stellar?" data-confirm-message="The escrow is frozen until the arbiter decides how to split the {{ amount|usdc:asset_code }}. You sign the dispute in Freighter; it cannot be withdrawn." data-confirm-label="Open the dispute"><i class="fa-solid fa-gavel" aria-hidden="true"></i> Open the dispute</button>
+    </div>
+  </div>
+</form>

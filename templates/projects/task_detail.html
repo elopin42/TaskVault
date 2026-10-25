@@ -31,8 +31,8 @@
 <section class="ui-kpi-band mb-6" aria-label="Key figures">
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Fixed price</span><span class="ui-kpi-value">{{ task.price|usdc_parts }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if pay_mode == 'direct' %}paid on validation{% else %}locked in escrow, released on validation{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Candidates</span><span class="ui-kpi-value" data-kpi-count>{{ rows|length }}</span><span class="ui-kpi-hint ui-meta">{% if task_open %}the company chooses{% else %}applications closed{% endif %}</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Project</span><span class="ui-kpi-value text-base"><a href="{% url 'projects:project_detail' project.pk %}" class="ui-link">{{ project.title|truncatechars:28 }}</a></span><span class="ui-kpi-hint ui-meta">{{ project.paid_count }}/{{ project.tasks_count }} task{{ project.tasks_count|pluralize }} paid</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Stage</span><span class="ui-kpi-value text-base">{{ task.status_label }}</span><span class="ui-kpi-hint ui-meta">{% if task.status == 'open' %}applications open{% elif task.status == 'taken' %}delivery expected{% elif task.status == 'delivered' %}validation expected{% else %}paid {% if task.paid_at %}on {{ task.paid_at|date:"M j" }}{% endif %}{% endif %}</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Project</span><span class="ui-kpi-value text-base"><a href="{% url 'projects:project_detail' project.pk %}" class="ui-link">{{ project.title|truncatechars:28 }}</a></span><span class="ui-kpi-hint ui-meta">{{ project.settled_count }}/{{ project.tasks_count }} task{{ project.tasks_count|pluralize }} settled</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Stage</span><span class="ui-kpi-value text-base">{{ task.status_label }}</span><span class="ui-kpi-hint ui-meta">{% if task.status == 'open' %}applications open{% elif task.status == 'taken' %}delivery expected{% elif task.status == 'delivered' %}validation expected{% elif task.status == 'disputed' %}arbiter's decision expected{% elif task.status == 'resolved' %}settled {% if task.resolved_at %}on {{ task.resolved_at|date:"M j" }}{% endif %}{% else %}paid {% if task.paid_at %}on {{ task.paid_at|date:"M j" }}{% endif %}{% endif %}</span></div>
 </section>
 
 <div class="ui-split">
@@ -60,7 +60,7 @@
         {% if source_visible %}
           <p class="mt-3 text-sm"><i class="fa-solid fa-box-archive text-[10px]" style="color: var(--icon-accent)" aria-hidden="true"></i> Full deliverable: <a href="{{ task.source_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-source-link>{{ task.source_link }}</a></p>
         {% elif viewer_is_company %}
-          <div class="ui-alert ui-alert-info mt-3" data-source-pending><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Full deliverable revealed once the task is paid{% if task.delivery_hash %} — the fingerprint above lets you check it is the same work{% endif %}.</span></div>
+          <div class="ui-alert ui-alert-info mt-3" data-source-pending><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Full deliverable revealed once the task is paid or resolved{% if task.delivery_hash %} — the fingerprint above lets you check it is the same work{% endif %}.</span></div>
         {% endif %}
       {% endif %}
       {% if rating %}
@@ -81,6 +81,24 @@
                 <span class="ui-timeline-title">Delivery declared</span> by {{ h.who.display_name|default:h.who.short_address }} — <a href="{{ h.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer">{{ h.delivery_link|truncatechars:60 }}</a>
                 {% if h.delivery_hash %}<p class="ui-meta mt-1 flex flex-wrap items-center gap-1.5"><i class="fa-solid fa-fingerprint text-[10px]" aria-hidden="true"></i> <code class="font-mono text-xs" data-history-hash="{{ h.delivery_hash }}" title="{{ h.delivery_hash }}">{{ h.delivery_hash|short_addr:8 }}</code> <button type="button" class="ui-copy-btn shrink-0" data-copy="{{ h.delivery_hash }}" title="Copy the fingerprint" aria-label="Copy the delivery fingerprint"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>{% if h.tx_hash %} · <a href="{{ h.explorer_url }}" class="ui-link font-mono" target="_blank" rel="noopener" title="{{ h.tx_hash }}">on Stellar {{ h.tx_hash|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>{% endif %}</p>{% endif %}
                 {% if h.source_link %}<p class="ui-meta mt-1"><i class="fa-solid fa-box-archive text-[10px]" aria-hidden="true"></i> Full deliverable: <a href="{{ h.source_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-source-link>{{ h.source_link|truncatechars:60 }}</a></p>{% endif %}
+                <div class="ui-timeline-time"><span data-time-ago="{{ h.when|date:'c' }}">{{ h.when|date:"M j, Y H:i" }}</span></div>
+              </div>
+            </li>
+          {% elif h.kind == 'dispute' %}
+            <li class="ui-timeline-item is-danger" data-kind="dispute">
+              <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-gavel"></i></span>
+              <div class="ui-timeline-body">
+                <span class="ui-timeline-title">Dispute opened</span> by {% if h.by_company %}the company{% else %}the freelancer{% endif %} ({{ h.who.display_name|default:h.who.short_address }}){% if h.reason %} — "{{ h.reason }}"{% endif %}
+                {% if h.tx_hash %}<p class="ui-meta mt-1"><a href="{{ h.explorer_url }}" class="ui-link font-mono" target="_blank" rel="noopener" title="{{ h.tx_hash }}">on Stellar {{ h.tx_hash|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a></p>{% endif %}
+                <div class="ui-timeline-time"><span data-time-ago="{{ h.when|date:'c' }}">{{ h.when|date:"M j, Y H:i" }}</span></div>
+              </div>
+            </li>
+          {% elif h.kind == 'resolution' %}
+            <li class="ui-timeline-item is-ok" data-kind="resolution">
+              <span class="ui-timeline-dot" aria-hidden="true"><i class="fa-solid fa-scale-balanced"></i></span>
+              <div class="ui-timeline-body">
+                <span class="ui-timeline-title">Resolved by the arbiter</span> — {{ h.freelance_pct }}% to the freelancer / {{ h.company_pct }}% to the company
+                {% if h.tx_hash %}<p class="ui-meta mt-1"><a href="{{ h.explorer_url }}" class="ui-link font-mono" target="_blank" rel="noopener" title="{{ h.tx_hash }}">on Stellar {{ h.tx_hash|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a></p>{% endif %}
                 <div class="ui-timeline-time"><span data-time-ago="{{ h.when|date:'c' }}">{{ h.when|date:"M j, Y H:i" }}</span></div>
               </div>
             </li>
@@ -188,6 +206,17 @@
         <div class="ui-alert ui-alert-info"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>In progress: {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} is working on the task. You will validate and rate on delivery.</span></div>
       {% elif task.status == 'delivered' and is_assignee %}
         <div class="ui-alert ui-alert-attn"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>Delivery declared. The company checks, validates and rates you{% if review_deadline %} by {{ review_deadline|date:"M j" }}{% endif %}: payment follows.</span></div>
+      {% elif task.status == 'disputed' and not viewer_is_company and not is_assignee and not is_arbiter %}
+        <div class="ui-alert ui-alert-info"><i class="fa-solid fa-gavel" aria-hidden="true"></i><span>A dispute is open on this task: the arbiter decides how the locked funds are split.</span></div>
+      {% elif task.status == 'resolved' %}
+        <section class="ui-panel" style="border-color: var(--icon-accent)" data-resolved-panel>
+          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-scale-balanced" style="color: var(--icon-accent)" aria-hidden="true"></i> Settled by the arbiter</h2><p class="ui-panel-sub">{% if task.resolved_at %}{{ task.resolved_at|date:"M j, Y H:i" }}{% endif %}</p></div></div>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            {% include "components/wallet.html" with address=task.assigned_to.stellar_address name=task.assigned_to.display_name size="lg" %}
+            {% if dispute %}<span class="ui-badge ui-badge-brand">{{ dispute.freelance_pct }}% / {{ dispute.company_pct }}%</span>{% endif %}
+          </div>
+          {% if dispute and dispute.reason %}<p class="ui-meta mt-2"><i class="fa-solid fa-gavel text-[10px]" aria-hidden="true"></i> Dispute: "{{ dispute.reason }}"</p>{% endif %}
+        </section>
       {% elif task.status == 'paid' %}
         <section class="ui-panel" style="border-color: var(--icon-accent)">
           <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-circle-check" style="color: var(--success)" aria-hidden="true"></i> Task paid</h2><p class="ui-panel-sub">{% if task.paid_at %}{{ task.paid_at|date:"M j, Y H:i" }}{% endif %}</p></div></div>
@@ -217,6 +246,7 @@
       deliver: "{% url 'projects:task_deliver' task.pk %}",
       validate: "{% url 'projects:task_validate' task.pk %}",
       requestChanges: "{% url 'projects:task_request_changes' task.pk %}",
+      dispute: "{% url 'payments:prepare' task.pk 'dispute' %}",
       pay: "{% url 'payments:task_pay' task.pk %}"
     },
     payMode: "{{ pay_mode|escapejs }}",

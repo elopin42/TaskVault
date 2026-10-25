@@ -113,6 +113,7 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 | `POST /taches/<pk>/choisir/<app_pk>/` | `task_choose` → `{ok, status, assigned_to, message}` | `projects:task_choose` | wallet |
 | `POST /taches/<pk>/livrer/` | `task_deliver` → `{ok, status, message}` (DB-only delivery, refused in escrow mode) | `projects:task_deliver` | wallet |
 | `POST /taches/<pk>/valider/` | `task_validate` → `{ok, status, project_status, next, message}` | `projects:task_validate` | wallet |
+| `POST /taches/<pk>/modifications/` | `task_request_changes` `{message}` → `{ok, status, revision_count, revisions_left, message}` (the company sends the delivery back; 409 `too_many_revisions` after `LOWBID_MAX_REVISIONS`) | `projects:task_request_changes` | wallet |
 | `GET /taches/<pk>/candidats.json` | `task_candidates_json` → `{ok, task, status, count, fingerprint, candidates[], html}` | `projects:task_candidates_json` | public |
 | `POST /pay/prepare/<task_pk>/<step>/` | `payments.views.prepare` | `payments:prepare` | wallet |
 | `POST /pay/send/<task_pk>/<step>/` | `payments.views.send` | `payments:send` | wallet |
@@ -122,7 +123,7 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 | `GET /tableau-de-bord/`, `GET/POST /profil/<address>/` | `dashboard.views.home` / `profile` | `dashboard:home` / `dashboard:profile` | wallet / public |
 
 Projects refusals are 4xx `{ok:false, error, message}` (`ERROR_STATUS` in `projects/views.py`: 403 `forbidden`
-`own_task` `not_assigned`, 409 `wrong_state` `duplicate`, 400 `invalid` `bad_tags`, any other code 400; an unknown
+`own_task` `not_assigned`, 409 `wrong_state` `duplicate` `too_many_revisions`, 400 `invalid` `bad_tags`, any other code 400; an unknown
 project / task / application is a 404). Payments refusals are HTTP 200
 `{ok:false, error, message}` so `Lowbid.api` resolves and the panel shows `message`. A caller without a session that sends
 `X-Requested-With: fetch` or `Accept: application/json` gets 401 `{ok:false, error:"wallet_required"}`; a browser gets a
@@ -195,7 +196,8 @@ def my_projects(request):
 `[data-fund]` ("Fund the project", project page header) → `Lowbid.pay.fundProject` → `GET /pay/project/<pk>/pending.json` (`payments.services.project_funding`: every `taken` task whose escrow is still `created`/`deployed`, with the company's `next` step) → for each task `Lowbid.pay.runChain(next, {stopAfter: ["fund"]})`: `prepare deploy` → Freighter → `send deploy` (stores `contract_id`) → `prepare fund` → Freighter → `send fund`. `confirm_fund` calls `sync_project_status`, which moves the project to `funded` once every assigned task holds its money. The button is rendered in escrow mode only, and enabled only when `can_fund`. The same steps are available one by one on the task's payment panel ("Create the escrow", "Lock the funds").
 
 ### Freelance: deliver
-- Escrow mode (once the escrow is `funded`): `#deliver-form` + `[data-pay-step="deliver"]` → `POST /pay/prepare/<task>/deliver/ {delivery_link}` (link validated by `projects.services.clean_link`) → Trustless Work `change-milestone-status` XDR with the link as `newEvidence` → Freighter (freelance) → `POST /pay/send/<task>/deliver/ {signed_xdr, delivery_link}` → `confirm_deliver` sends it, then calls `projects.services.deliver(task, wallet, link, on_chain=True)`.
+- Escrow mode (once the escrow is `funded`): `#deliver-form` + `[data-pay-step="deliver"]` → `POST /pay/prepare/<task>/deliver/ {delivery_link}` (link validated by `projects.services.clean_link`) → Trustless Work `change-milestone-status` XDR with the link as `newEvidence` → Freighter (freelance) → `POST /pay/send/<task>/deliver/ {signed_xdr, delivery_link}` → `confirm_deliver` sends it, then calls `projects.services.deliver(task, wallet, link, on_chain=True, tx_hash=…)`. After a change request the same step runs again ("Deliver again"): a new XDR, a new `Delivery` row; the previous signed XDR is refused (`tampered`).
+- Company, while `delivered` and unrated: `[data-request-changes]` reveals `#request-changes-form` (`#request-changes-message`) → `Lowbid.confirm` → `POST /taches/<pk>/modifications/ {message}` → `services.request_changes` (task `taken`, `revision_count` += 1, `RevisionRequest` row, escrow row back through `payments.services.on_changes_requested`). The page shows the review deadline (`[data-review-deadline]`, `review_deadline()` at read time, countdown in JS) and the history (`[data-delivery-history]`).
 - Direct mode: the same button (behind a `Lowbid.confirm`); `prepare_deliver` sees a `no_tx` step, calls `projects.services.deliver(task, wallet, link)` (its `_before_deliver` check passes in direct mode) and marks the escrow row `delivered` — nothing to sign.
 - `POST /taches/<pk>/livrer/` is the DB-only path; `_before_deliver` → `payments.services.check_db_deliver` refuses it in escrow mode.
 
@@ -226,6 +228,11 @@ deliver     freelance  funded → delivered         taken → delivered    TW ch
                                                                        "git:<40hex> <link>" / "<link>", ≤ 280 chars → deliver_tx_hash,
                                                                        delivered_at, delivery_note; confirm calls
                                                                        projects.services.deliver(link, hash, source_link)
+request_    company    delivered → funded         delivered → taken    (projects) no tx: RevisionRequest row, revision_count += 1,
+changes                                                                 delivered_at cleared; max LOWBID_MAX_REVISIONS times, only
+                                                                       before the Rating; every tx hash is kept (history); the
+                                                                       freelance delivers again (a second change-milestone-status
+                                                                       with the new evidence; the contract accepts it)
 validate    company    —                          delivered (+Rating)  (projects) saves the Rating, answers `next` = approve
 approve     company    delivered → approved       delivered            TW approve-milestone → approve_tx_hash
 release     company    approved → released        delivered → paid     TW release-funds → release_tx_hash, released_at;
@@ -235,6 +242,8 @@ DIRECT mode (fallback: one `payment` op; "funded" and "approved" do not exist)
 deliver     freelance  created → delivered        taken → delivered    NO transaction: projects.services.deliver(link, hash,
                                                                        source_link); delivery_note = build_evidence(link, hash)
                                                                        (database only — nothing on chain)
+request_    company    delivered → created        delivered → taken    (projects) no tx: same rules as in escrow mode; the
+changes                                                                 freelance delivers again (database only)
 validate    company    —                          delivered (+Rating)  (projects) saves the Rating, answers `next` = direct_pay
 direct_pay  company    created|delivered → paid   delivered → paid     Django builds the payment XDR, Freighter signs,
                                                                        Django checks it (source/destination/amount/asset)
@@ -246,6 +255,14 @@ trustline   anyone     —                          —                    chang
 The validate view saves the Rating **first** (database), then the page chains the signatures (approve → release, or
 direct_pay) from the `next` it gets back. Stopping half-way is fine: the panel shows the remaining step ("Release the
 funds").
+
+Review window and revisions: `projects.services.review_deadline(task)` (= `delivered_at` + `LOWBID_REVIEW_DAYS`, read
+time, no timer) bounds the company's review; `projects.services.request_changes` sends a delivery back (max
+`LOWBID_MAX_REVISIONS`, before the Rating) and its hook `payments.services.on_changes_requested` moves the Escrow row
+`delivered → funded` (escrow mode) or `delivered → created` (direct mode), keeping every hash. The freelance then runs the
+`deliver` step again (a second `change-milestone-status`); `confirm_deliver` refuses a replay of a previous delivery's
+signed XDR (`tampered`). Every delivery is a `projects.Delivery` row (with its tx hash), every request a
+`projects.RevisionRequest` row.
 
 ### Modes
 
@@ -272,7 +289,9 @@ funds").
 | `projects.services._after_validate(task)` | projects | `projects.services.validate`, inside its transaction, after the Rating | lazily imports `payments.services` and calls `on_task_validated(task)` |
 | `payments.services.on_task_validated(task)` | payments | `_after_validate` | `ensure_escrow(task)` and logs the next step (approve → release, or direct_pay). Pays nothing |
 | `projects.services._before_deliver(task)` | projects | `projects.services.deliver` when `on_chain=False` | calls `payments.services.check_db_deliver(task)`, which refuses a DB-only delivery in escrow mode |
-| `projects.services.deliver(...)` | projects | `payments.services.confirm_deliver` (escrow, `on_chain=True`), `prepare_deliver` (direct `no_tx`, `on_chain=False`), the `task_deliver` view | records the delivery (link, `delivered_at`, task `delivered`) |
+| `projects.services.deliver(...)` | projects | `payments.services.confirm_deliver` (escrow, `on_chain=True`, `tx_hash`), `prepare_deliver` (direct `no_tx`, `on_chain=False`), the `task_deliver` view | records the delivery (link, fingerprint, source, `delivered_at`, task `delivered`) and writes the `Delivery` history row |
+| `projects.services._after_request_changes(task)` | projects | `projects.services.request_changes`, inside its transaction, once the task is back to `taken` | lazily imports `payments.services` and calls `on_changes_requested(task)`; a `PaymentError` becomes `ProjectError("wrong_state")` |
+| `payments.services.on_changes_requested(task)` | payments | `_after_request_changes` | Escrow `delivered → funded` (escrow mode) / `delivered → created` (direct mode), `last_error` cleared, every hash kept; no row = nothing to move; any other stage → `wrong_state` |
 | `payments.services.sync_project_status(project)` | payments | `confirm_fund`, `confirm_release`, `_finalize_direct_pay` (and `seed_demo`) | project `draft → funded` (escrow: every assigned task holds funds; direct: first payment) |
 
 `payments.services` imports `projects.services` at module level; the projects hooks import `payments.services` lazily to

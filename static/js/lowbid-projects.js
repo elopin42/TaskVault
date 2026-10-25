@@ -260,6 +260,8 @@
     rcButton.addEventListener("click", function () { if (!rcButton.disabled) toggleRc(rcForm.hasAttribute("hidden")); });
     var rcCancel = rcForm.querySelector("[data-request-changes-cancel]");
     if (rcCancel) rcCancel.addEventListener("click", function () { toggleRc(false); });
+    var rcMessage = document.getElementById("request-changes-message");
+    if (rcMessage) rcMessage.addEventListener("input", function () { if (rcMessage.value.trim()) fieldError(rcForm, "message", ""); });
     var requesting = false;
     rcForm.addEventListener("submit", function (ev) {
       ev.preventDefault();

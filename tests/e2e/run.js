@@ -14,7 +14,8 @@
  * uncaught page error. Nothing here reaches the real network.
  *
  * Scenario: company creates a project + 3 tasks (inline) → A and B apply to T1 → company chooses A
- * → A delivers a link (direct mode: DB only) → company validates with note 5: the Rating is saved,
+ * → A delivers a link (direct mode: DB only) → the company sends it back for changes (review window,
+ * history), A delivers again, the max of change requests is enforced → company validates with note 5: the Rating is saved,
  * the chained payment FAILS gracefully (company account unknown on Horizon → error message in
  * [data-pay-error], HTTP 200 {ok:false}) → the fake Horizon "friendbots" the wallets, A adds the
  * USDC trustline, the company resumes the payment from the panel button → T1 paid, hash + explorer
@@ -34,6 +35,8 @@ const { startFakeHorizon } = require("./fake-horizon");
 
 const BASE = (process.env.E2E_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 const DELIVERY_HASH = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"; // a 40-hex git commit id (Phase 1 fingerprint)
+const DELIVERY_HASH_2 = "b2c3d4e5f60718293a4b5c6d7e8f9012345678a1"; // the re-delivery after a change request (Phase 2)
+const DELIVERY_HASH_3 = "c3d4e5f60718293a4b5c6d7e8f9012345678a1b2"; // the third delivery (max revisions reached)
 const SOURCE_LINK = "https://github.com/studio-nova/booking/archive/v1.zip";
 const HORIZON_PORT = Number(process.env.E2E_HORIZON_PORT || 0);
 let horizon = null; // the fake Horizon handle (fund / balanceOf / submitted)
@@ -420,6 +423,97 @@ async function main() {
       assert(await pa.locator("#deliver-panel").count() === 0, "deliver form is gone");
       assert((await pa.locator("#escrow-panel").getAttribute("data-escrow-status")) === "delivered", "escrow row is delivered");
       await shot(pa, "05-tache-livree-freelance");
+    });
+
+    // 4b -----------------------------------------------------------------------------------------
+    await step("4b. review window: company requests changes, A sees the request + history and delivers again, max revisions enforced (409)", async () => {
+      await cp.goto(`/taches/${taskIds[0]}/`);
+      await cp.locator("#validate-panel").waitFor();
+      // the review window is visible (task page + panel), its countdown rendered by JS
+      const deadlines = cp.locator("[data-review-deadline][data-deadline]");
+      assert(await deadlines.count() >= 2, `review deadline on the page and in the panel (got ${await deadlines.count()})`);
+      await cp.waitForFunction(() => /left/.test((document.querySelector("[data-review-deadline] [data-countdown]") || {}).textContent || ""), null, { timeout: 5000 });
+      assert(/Review until/.test(await cp.locator("#delivery-panel").innerText()), "Delivery panel says Review until <date>");
+      assert(await cp.locator("[data-delivery-history] .ui-timeline-item").count() === 1, "history: the first delivery");
+      // the control: hidden form, revealed by the button, confirmed in #lb-confirm
+      assert(await cp.locator("[data-request-changes]").count() === 1, "company sees Request changes");
+      assert(!(await cp.locator("[data-request-changes]").isDisabled()), "two requests left: enabled");
+      assert(await cp.locator("#request-changes-form").isHidden(), "the message form starts hidden");
+      await cp.click("[data-request-changes]");
+      await cp.locator("#request-changes-message").waitFor({ state: "visible" });
+      await cp.click("[data-request-changes-submit]");
+      await cp.locator('#request-changes-form [data-error-for="message"]:not([hidden])').waitFor();
+      assert(await cp.locator("#lb-confirm[open]").count() === 0, "an empty message never reaches the confirm dialog");
+      await cp.fill("#request-changes-message", "The mobile menu overlaps the header and the contact form accepts an empty email.");
+      await shot(cp, "16-demande-modifications");
+      await cp.click("[data-request-changes-submit]");
+      await acceptConfirm(cp, "request changes");
+      await cp.locator("[data-status-badge]", { hasText: "Taken" }).waitFor({ timeout: 15000 });
+      assert(await cp.locator("#validate-panel").count() === 0, "nothing to validate while taken");
+      assert(await cp.locator("[data-request-changes]").count() === 0, "no Request changes while taken");
+      assert(await cp.locator("[data-review-deadline]").count() === 0, "no review window while taken");
+      assert(await cp.locator("[data-changes-pending]").count() === 1, "company: waiting for the new delivery");
+      assert(await cp.locator("[data-delivery-history] .ui-timeline-item").count() === 2, "history: 1 delivery + 1 request");
+      assert(await cp.locator('[data-delivery-history] [data-kind="revision"]').count() === 1, "the request is in the history");
+      assert(await cp.locator('[data-revisions="1"]').count() >= 1, "rev. 1 badge");
+      assert((await cp.locator("#escrow-panel").getAttribute("data-escrow-status")) === "created", "direct mode: the escrow row is back to created");
+      // the freelance side: alert with the message, the history, "Deliver again"
+      await pa.goto(`/taches/${taskIds[0]}/`);
+      await pa.locator("#deliver-panel").waitFor();
+      const alert = pa.locator('[data-changes-requested="1"]');
+      assert(await alert.count() === 1, "A sees the Changes requested alert");
+      const alertText = await alert.innerText();
+      assert(/Changes requested \(1\/2\)/.test(alertText) && /mobile menu/.test(alertText), `alert carries n/N and the message, got "${alertText}"`);
+      assert(/Deliver again/.test(await pa.locator("[data-deliver]").innerText()), "deliver button says Deliver again");
+      assert(await pa.locator("[data-delivery-history] .ui-timeline-item").count() === 2, "A sees the same history");
+      assert(await pa.locator("[data-delivery-history] [data-source-link]").count() === 1, "A sees the full deliverable of the first delivery in the history");
+      await pa.goto("/tableau-de-bord/");
+      assert(await pa.locator("[data-todo-list] .ui-next-card.act", { hasText: /Changes requested on/ }).count() === 1, "A's to-do: changes requested");
+      await pa.goto("/taches/");
+      assert(await pa.locator(`.kanban-col[data-col="taken"] .kanban-card[data-task-id="${taskIds[0]}"] [data-revisions="1"]`).count() === 1, "kanban card carries rev. 1");
+      await pa.goto(`/taches/${taskIds[0]}/`);
+      await pa.fill("#deliver-link", "https://github.com/studio-nova/booking/pull/2");
+      await pa.fill("#deliver-hash", DELIVERY_HASH_2);
+      await pa.fill("#deliver-source", SOURCE_LINK);
+      await pa.click("[data-deliver]");
+      await acceptConfirm(pa, "deliver again");
+      await pa.locator("[data-status-badge]", { hasText: "Delivered" }).waitFor({ timeout: 15000 });
+      assert((await pa.locator("#delivery-panel [data-delivery-hash]").getAttribute("data-delivery-hash")) === DELIVERY_HASH_2, "the task shows the latest fingerprint");
+      assert(await pa.locator("[data-review-deadline]").count() >= 1, "the freelance sees the (restarted) review window");
+      assert(await pa.locator('[data-delivery-history] [data-kind="delivery"]').count() === 2, "history: 2 deliveries");
+      await shot(pa, "17-historique-livraisons");
+      // company: deadline + history with 2 deliveries, "Revisions requested: 1/2"
+      await cp.goto(`/taches/${taskIds[0]}/`);
+      await cp.locator("#validate-panel").waitFor();
+      assert(await cp.locator("[data-review-deadline]").count() >= 1, "company sees the review window again");
+      assert(await cp.locator('[data-delivery-history] [data-kind="delivery"]').count() === 2 && await cp.locator('[data-delivery-history] [data-kind="revision"]').count() === 1, "history: 2 deliveries + 1 request");
+      assert(await cp.locator(`[data-history-hash="${DELIVERY_HASH_2}"]`).count() === 1 && await cp.locator(`[data-history-hash="${DELIVERY_HASH}"]`).count() === 1, "both fingerprints in the history");
+      assert(/1\/2/.test(await cp.locator("#escrow-panel [data-revisions]").innerText()), "panel: Revisions requested 1/2");
+      assert(await cp.locator("[data-source-link]").count() === 0 && !(await cp.content()).includes(SOURCE_LINK), "the company still does not see any full deliverable");
+      await cp.goto("/tableau-de-bord/");
+      const todo = cp.locator("[data-todo-list] .ui-next-card.act", { hasText: /Validate and rate "Landing page"/ });
+      assert(await todo.count() === 1 && /Review until/.test(await todo.innerText()), "company to-do mentions the review deadline");
+      // API gates, then the maximum (LOWBID_MAX_REVISIONS = 2 by default): 2nd request OK, A delivers a 3rd time, 3rd request → 409
+      const url = `/taches/${taskIds[0]}/modifications/`;
+      const notA = await api(pa, url, { message: "me" });
+      assert(notA.status === 403 && notA.json.error === "forbidden", `freelance cannot request changes (got ${notA.status})`);
+      const empty = await api(cp, url, { message: "   " });
+      assert(empty.status === 400 && empty.json.error === "invalid", `empty message refused (got ${empty.status})`);
+      const second = await api(cp, url, { message: "Second round: typo in the pricing table." });
+      assert(second.status === 200 && second.json.ok && second.json.revision_count === 2 && second.json.revisions_left === 0 && second.json.status === "taken", `second request accepted: ${JSON.stringify(second.json)}`);
+      const twice = await api(cp, url, { message: "again while taken" });
+      assert(twice.status === 409 && twice.json.error === "wrong_state", `a request on a taken task is wrong_state (got ${twice.status})`);
+      const third = await api(pa, `/taches/${taskIds[0]}/livrer/`, { delivery_link: "https://github.com/studio-nova/booking/pull/3", delivery_hash: DELIVERY_HASH_3, source_link: SOURCE_LINK });
+      assert(third.status === 200 && third.json.ok, `A delivers a third time through the API: ${JSON.stringify(third.json)}`);
+      const refused = await api(cp, url, { message: "Third round" });
+      assert(refused.status === 409 && refused.json.error === "too_many_revisions" && /At most 2/.test(refused.json.message), `third request refused with too_many_revisions: ${JSON.stringify(refused.json)}`);
+      await cp.goto(`/taches/${taskIds[0]}/`);
+      await cp.locator("#validate-panel").waitFor();
+      assert(await cp.locator("[data-request-changes][disabled]").count() === 1, "Request changes is disabled at the max");
+      assert(await cp.locator("#request-changes-form").count() === 0, "no message form at the max");
+      assert(/2\/2/.test(await cp.locator("#escrow-panel [data-revisions]").innerText()), "panel: Revisions requested 2/2");
+      assert(await cp.locator('[data-delivery-history] [data-kind="delivery"]').count() === 3 && await cp.locator('[data-delivery-history] [data-kind="revision"]').count() === 2, "history: 3 deliveries + 2 requests");
+      await noHorizontalScroll(cp, "desktop task review");
     });
 
     // 5 ------------------------------------------------------------------------------------------

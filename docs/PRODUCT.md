@@ -69,6 +69,12 @@ The rules below are derived from `projects/services.py`, `projects/scoring.py` a
 - **R31** *Two-step delivery.* The delivery link (`Task.delivery_link`, demo / preview, required) is public once the task is delivered. The full deliverable (`Task.source_link`, optional, same http(s) / 500-character rules as the link) is visible to the chosen freelance always, to the company **only once the task is `paid`**, and to nobody else (`projects.services.source_visible`; the templates only read the boolean the view computed). Before payment the company sees "Full deliverable revealed once the task is paid" and the fingerprint, so it can later verify the revealed work is the one declared.
 - **R32** *Evidence format.* What goes on chain as the milestone evidence (`newEvidence`) and is kept in `Escrow.delivery_note` is `payments.services.build_evidence(link, hash)`: `sha256:<64 hex> <link>` or `git:<40 hex> <link>` when a fingerprint was given, else `<link>`, cut at 280 characters (the fingerprint comes first, so a truncation only ever shortens the link). The full deliverable link never goes on chain.
 
+### Review window and revisions
+- **R33** *Review window.* Once a task is `delivered`, the company has `LOWBID_REVIEW_DAYS` days (default 7) to validate or to request changes: `review_deadline(task)` = `delivered_at` + that many days while the task is `delivered` (None otherwise), computed when a page is read — nothing runs on a timer. The deadline is shown to everyone on the task page and in the payment panel (`[data-review-deadline]`, with a live countdown; "Review window over" once passed). `is_review_overdue(task)` is true when the task is delivered, unrated and the deadline is past — the freelance's protection (a later phase opens a dispute from there). A change request clears `delivered_at`: the window restarts at the next delivery.
+- **R34** *Request changes.* Only the company (`forbidden`), only a `delivered` task (`wrong_state`) that is not rated yet (`wrong_state`: "already been validated"), with a non-empty message of at most 280 characters telling the freelance what to change (`invalid`). Effects, in one transaction: a `RevisionRequest` row (company, message), the task goes `delivered → taken`, `revision_count` += 1, `delivered_at` = None; then the payments hook moves the escrow row back — `delivered → funded` in escrow mode (the money stays locked, every transaction hash is kept), `delivered → created` in direct mode; an escrow at any other stage refuses the request (`wrong_state`). The chosen freelance then delivers again ("Deliver again"), through the same deliver step: in escrow mode a second `change-milestone-status` with the new evidence (the contract accepts it), in direct mode a declaration.
+- **R35** *Maximum.* At most `LOWBID_MAX_REVISIONS` change requests per task (default 2): the next one is refused with `too_many_revisions` (409, the message states the maximum) and the UI disables "Request changes" with "Revisions requested: n/N". After the maximum the company validates (or, in a later phase, disputes).
+- **R36** *History.* Every (re)delivery is a `Delivery` row (freelance, link, fingerprint, full-deliverable link, the on-chain transaction hash in escrow mode, date) written by `projects.services.deliver`; the task itself holds the latest one. The task page lists deliveries and change requests newest first (`[data-delivery-history]`), visible to everyone; a delivery's full-deliverable link obeys R31 (never in the markup otherwise). A replay of a previous delivery's signed transaction is refused (`tampered`): the new delivery needs its own signature.
+
 ### Validation and rating
 - **R14** Only the company validates (`forbidden`), only a `delivered` task (`wrong_state`). The rating is an integer from 1 to 5 (`invalid` otherwise); the comment is optional and cut at 280 characters. One rating per task (`duplicate`). Validating stores the rating and pays nothing by itself.
 - **R15** No payment step (approve, release, direct payment) is possible before the rating exists: "Validate and rate the delivery before the payment." (`wrong_state`).
@@ -90,6 +96,7 @@ The rules below are derived from `projects/services.py`, `projects/scoring.py` a
 |------|-----------------|---------|
 | `forbidden`, `own_task`, `not_assigned` | 403 | wrong role for this action |
 | `wrong_state`, `duplicate` | 409 | not possible at this stage / already done |
+| `too_many_revisions` | 409 | the task already had `LOWBID_MAX_REVISIONS` change requests (R35) |
 | `invalid`, `bad_tags` | 400 | bad input |
 | `wallet_required` | 401 | no session (any `@wallet_required` endpoint called with `fetch` or `Accept: application/json`) |
 
@@ -148,11 +155,11 @@ Tasks can be added until `closed`; only an `open` task can be deleted. A project
 | Status | Label | Enters when | Next |
 |--------|-------|-------------|------|
 | `open` | "Open" | added | the company chooses → `taken` (or deleted while still open) |
-| `taken` | "Taken" | a freelance is chosen | the freelance delivers → `delivered` |
-| `delivered` | "Delivered" | delivery confirmed (on chain in escrow mode) | the company rates, then the payment is confirmed → `paid` |
+| `taken` | "Taken" | a freelance is chosen, or the company requested changes (R34, `revision_count` += 1) | the freelance delivers (again) → `delivered` |
+| `delivered` | "Delivered" | delivery confirmed (on chain in escrow mode); the review window (R33) runs | the company rates, then the payment is confirmed → `paid`; or the company requests changes (before the rating, at most R35 times) → `taken` |
 | `paid` | "Paid" | release / direct payment confirmed | — |
 
-There is no cancellation and no re-assignment.
+There is no cancellation and no re-assignment. Every delivery is kept as a `Delivery` row and every change request as a `RevisionRequest` row (R36).
 
 ### Application
 
@@ -171,7 +178,8 @@ Escrow mode (Trustless Work single-release, one milestone):
 | choose | company | — (no row yet) | `open → taken` | "Choose" |
 | deploy | company | `created → deployed` | `taken` | "Create the escrow" (or "Fund the project") |
 | fund | company | `deployed → funded` | `taken` | "Lock the funds" (chained) |
-| deliver | freelance | `funded → delivered` | `taken → delivered` | "Declare the delivery" |
+| deliver | freelance | `funded → delivered` | `taken → delivered` | "Declare the delivery" / "Deliver again" |
+| request_changes | company (no transaction) | `delivered → funded` | `delivered → taken` | "Request changes" (max `LOWBID_MAX_REVISIONS`, before the Rating) |
 | validate | company | — (Rating saved) | `delivered` | "Validate + rate" |
 | approve | company | `delivered → approved` | `delivered` | "Validate the delivery" (chained) |
 | release | company | `approved → released` | `delivered → paid` | "Release the funds" (chained) |
@@ -180,7 +188,8 @@ Direct mode (no `deployed`, `funded` or `approved`):
 
 | Step | Signs | Escrow status | Task status | Button |
 |------|-------|---------------|-------------|--------|
-| deliver | freelance (no transaction) | `created → delivered` | `taken → delivered` | "Declare the delivery" |
+| deliver | freelance (no transaction) | `created → delivered` | `taken → delivered` | "Declare the delivery" / "Deliver again" |
+| request_changes | company (no transaction) | `delivered → created` | `delivered → taken` | "Request changes" (max `LOWBID_MAX_REVISIONS`, before the Rating) |
 | validate | company | — (Rating saved) | `delivered` | "Validate + rate" |
 | direct_pay | company | `created`/`delivered → paid` | `delivered → paid` | "Pay the freelancer" (chained) |
 

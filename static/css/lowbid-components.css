@@ -737,6 +737,53 @@ a.ui-next-card:hover { border-color: var(--hover-border); }
 .rcard td .ui-badge + .ui-badge { margin-inline-start: 0.25rem; }
 .rcard tbody tr.is-attn { background: var(--brand-soft); }
 
+/* ====== Trust network: badges (one hop through the wallets you follow), candidate highlight, profile panel, dashboard feed.
+   Never Signal yellow here: a network signal is a social hint, not money. Strong = info tint (someone you follow
+   recommends), weak = muted dashed chip (someone you follow follows), following = neutral hairline. ====== */
+.ui-netbadges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; vertical-align: middle; }
+.ui-netbadge { border: 1px solid transparent; max-width: 100%; }
+.ui-netbadge i { font-size: 0.9em; }
+.ui-netbadge.is-strong    { background: var(--info-soft); border-color: var(--info); color: var(--ui-badge-info-text); }
+.ui-netbadge.is-weak      { background: var(--surface-soft); border-color: var(--border-strong); border-style: dashed; color: var(--muted); }
+.ui-netbadge.is-following { background: transparent; border-color: var(--border); color: var(--text); }
+/* Candidate rows: a light hint only (inset left rule, faint tint), no padding / layout change; .is-chosen keeps its fill. */
+.cand-row.is-network { box-shadow: inset 2px 0 0 var(--border-strong); }
+.cand-row.is-network-strong { box-shadow: inset 2px 0 0 var(--info); }
+.cand-row.is-network-strong:not(.is-chosen) { background: var(--info-soft); }
+
+/* Profile block (#network-panel): counters row · action buttons · recommend form (textarea + live n / 280 counter). */
+.ui-network-panel { display: flex; flex-direction: column; gap: 0.9rem; }
+.ui-network-counts { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; margin: 0; padding: 0 0 0.75rem; list-style: none; border-bottom: 1px solid var(--divider); }
+.ui-network-count { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.ui-network-count-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 1.25rem; font-weight: 700; line-height: 1.1; color: var(--text); }
+.ui-network-count-label { font-size: var(--text-meta); color: var(--muted); font-weight: 500; }
+.ui-network-known { margin: 0; font-size: var(--text-meta); color: var(--muted); line-height: 1.45; }
+.ui-network-known strong { color: var(--text); font-weight: 600; }
+.ui-network-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.ui-network-actions .ui-btn { min-height: 44px; }
+.ui-network-actions [hidden] { display: none; }
+[data-follow].is-following { border-color: var(--border-strong); color: var(--text); }
+[data-follow].is-following i { color: var(--success); }
+.ui-network-form { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-soft); }
+.ui-network-form[hidden] { display: none; }
+.ui-network-form .ui-textarea { min-height: 96px; }
+.ui-network-form-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.ui-network-counter { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--text-meta); color: var(--muted); }
+.ui-network-counter.is-near { color: var(--warning); }
+.ui-network-counter.is-over { color: var(--error); font-weight: 600; }
+.ui-network-quote { margin: 0.25rem 0 0; padding-inline-start: 0.6rem; border-inline-start: 2px solid var(--border-strong); color: var(--text); font-size: var(--text-body); line-height: 1.45; overflow-wrap: anywhere; white-space: pre-line; }
+
+/* Dashboard block (#network-feed "In your network"): hairline-separated items, an icon tile per kind. */
+.ui-network-feed { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.ui-network-feed-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.7rem 0.25rem; min-height: 48px; border-bottom: 1px solid var(--divider); color: inherit; text-decoration: none; }
+.ui-network-feed-item:last-child { border-bottom: none; }
+a.ui-network-feed-item:hover { background: var(--row-hover); }
+.ui-network-feed-icon { flex: none; width: 2rem; height: 2rem; border-radius: var(--radius-sm); display: inline-grid; place-items: center; background: var(--surface-soft); color: var(--text); font-size: 0.8rem; }
+.ui-network-feed-item.is-recommendation .ui-network-feed-icon { background: var(--info-soft); color: var(--ui-badge-info-text); }
+.ui-network-feed-body { flex: 1; min-width: 0; font-size: var(--text-body); line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
+.ui-network-feed-time { font-size: var(--text-meta); color: var(--muted); }
+.ui-network-feed-item .ui-network-quote { font-size: var(--text-meta); color: var(--muted); }
+
 /* ====== Print ====== */
 @media print { .lb-nav, .lb-tabbar, .lb-toast-container, .ui-sticky-actions, footer { display: none !important; } }
 

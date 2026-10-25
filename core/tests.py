@@ -34,7 +34,7 @@ class LandingTests(TestCase):
         self.assertContains(resp, "project-card")
         self.assertEqual(resp.context["latest_projects"][0].total_amount, Decimal("300"))
 
-    def test_landing_receipt_and_ledger_tape_come_from_real_escrows(self):
+    def test_landing_ledger_tape_comes_from_real_escrows(self):
         from stellar_sdk import Keypair
 
         from accounts.models import WalletUser
@@ -45,11 +45,10 @@ class LandingTests(TestCase):
         freelance = WalletUser.objects.create(stellar_address=Keypair.random().public_key)
         project = services.create_project(company, "Showcase project", "Une description.")
         task = services.add_task(project, company, "Landing page", "", "300", ["django"])
-        # Open task only: the receipt shows it with every step ahead, no tape yet.
+        # Open task only: no on-chain event, no tape.
         resp = self.client.get(reverse("core:landing"))
-        self.assertEqual(resp.context["receipt"]["task"], task)
-        self.assertTrue(all(s["state"] == "todo" for s in resp.context["receipt"]["steps"]))
         self.assertEqual(resp.context["tape"], [])
+        self.assertContains(resp, "data-story")
         self.assertNotContains(resp, "lb-tape-item")
 
         Escrow.objects.create(
@@ -58,7 +57,6 @@ class LandingTests(TestCase):
             deploy_tx_hash="a" * 64, fund_tx_hash="b" * 64,
         )
         resp = self.client.get(reverse("core:landing"))
-        self.assertEqual([s["state"] for s in resp.context["receipt"]["steps"]], ["done", "done", "current", "todo"])
         labels = {e["label"] for e in resp.context["tape"]}
         self.assertEqual(labels, {"ESCROW CREATED", "FUNDS LOCKED"})
         self.assertGreaterEqual(len(resp.context["tape"]), 8)  # looped so one copy fills the viewport

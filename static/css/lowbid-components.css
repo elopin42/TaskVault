@@ -339,14 +339,12 @@ a.ui-list-row:hover { background: var(--row-hover); }
 .lb-mobile-nav[hidden] { display: none; }
 @media (min-width: 1024px) { .lb-mobile-nav { display: none !important; } }
 
-/* ====== Landing: the Coffre hero band (full bleed without overflow), the ledger tape, the chain ====== */
+/* ====== Landing: the Coffre hero band (full bleed without overflow) = the scroll story track, the ledger tape ====== */
 .lb-hero-band {
     margin-top: -1.5rem; padding: 3rem 0 3.5rem;
     box-shadow: 0 0 0 100vmax var(--bg-1); clip-path: inset(0 -100vmax);
 }
 @media (min-width: 768px) { .lb-hero-band { padding: 4.5rem 0 4.5rem; } }
-.lb-hero-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2.5rem; align-items: center; }
-@media (min-width: 1024px) { .lb-hero-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 3.5rem; } }
 .lb-hero { min-width: 0; }
 .lb-kicker { margin: 0 0 1.25rem; font-family: var(--font-mono); font-size: var(--text-meta); letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand-500); }
 .lb-hero-title { font-size: clamp(2.1rem, 5.4vw, 3.75rem); line-height: 1.03; font-weight: 800; letter-spacing: -0.045em; color: var(--text); margin: 0 0 1.4rem; max-width: 13ch; }
@@ -356,12 +354,6 @@ a.ui-list-row:hover { background: var(--row-hover); }
 .lb-hero-cta .ui-btn:not(.ui-btn-signal) { background: transparent; }
 .lb-hero-stats { display: flex; flex-wrap: wrap; gap: 0.4rem 1.75rem; margin: 2.25rem 0 0; font-family: var(--font-mono); font-size: 0.8125rem; color: var(--muted); }
 .lb-hero-stats strong { color: var(--text); font-weight: 600; }
-.lb-hero-receipt { min-width: 0; width: 100%; max-width: 32rem; justify-self: end; border: 1px solid var(--border); border-radius: var(--radius-md); }
-.lb-receipt-foot {
-    display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 44px; margin: 0.25rem -1.25rem -1.1rem; padding: 0 1.25rem;
-    background: var(--brand-500); color: var(--brand-ink); text-decoration: none; font-family: var(--font-mono); font-size: var(--text-meta); font-weight: 600;
-}
-.lb-receipt-foot:hover { background: var(--brand-hover); }
 
 .lb-tape { overflow: hidden; background: var(--brand-500); color: var(--brand-ink); border-block: 1px solid var(--ink); box-shadow: 0 0 0 100vmax var(--brand-500); clip-path: inset(0 -100vmax); }
 .lb-tape-track { display: flex; width: max-content; animation: lb-tape 60s linear infinite; }
@@ -374,26 +366,31 @@ a.ui-list-row:hover { background: var(--row-hover); }
 
 .lb-section-title { margin: 0; font-size: clamp(1.6rem, 3vw, 2.25rem); line-height: 1.1; font-weight: 800; letter-spacing: -0.04em; max-width: 18ch; color: var(--text); }
 
-/* ====== Landing: the scroll story — a CSS 3D « project cube » (one slab per task) scrubbed by anime.js ======
-   <section class="lb-story" data-story> › .lb-story-head › .lb-story-grid[data-story-grid] ›
-     .lb-scene-wrap (sticky) › .lb-scene › .lb-cube[data-cube] › .lb-slab[data-slab] × 4 › .lb-face.is-{front,back,left,right,top,bottom} + .lb-bids › .lb-bid(.is-chosen)
+/* ====== Landing: the scroll story — the hero band is ONE track: hero copy + four steps on the left, the CSS 3D
+   « project cube » (one slab per task) sticky on the right, scrubbed by anime.js ======
+   .lb-hero-band.lb-story[data-story] › .lb-story-grid[data-story-grid] (areas: hero / scene / flow) ›
+     .lb-hero[data-story-hero] · .lb-scene-wrap (sticky) › .lb-scene › .lb-cube[data-cube] › .lb-slab[data-slab] × 4 ›
+     .lb-face.is-{front,back,left,right,top,bottom} + .lb-bids › .lb-bid(.is-chosen) · .lb-story-flow › .lb-story-intro +
      .lb-story-steps › .lb-step[data-story-step] (.is-active follows the chapter, dimmed only once .lb-story.is-live)
    Geometry lives in the --w / --d / --h variables of .lb-scene; lowbid-landing.js animates ONLY transforms and
    opacity on .lb-cube, .lb-slab, .lb-bid, [data-face-*] (never set a CSS transform on those four). The CSS
    below is also the no-JS pose: cube closed, padlocks on, bids hidden. */
-.lb-story { margin-top: 4rem; }
-.lb-story-head { display: grid; gap: 0.9rem; margin-bottom: 2rem; }
+.lb-story-grid { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "hero" "scene" "flow"; gap: 1.5rem; align-items: start; }
+.lb-story-grid > .lb-hero { grid-area: hero; }
+.lb-story-flow { grid-area: flow; min-width: 0; }
+.lb-story-intro { display: grid; gap: 0.9rem; margin: 2.5rem 0 1.5rem; }
 .lb-story-sub { margin: 0; max-width: 58ch; color: var(--muted); font-size: 1rem; line-height: 1.65; }
-@media (min-width: 1024px) { .lb-story-head { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: 2rem 3rem; } }
-
-.lb-story-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; align-items: start; }
-@media (min-width: 1024px) { .lb-story-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3rem; } }
+@media (min-width: 1024px) {
+    .lb-story-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: "hero scene" "flow scene"; gap: 2rem 3.5rem; }
+    .lb-story-intro { margin: 10vh 0 2rem; }
+}
 
 .lb-scene-wrap {
-    position: sticky; top: 3.5rem; z-index: 2; display: flex; flex-direction: column; justify-content: center; align-items: center;
+    grid-area: scene; align-self: start; position: sticky; top: 3.5rem; z-index: 2;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
     height: 44vh; min-height: 17rem; background: var(--bg-1); overflow: hidden;
 }
-@media (min-width: 1024px) { .lb-scene-wrap { top: 5rem; height: calc(100vh - 6rem); min-height: 30rem; background: transparent; z-index: auto; overflow: visible; } }
+@media (min-width: 1024px) { .lb-scene-wrap { top: 5rem; height: calc(100vh - 7rem); min-height: 30rem; background: transparent; z-index: auto; overflow: visible; } }
 
 .lb-scene {
     --w: 15rem; --d: 10rem; --h: 2.6rem; --n: 4; --scene-scale: 1;
@@ -443,7 +440,7 @@ a.ui-list-row:hover { background: var(--row-hover); }
 .lb-story-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
 .lb-story.is-live .lb-step { opacity: 0.5; transition: opacity 0.35s ease, border-color 0.35s ease; }
 .lb-story.is-live .lb-step.is-active { opacity: 1; border-color: var(--border-strong); }
-@media (min-width: 1024px) { .lb-story-steps { padding: 18vh 0 22vh; gap: 26vh; } }
+@media (min-width: 1024px) { .lb-story-steps { padding: 4vh 0 36vh; gap: 38vh; } }   /* 38vh: the chapter windows of lowbid-landing.js must not overlap; 36vh: the last chapter ends while the scene is still pinned */
 @media (prefers-reduced-motion: reduce) { .lb-story.is-live .lb-step { transition: none; } }
 
 /* ====== Receipt (escrow panel head, landing hero): always rendered inside .theme-coffre ====== */

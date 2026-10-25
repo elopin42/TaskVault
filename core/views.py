@@ -74,44 +74,6 @@ def tape_loop(events: list[dict], minimum: int = 8) -> list[dict]:
     return looped
 
 
-def hero_receipt() -> dict | None:
-    """The escrow receipt shown in the hero: the most recently active escrow, else the newest open task
-    (steps all ahead). None on an empty database."""
-    from payments import services as pay
-    from payments import stellar
-    from payments.models import Escrow
-    from projects.models import Task
-
-    escrow = Escrow.objects.select_related("task__project").exclude(status=Escrow.Status.FAILED).order_by("-updated_at").first()
-    if escrow:
-        return {
-            "task": escrow.task,
-            "amount": escrow.amount,
-            "steps": pay.stepper(escrow.mode, escrow.status),
-            "status_label": escrow.status_label,
-            "payer": escrow.payer_address,
-            "payee": escrow.payee_address,
-            "contract": escrow.contract_id or "",
-            "links": escrow.explorer_links(),
-            "live": not escrow.is_done,
-        }
-    task = Task.objects.select_related("project__company").filter(status=Task.Status.OPEN).order_by("-created_at").first()
-    if not task:
-        return None
-    steps = [dict(step, state="todo") for step in pay.stepper(stellar.payment_mode(), "")]
-    return {
-        "task": task,
-        "amount": task.price,
-        "steps": steps,
-        "status_label": "Waiting for a freelancer",
-        "payer": task.project.company.stellar_address,
-        "payee": "",
-        "contract": "",
-        "links": [],
-        "live": False,
-    }
-
-
 # Decorative content of the landing's scroll story (the 3D "project cube" in core/landing.html): one
 # project split into four fixed-price tasks, three bids per task, the chosen one first. Not read from
 # the database: the figures are a worked example, the live numbers live in landing_stats().
@@ -146,7 +108,6 @@ def landing(request: HttpRequest) -> HttpResponse:
             "latest_projects": latest_projects,
             "stats": landing_stats(),
             "tape": tape_loop(ledger_tape()),
-            "receipt": hero_receipt(),
             "story_tasks": STORY_TASKS,
         },
     )

@@ -62,6 +62,46 @@ class LandingTests(TestCase):
         self.assertGreaterEqual(len(resp.context["tape"]), 8)  # looped so one copy fills the viewport
         self.assertContains(resp, "FUNDS LOCKED")
 
+    def test_landing_chapters_quote_the_configured_rules(self):
+        from django.test import override_settings
+
+        with override_settings(LOWBID_REVIEW_DAYS=9, LOWBID_MAX_REVISIONS=3, WALLET_CHALLENGE_TTL_SECONDS=600):
+            resp = self.client.get(reverse("core:landing"))
+        html = resp.content.decode()
+        for chapter in ("price", "sponsorship", "security", "composed", "money-path"):
+            self.assertIn(f'data-chapter="{chapter}"', html)
+        self.assertEqual(resp.context["facts"]["review_days"], 9)
+        self.assertEqual(resp.context["facts"]["max_revisions"], 3)
+        self.assertEqual(resp.context["facts"]["challenge_minutes"], 10)
+        self.assertContains(resp, "expires <b>10:00</b>")
+        self.assertContains(resp, "<b>9 days</b>")
+        self.assertContains(resp, "3 revisions max")
+        self.assertContains(resp, "Yanis recommends")
+        self.assertContains(resp, "price × 0")
+        self.assertEqual(len(resp.context["story_prices"]), 3)
+
+    def test_landing_facts_follow_the_payment_mode(self):
+        from unittest.mock import patch
+
+        with patch("payments.stellar.payment_mode", return_value="direct"):
+            html = self.client.get(reverse("core:landing")).content.decode()
+        self.assertIn("One signature, from delivery to payout.", html)
+        self.assertIn("Five Stellar building blocks", html)
+        self.assertNotIn("Disputes</h3>", html)
+        self.assertNotIn("Money locked before work", html)
+
+        with patch("payments.stellar.payment_mode", return_value="escrow"), patch("payments.deposits.deposits_active", return_value=True):
+            resp = self.client.get(reverse("core:landing"))
+        html = resp.content.decode()
+        self.assertIn("Four signatures, from deposit to payout.", html)
+        self.assertIn("Seven Stellar building blocks", html)
+        self.assertIn("Disputes</h3>", html)
+        self.assertIn("A deposit protects freelancers", html)
+        self.assertEqual(resp.context["facts"]["deposit_pct"], "1")
+        self.assertEqual(resp.context["facts"]["deposit_min"], "5")
+        self.assertEqual(resp.context["facts"]["deposit_example"], "12")
+        self.assertContains(resp, reverse("payments:fund_page"))
+
     def test_landing_ignores_offsite_next(self):
         resp = self.client.get(reverse("core:landing") + "?next=https://evil.example/")
         self.assertEqual(resp.status_code, 200)

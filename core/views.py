@@ -94,6 +94,39 @@ STORY_TASKS = (
 )
 
 
+def landing_facts() -> dict:
+    """The configured rules quoted by the landing's chapters (security, money path), read from the settings so
+    the copy never drifts from what the task board enforces: {challenge_minutes, review_days, max_revisions,
+    deposit_active, deposit_pct, deposit_min, trusted_host}."""
+    from decimal import Decimal
+
+    from payments import deposits
+
+    def plain(value: Decimal) -> str:  # "1", "5", "12.5": never "1E+1"
+        return format(value.normalize(), "f")
+
+    return {
+        "challenge_minutes": max(1, int(settings.WALLET_CHALLENGE_TTL_SECONDS) // 60),
+        "review_days": settings.LOWBID_REVIEW_DAYS,
+        "max_revisions": settings.LOWBID_MAX_REVISIONS,
+        "deposit_active": deposits.deposits_active(),
+        "deposit_pct": plain(Decimal(settings.LOWBID_DEPOSIT_RATE) * 100),
+        "deposit_min": plain(Decimal(settings.LOWBID_DEPOSIT_MIN)),
+        "deposit_example": plain(deposits.deposit_amount(Decimal("1200"))),
+        "choice_days": deposits.choice_days(),
+        "trusted_host": (settings.LOWBID_TRUSTED_LINK_HOSTS or ["github.com"])[0],
+    }
+
+
+# The worked example of the landing's chapter 01 (after the cube): one project, one expert per task, each at
+# their own price under the task's budget (the figures of the pitch deck, not database rows).
+STORY_PRICES = (
+    {"task": "Landing page", "budget": "300", "expert": "Léa", "price": "280"},
+    {"task": "Freighter integration", "budget": "500", "expert": "Yanis", "price": "480"},
+    {"task": "Dashboard", "budget": "400", "expert": "Nora", "price": "400"},
+)
+
+
 def landing(request: HttpRequest) -> HttpResponse:
     from projects.models import Project  # local import: core must stay importable without the domain apps
 
@@ -118,6 +151,8 @@ def landing(request: HttpRequest) -> HttpResponse:
             "stats": landing_stats(),
             "tape": tape_loop(ledger_tape()),
             "story_tasks": STORY_TASKS,
+            "story_prices": STORY_PRICES,
+            "facts": landing_facts(),
         },
     )
 

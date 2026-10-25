@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static lowbid_extras %}
 {% block title %}TaskVault — the freelancer task board, paid in {{ asset_code }} on Stellar{% endblock %}
-{% block meta_description %}TaskVault — projects split into tasks, freelancers propose their price, paid in {{ asset_code }} on Stellar.{% endblock %}
+{% block meta_description %}TaskVault — one big project split into tasks, freelancers propose their price, each task paid in {{ asset_code }} on Stellar{% if payment_mode|default:"escrow" == "escrow" %} from its own escrow{% endif %}.{% endblock %}
 
 {% block content %}
 {% comment %}
@@ -12,6 +12,10 @@
   is a worked example (core.views.STORY_TASKS), not database rows. The on-chain copy follows
   `payment_mode` (core.context_processors.site): escrow = Trustless Work deploy · fund, then deliver ·
   approve · release; direct = one payment signed by the company at validation, no escrow.
+  Under the band, the five chapters of the pitch (docs/PITCH.md, the HackMeridian film), keyword copy only:
+  01 the price (core.views.STORY_PRICES + the four rules), 02 sponsorship, 03 security (every figure comes
+  from the settings through core.views.landing_facts), 04 the Stellar building blocks, 05 the money path
+  with the key facts; then the real projects with open tasks and the closing call to action.
 {% endcomment %}
 {% with escrow=payment_mode|default:"escrow" %}
 <div class="lb-hero-band theme-coffre lb-story" data-story>
@@ -19,7 +23,7 @@
     <section class="lb-hero" data-story-hero>
       <p class="lb-kicker">Stellar {{ STELLAR_NETWORK }}{% if escrow == "escrow" %} · Soroban · Trustless Work{% else %} · direct payment{% endif %}</p>
       <h1 class="lb-hero-title">{% if escrow == "escrow" %}You name your price. <span class="lb-hero-accent">The money is vaulted.</span> The work gets paid.{% else %}You name your price. <span class="lb-hero-accent">The delivery is validated.</span> The work gets paid.{% endif %}</h1>
-      <p class="lb-hero-sub">Tasks with a budget, freelancers name their price, paid in {{ asset_code }} on Stellar once the company validates the delivery.</p>
+      <p class="lb-hero-sub"><strong class="lb-hero-tagline">Fixed prices. Earned trust. Guaranteed payment.</strong> One big project, split into tasks. Each one paid in {{ asset_code }} on Stellar{% if escrow == "escrow" %}, from its own escrow{% endif %}.</p>
       <div class="lb-hero-cta">
         {% if wallet_address %}
           <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary ui-btn-signal ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> New project</a>
@@ -43,32 +47,33 @@
 
     <div class="lb-story-flow">
       <div class="lb-story-intro">
+        <p class="lb-kicker">01 · One big project, many experts</p>
         <h2 id="story-title" class="lb-section-title">One project. Everyone takes the part they want.</h2>
-        <p class="lb-story-sub">A company posts a project cut into tasks, each with a budget. Freelancers apply to the part they want with their price, a message and their skills: the company sets the ceiling, each freelancer quotes their own. The one chosen for each task is paid in {{ asset_code }}{% if escrow == "escrow" %}, from an escrow the company funds before the delivery{% else %}, straight from the company's wallet at validation{% endif %}.</p>
+        <p class="lb-story-sub">Tasks with a budget. Freelancers pick one and name their price. The chosen one is paid in {{ asset_code }}{% if escrow == "escrow" %}, from an escrow funded before the work{% else %}, at validation{% endif %}.</p>
       </div>
       <ol class="lb-story-steps">
       <li class="lb-step" data-story-step>
         <div class="lb-step-head"><span>BLOCK 01</span><span>COMPANY</span></div>
         <h3 class="lb-step-title">Split</h3>
-        <p class="lb-step-desc">One project, cut into tasks with a budget each. Any freelancer can apply to any open task.</p>
+        <p class="lb-step-desc">One project, tasks with a budget each. Open to every freelancer.</p>
         <code class="lb-step-call">off-chain</code>
       </li>
       <li class="lb-step" data-story-step>
         <div class="lb-step-head"><span>BLOCK 02</span><span>FREELANCERS · COMPANY</span></div>
         <h3 class="lb-step-title">Apply</h3>
-        <p class="lb-step-desc">Freelancers apply with their price (at most the budget), a message and their skills. A score out of 100 (paid history and ratings with this company, matching skills) is a hint; the company chooses one per task.</p>
+        <p class="lb-step-desc">Your price (up to the budget), a message, your skills. Score out of 100: history, ratings, skills. Price × 0. The company chooses.</p>
         <code class="lb-step-call">off-chain</code>
       </li>
       <li class="lb-step is-signal" data-story-step>
         {% if escrow == "escrow" %}
         <div class="lb-step-head"><span>BLOCK 03</span><span>COMPANY · SIGNATURE ×2</span></div>
         <h3 class="lb-step-title">Lock</h3>
-        <p class="lb-step-desc">Once a freelancer is chosen, the company deploys and funds one escrow for that task. Delivery opens only when the money is there, and the freelancer can see it.</p>
+        <p class="lb-step-desc">Freelancer chosen: one escrow per task, deployed and funded. Delivery opens once the money is there.</p>
         <code class="lb-step-call">deploy · fund</code>
         {% else %}
         <div class="lb-step-head"><span>BLOCK 03</span><span>FREELANCER</span></div>
         <h3 class="lb-step-title">Work</h3>
-        <p class="lb-step-desc">The chosen freelancer does the work at the price they proposed. In direct mode no escrow is deployed: nothing moves on chain yet.</p>
+        <p class="lb-step-desc">The chosen freelancer works at their price. Direct mode: no escrow, nothing on chain yet.</p>
         <code class="lb-step-call">off-chain</code>
         {% endif %}
       </li>
@@ -76,12 +81,12 @@
         {% if escrow == "escrow" %}
         <div class="lb-step-head"><span>BLOCK 04</span><span>SIGNATURE ×3</span></div>
         <h3 class="lb-step-title">Deliver, release</h3>
-        <p class="lb-step-desc">The freelancer signs the delivery link into the escrow, the company validates, rates it 1 to 5, then signs approve and release. No invoice, no chasing.</p>
+        <p class="lb-step-desc">Delivery link signed on chain. Validate, rate 1 to 5, approve, release. No invoice, no chasing.</p>
         <code class="lb-step-call">deliver · approve · release</code>
         {% else %}
         <div class="lb-step-head"><span>BLOCK 04</span><span>COMPANY · SIGNATURE ×1</span></div>
         <h3 class="lb-step-title">Deliver, pay</h3>
-        <p class="lb-step-desc">The freelancer posts the delivery link, the company validates, rates it 1 to 5 and signs one {{ asset_code }} payment. No invoice, no chasing.</p>
+        <p class="lb-step-desc">Delivery link posted. Validate, rate 1 to 5, sign one {{ asset_code }} payment. No invoice, no chasing.</p>
         <code class="lb-step-call">payment</code>
         {% endif %}
       </li>
@@ -123,7 +128,6 @@
     </div>
   </div>
 </div>
-{% endwith %}
 
 {% if tape %}
 {# Ledger tape: the latest real on-chain events, looped (the second copy is decorative) #}
@@ -140,22 +144,192 @@
 </div>
 {% endif %}
 
+{# ---- 01 · The price: one expert per task, each at their own price under the budget ---- #}
+<section class="lb-chapter" aria-labelledby="chapter-price" data-chapter="price">
+  <div class="lb-chapter-head">
+    <p class="lb-kicker">01 · One big project, many experts</p>
+    <h2 id="chapter-price" class="lb-chapter-title">One project, three experts, each at their own price.</h2>
+    <p class="lb-lede">Budget = the ceiling. Agreed price = what moves. « Up to » stays beside it.</p>
+  </div>
+  <div class="lb-prices-flow">
+    <div class="rcard lb-prices" aria-label="Worked example">
+      <table>
+        <thead><tr><th>Task</th><th>Budget</th><th>Expert</th><th class="ui-col-end">Agreed price</th></tr></thead>
+        <tbody>
+          {% for row in story_prices %}
+          <tr>
+            <td data-label="Task">{{ row.task }}</td>
+            <td data-label="Budget" class="ui-num"><span class="ui-meta">up to</span> {{ row.budget }}</td>
+            <td data-label="Expert">{{ row.expert }}</td>
+            <td data-label="Agreed price" class="ui-col-end ui-num lb-prices-agreed">{{ row.price }} {{ asset_code }}</td>
+          </tr>
+          {% endfor %}
+          <tr class="lb-prices-refused">
+            <td data-label="Task">Freighter integration</td>
+            <td data-label="Budget" class="ui-num"><span class="ui-meta">up to</span> 500</td>
+            <td data-label="Expert">Max</td>
+            <td data-label="Agreed price" class="ui-col-end ui-num"><s>620 {{ asset_code }}</s> <span class="ui-badge ui-badge-neutral">over budget</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <ol class="lb-rules is-2col" aria-label="The four rules">
+      <li><span class="lb-rule-no">01</span><div><strong>Pick the task you want.</strong><span class="lb-rule-desc">Any open task, any project.</span></div></li>
+      <li><span class="lb-rule-no">02</span><div><strong>Propose a price, at most the budget.</strong><span class="lb-rule-desc">Over budget: refused.</span></div></li>
+      <li><span class="lb-rule-no">03</span><div><strong>A score ranks. The price never enters it.</strong><code class="lb-formula">score = <b>40</b> · paid history + <b>8</b> · avg rating + <b>20</b> · skills match<span>max 100 · price × 0 · this company only</span></code></div></li>
+      <li><span class="lb-rule-no">04</span><div><strong>The company chooses.</strong><span class="lb-rule-desc">« Choose » on every row. One paid delivery rated 3 or more: « Validated ».</span></div></li>
+    </ol>
+  </div>
+</section>
+
+{# ---- 02 · Sponsorship: a recognised freelancer vouches for a newcomer ---- #}
+<section class="lb-chapter" aria-labelledby="chapter-sponsor" data-chapter="sponsorship">
+  <div class="lb-chapter-head">
+    <p class="lb-kicker">02 · Sponsorship</p>
+    <h2 id="chapter-sponsor" class="lb-chapter-title">A recognised freelancer <span class="lb-hero-accent">sponsors a newcomer</span>. The loop breaks.</h2>
+  </div>
+  <div class="lb-chapter-grid">
+    <div>
+      <ol class="lb-loop" aria-label="The newcomer's loop"><li>No reviews</li><li>No missions</li><li>Still no reviews</li></ol>
+      <ul class="lb-keys">
+        <li>Follow who you work with</li>
+        <li>One hop only</li>
+        <li>Fake rings show nothing</li>
+        <li>A hint, never a verdict</li>
+        <li>Score and order unchanged</li>
+      </ul>
+    </div>
+    <div class="lb-cand" aria-label="Example: a sponsored newcomer on a candidate row">
+      <div class="lb-cand-head" data-identicon="story-sponsor-lea"><span class="ui-identicon is-lg" aria-hidden="true"></span><span class="lb-cand-name">Léa</span><span class="ui-badge ui-badge-neutral">New account</span></div>
+      <p class="lb-cand-msg">Front-end dev, first mission on TaskVault.</p>
+      <span class="ui-netbadges"><span class="ui-badge ui-netbadge is-strong"><i class="fa-solid fa-user-group" aria-hidden="true"></i> Yanis recommends</span></span>
+      <p class="ui-netquote">“Worked with her twice. Clean, fast, reliable.”</p>
+    </div>
+  </div>
+</section>
+
+{# ---- 03 · Security: every guard, with its proof as it shows in the app ---- #}
+<section class="lb-chapter" aria-labelledby="chapter-security" data-chapter="security">
+  <div class="lb-chapter-head">
+    <p class="lb-kicker">03 · Security at the core</p>
+    <h2 id="chapter-security" class="lb-chapter-title">Nobody gets scammed, on either side.</h2>
+    <p class="lb-lede">TaskVault holds neither the money nor the truth. Every fact on Stellar, linked to stellar.expert.</p>
+  </div>
+  <ol class="lb-guards">
+    <li class="lb-guard">
+      <div class="lb-guard-text"><h3>No account, no password</h3><p>SEP-53 message signed in Freighter. {{ facts.challenge_minutes }} min, single use. Nothing to steal.</p></div>
+      <code class="lb-guard-chip">challenge · single use · expires <b>{{ facts.challenge_minutes }}:00</b></code>
+    </li>
+    <li class="lb-guard">
+      <div class="lb-guard-text"><h3>We never touch your pay</h3><p>{% if escrow == "escrow" %}Every escrow action signed in your wallet. Server keys: the deposit only.{% else %}Payment signed in the company's wallet, straight to yours.{% endif %}</p></div>
+      <code class="lb-guard-chip">{% if escrow == "escrow" %}task escrow{% else %}private{% endif %} keys held by TaskVault · <b>0</b></code>
+    </li>
+    {% if escrow == "escrow" %}
+    <li class="lb-guard">
+      <div class="lb-guard-text"><h3>Money locked before work</h3><p>One vault per task, funded once the freelancer is chosen. Neither side holds it.</p></div>
+      <code class="lb-guard-chip">escrow · task 02 · <b class="is-mint">500.00 {{ asset_code }}</b> locked</code>
+    </li>
+    {% endif %}
+    <li class="lb-guard">
+      <div class="lb-guard-text"><h3>Anti-cheat</h3><p>Transaction must match the plan. Replay refused. Delivery fingerprint{% if escrow == "escrow" %} on chain{% endif %}, full deliverable revealed once paid.</p></div>
+      <code class="lb-guard-chip">replayed signature · <b class="is-bad"><i class="fa-solid fa-xmark" aria-hidden="true"></i> tampered</b>{% if escrow == "escrow" %} · sha256:9f3c… on chain{% endif %}</code>
+    </li>
+    <li class="lb-guard">
+      <div class="lb-guard-text"><h3>Verified links</h3><p>Unknown domain: a warning before the click.</p></div>
+      <code class="lb-guard-chip">{{ facts.trusted_host }} <b class="is-ok"><i class="fa-solid fa-check" aria-hidden="true"></i></b> · free-gift.xyz <b class="is-bad"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> unknown domain</b></code>
+    </li>
+    <li class="lb-guard">
+      <div class="lb-guard-text"><h3>Review window</h3><p>{{ facts.review_days }} days to validate or ask for changes, {{ facts.max_revisions }} time{{ facts.max_revisions|pluralize }} max. Silence pays nobody{% if escrow == "escrow" %}: then the freelancer can dispute{% endif %}.</p></div>
+      <code class="lb-guard-chip">review · <b>{{ facts.review_days }} days</b> · {{ facts.max_revisions }} revision{{ facts.max_revisions|pluralize }} max</code>
+    </li>
+    {% if escrow == "escrow" %}
+    <li class="lb-guard">
+      <div class="lb-guard-text"><h3>Disputes</h3><p>An arbiter settles on chain and can split the money.</p></div>
+      <code class="lb-guard-chip">resolve · freelancer <b>70 %</b> · company <b>30 %</b></code>
+    </li>
+    {% if facts.deposit_active %}
+    <li class="lb-guard">
+      <div class="lb-guard-text"><h3>A deposit protects freelancers</h3><p>{{ facts.deposit_pct }} % of the budget, min {{ facts.deposit_min }} {{ asset_code }}, locked before listing. Ghost listing ({{ facts.choice_days }} days, nobody chosen): forfeited to the <a href="{% url 'payments:fund_page' %}" class="ui-link">guarantee fund</a>.</p></div>
+      <code class="lb-guard-chip">deposit <b>{{ facts.deposit_example }} {{ asset_code }}</b> · no-show: guarantee fund</code>
+    </li>
+    {% endif %}
+    {% endif %}
+  </ol>
+</section>
+
+{# ---- 04 · Track Composed: the Stellar building blocks ---- #}
+<section class="lb-chapter" aria-labelledby="chapter-stack" data-chapter="composed">
+  <div class="lb-chapter-head">
+    <p class="lb-kicker">04 · Track Stellar Composed</p>
+    <h2 id="chapter-stack" class="lb-chapter-title">{% if escrow == "escrow" %}Seven{% else %}Five{% endif %} Stellar building blocks, one flow.</h2>
+  </div>
+  <ol class="lb-bricks">
+    <li class="lb-brick"><strong>Freighter</strong><span>Identity + signature.</span></li>
+    {% if escrow == "escrow" %}
+    <li class="lb-brick"><strong>Trustless Work</strong><span>One vault per task: lock, deliver, release, dispute.</span></li>
+    <li class="lb-brick"><strong>Soroban</strong><span>Where the vaults live.</span></li>
+    {% endif %}
+    <li class="lb-brick is-mint"><strong>{% if asset_code == "USDC" %}USDC · Circle{% else %}{{ asset_code }}{% endif %}</strong><span>{% if asset_code == "USDC" %}A stable dollar, no volatility.{% elif asset_native %}The network's own asset.{% else %}The configured payment asset.{% endif %}</span></li>
+    <li class="lb-brick"><strong>Horizon</strong><span>Balances, trustlines, payments.</span></li>
+    <li class="lb-brick"><strong>Stellar SDK</strong><span>Build and send transactions.</span></li>
+    <li class="lb-brick"><strong>stellar.expert</strong><span>Every transaction public.</span></li>
+  </ol>
+  <p class="lb-chapter-foot"><strong>Composed:</strong> one job per block, one payment flow.</p>
+</section>
+
+{# ---- 05 · The money path, then the key facts ---- #}
+<section class="lb-chapter" aria-labelledby="chapter-path" data-chapter="money-path">
+  <div class="lb-chapter-head">
+    <p class="lb-kicker">05 · The money path</p>
+    <h2 id="chapter-path" class="lb-chapter-title">{% if escrow == "escrow" %}Four signatures, from deposit to payout.{% else %}One signature, from delivery to payout.{% endif %}</h2>
+  </div>
+  {% if escrow == "escrow" %}
+  <ol class="lb-path">
+    <li class="lb-path-step"><span class="lb-path-who">01 · Company</span><h3>Deposit</h3><p>Freelancer chosen, vault funded.</p><code class="lb-path-call">deploy + fund</code></li>
+    <li class="lb-path-step"><span class="lb-path-who">02 · Freelancer</span><h3>Deliver</h3><p>Link + fingerprint on chain.</p><code class="lb-path-call">milestone + link</code></li>
+    <li class="lb-path-step"><span class="lb-path-who">03 · Company</span><h3>Validate</h3><p>Rate 1 to 5, release.</p><code class="lb-path-call">approve + release</code></li>
+    <li class="lb-path-step is-final"><span class="lb-path-who">04 · Freelancer</span><h3>Paid</h3><p>{{ asset_code }} in the wallet, ~5 s, under a cent.</p><code class="lb-path-call">~5 s · &lt; 1 ¢ fee</code></li>
+  </ol>
+  {% else %}
+  <ol class="lb-path" style="--steps: 3">
+    <li class="lb-path-step"><span class="lb-path-who">01 · Freelancer</span><h3>Deliver</h3><p>Link + fingerprint.</p><code class="lb-path-call">off-chain</code></li>
+    <li class="lb-path-step"><span class="lb-path-who">02 · Company</span><h3>Validate</h3><p>Rate 1 to 5, sign one payment.</p><code class="lb-path-call">payment</code></li>
+    <li class="lb-path-step is-final"><span class="lb-path-who">03 · Freelancer</span><h3>Paid</h3><p>{{ asset_code }} in the wallet, ~5 s, under a cent.</p><code class="lb-path-call">~5 s · &lt; 1 ¢ fee</code></li>
+  </ol>
+  {% endif %}
+  <p class="lb-chapter-foot">Every step signed in your own wallet, public on stellar.expert.</p>
+  <section class="ui-kpi-band" aria-label="Key facts">
+    <div class="ui-kpi-tile"><span class="ui-kpi-label">Network fee</span><span class="ui-kpi-value">from 0.00001 XLM</span><span class="ui-kpi-hint ui-meta">base fee per operation, Soroban calls add a resource fee</span></div>
+    <div class="ui-kpi-tile"><span class="ui-kpi-label">Finality</span><span class="ui-kpi-value">~5 s</span><span class="ui-kpi-hint ui-meta">one Stellar ledger</span></div>
+    <div class="ui-kpi-tile"><span class="ui-kpi-label">Settlement</span><span class="ui-kpi-value">{{ asset_code }}</span><span class="ui-kpi-hint ui-meta">Stellar {{ STELLAR_NETWORK }}</span></div>
+    <div class="ui-kpi-tile"><span class="ui-kpi-label">Identity</span><span class="ui-kpi-value">SEP-53</span><span class="ui-kpi-hint ui-meta">Freighter signature, zero passwords</span></div>
+  </section>
+</section>
+
 {% if latest_projects %}
-<section class="ui-section" aria-label="Open projects">
+<section class="ui-section lb-chapter" aria-label="Open projects">
   {% url 'projects:project_list' as list_url %}
-  {% include "components/section_head.html" with title="Projects with open tasks" link_href=list_url link_label="All projects" %}
+  {% include "components/section_head.html" with title="Projects with open tasks" sub="The live board: pick a task, name your price." link_href=list_url link_label="All projects" %}
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
     {% for project in latest_projects %}{% include "projects/_project_card.html" with project=project %}{% endfor %}
   </div>
 </section>
 {% endif %}
 
-<section class="ui-kpi-band mt-12" aria-label="Key facts">
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Network fee</span><span class="ui-kpi-value">from 0.00001 XLM</span><span class="ui-kpi-hint ui-meta">base fee per operation, Soroban calls add a resource fee</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Finality</span><span class="ui-kpi-value">~5 s</span><span class="ui-kpi-hint ui-meta">one Stellar ledger</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Settlement</span><span class="ui-kpi-value">{{ asset_code }}</span><span class="ui-kpi-hint ui-meta">Stellar {{ STELLAR_NETWORK }}</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Identity</span><span class="ui-kpi-value">SEP-53</span><span class="ui-kpi-hint ui-meta">Freighter signature, zero passwords</span></div>
+<section class="lb-close" aria-label="Get started">
+  <p class="lb-close-tagline">Fixed prices. Earned trust. Guaranteed payment.</p>
+  <div class="lb-hero-cta">
+    {% if wallet_address %}
+      <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary ui-btn-signal ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> New project</a>
+      <a href="{% url 'projects:board' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> Task board</a>
+    {% else %}
+      <button type="button" class="ui-btn ui-btn-primary ui-btn-signal ui-btn-lg" data-wallet-connect data-next="{% url 'dashboard:home' %}"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Connect my Freighter wallet</button>
+      <a href="{% url 'projects:project_list' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Browse projects</a>
+    {% endif %}
+  </div>
+  <p class="lb-close-meta">Built for HackMeridian 2026 · track Stellar Composed · Stellar {{ STELLAR_NETWORK }}</p>
 </section>
+{% endwith %}
 {% endblock %}
 
 {% block extra_js %}

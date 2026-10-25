@@ -497,6 +497,111 @@ a.ui-list-row:hover { background: var(--row-hover); }
 .lb-step-desc { font-size: var(--text-body); line-height: 1.55; margin: 0; opacity: 0.85; }
 .lb-step-call { align-self: flex-start; margin-top: auto; padding: 0.25rem 0.5rem; border: 1px solid currentColor; border-radius: var(--radius-xs); font-family: var(--font-mono); font-size: var(--text-meta); opacity: 0.85; }
 .lb-step-desc + .lb-step-call { margin-top: 1.25rem; }
+.lb-hero-tagline { display: block; margin-bottom: 0.4rem; font-weight: 650; color: var(--text); letter-spacing: -0.01em; }
+
+/* ====== Landing: the five chapters under the story track (templates/core/landing.html, [data-chapter]) ======
+   01 price (.lb-prices table + ol.lb-rules › .lb-rule-no / .lb-rule-desc / code.lb-formula) · 02 sponsorship
+   (ol.lb-loop + .lb-cand example) · 03 security (ol.lb-guards › li.lb-guard, CSS-counted, › .lb-guard-text +
+   code.lb-guard-chip) · 04 composed (ol.lb-bricks › li.lb-brick(.is-mint), CSS-counted) · 05 money path
+   (ol.lb-path[--steps] › li.lb-path-step(.is-final) › .lb-path-who / h3 / p / code.lb-path-call) ·
+   .lb-close (tagline, the hero CTA again, meta). Ledger lines, no boxes: a heavy --rule on top of each list,
+   --divider between the lines; the Signal mint marks money and the chosen / final state only. */
+.lb-chapter { margin-top: 3.5rem; padding-top: 3.5rem; border-top: 1px solid var(--border); }
+@media (min-width: 768px) { .lb-chapter { margin-top: 5rem; padding-top: 5rem; } }
+.lb-chapter-head { display: grid; gap: 1rem; max-width: 60rem; margin-bottom: 2.25rem; }
+.lb-chapter-head .lb-kicker { margin: 0; }
+.lb-chapter-title { margin: 0; font-size: clamp(1.75rem, 3.6vw, 2.75rem); line-height: 1.08; font-weight: 800; letter-spacing: -0.04em; max-width: 22ch; color: var(--text); overflow-wrap: anywhere; }
+.lb-lede { margin: 0; max-width: 62ch; font-size: 1rem; line-height: 1.65; color: var(--muted); }
+.lb-chapter-sub { margin: 1.75rem 0 0.75rem; font-size: 1.35rem; line-height: 1.25; font-weight: 750; letter-spacing: -0.03em; color: var(--text); max-width: 26ch; }
+.lb-chapter-foot { margin: 2rem 0 0; max-width: 62ch; font-size: var(--text-body); line-height: 1.55; color: var(--muted); }
+.lb-chapter-foot strong { color: var(--text); }
+.lb-chapter .ui-kpi-band { margin-top: 2.5rem; }
+.lb-chapter.ui-section .ui-section-title { font-size: 1.3rem; letter-spacing: -0.02em; }
+.lb-chapter-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; align-items: start; }
+@media (min-width: 1024px) { .lb-chapter-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 2rem 4rem; } }
+
+/* 01 · the worked example (a ledger table, full width so .rcard keeps it a table from 720px) then the four rules */
+.lb-prices-flow { display: grid; gap: 2.5rem; }
+.lb-prices thead th { border-bottom: 1px solid var(--rule); }
+.lb-prices th:first-child, .lb-prices td:first-child { padding-inline-start: 0; }
+.lb-prices th:last-child, .lb-prices td:last-child { padding-inline-end: 0; }
+.lb-prices tbody tr:hover { background: transparent; }
+.lb-prices-agreed { font-weight: 600; color: var(--brand-500); }
+.lb-prices-refused td { color: var(--muted); }
+.lb-prices-refused s { text-decoration-color: var(--error); }
+.lb-rules { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.lb-rules li { display: grid; grid-template-columns: 2.25rem minmax(0, 1fr); gap: 0 0.5rem; padding: 1rem 0; border-bottom: 1px solid var(--divider); }
+@media (min-width: 768px) {
+    .lb-rules.is-2col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3rem; }
+    .lb-rules.is-2col li { padding: 1.25rem 0; }
+}
+.lb-rule-no { padding-top: 0.2rem; font-family: var(--font-mono); font-size: var(--text-meta); font-weight: 700; color: var(--brand-500); }
+.lb-rules strong { display: block; font-size: 1.02rem; font-weight: 700; letter-spacing: -0.015em; line-height: 1.3; color: var(--text); }
+.lb-rule-desc { display: block; margin-top: 0.3rem; font-size: var(--text-body); line-height: 1.55; color: var(--muted); }
+.lb-formula { display: block; margin-top: 0.7rem; padding: 0.6rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface); font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.55; color: var(--text); overflow-wrap: anywhere; }
+.lb-formula b { font-weight: 600; color: var(--brand-500); }
+.lb-formula span { display: block; color: var(--muted); }
+
+/* 02 · the loop (three stations on one rule) and a candidate row as the example */
+.lb-loop { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-family: var(--font-mono); font-size: var(--text-meta); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.lb-loop li { display: inline-flex; align-items: center; gap: 0.5rem; }
+.lb-loop li + li::before { content: ""; width: 1.5rem; height: 1px; background: var(--border-strong); }
+.lb-loop li:last-child { color: var(--warning); }
+.lb-keys { list-style: none; margin: 1.5rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 0; font-size: var(--text-body); color: var(--text); }
+.lb-keys li { display: inline-flex; align-items: center; }
+.lb-keys li + li::before { content: "·"; margin: 0 0.6rem; color: var(--brand-500); font-weight: 700; }
+.lb-cand { padding: 1.4rem 1.5rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); }
+.lb-cand-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.lb-cand-name { font-size: 1.25rem; font-weight: 750; letter-spacing: -0.02em; color: var(--text); }
+.lb-cand-msg { margin: 0.9rem 0; font-size: var(--text-body); line-height: 1.55; color: var(--muted); }
+.lb-cand .ui-netquote { margin-top: 0.75rem; font-size: var(--text-body); }
+
+/* 03 · one ledger line per guard: number, title + text, the proof as a mono chip (right-aligned from 1024px) */
+.lb-guards { list-style: none; margin: 0; padding: 0; counter-reset: guard; border-top: 1px solid var(--rule); }
+.lb-guard { counter-increment: guard; display: grid; grid-template-columns: 2.25rem minmax(0, 1fr); gap: 0.6rem 0.5rem; padding: 1.4rem 0; border-bottom: 1px solid var(--divider); }
+.lb-guard::before { content: "0" counter(guard); grid-row: 1 / span 2; padding-top: 0.25rem; font-family: var(--font-mono); font-size: var(--text-meta); font-weight: 700; color: var(--brand-500); }
+.lb-guard-text { min-width: 0; }
+.lb-guard-text h3 { margin: 0 0 0.35rem; font-size: 1.1rem; font-weight: 750; letter-spacing: -0.02em; line-height: 1.3; color: var(--text); }
+.lb-guard-text p { margin: 0; max-width: 58ch; font-size: var(--text-body); line-height: 1.6; color: var(--muted); }
+.lb-guard-chip { grid-column: 2; justify-self: start; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; max-width: 100%; padding: 0.35rem 0.6rem; border: 1px solid var(--border-strong); border-radius: var(--radius-xs); background: var(--surface); font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
+.lb-guard-chip b { font-weight: 600; color: var(--text); }
+.lb-guard-chip .is-mint { color: var(--brand-500); }
+.lb-guard-chip .is-ok { color: var(--success); }
+.lb-guard-chip .is-bad { color: var(--error); }
+.lb-guard-chip i { font-size: 0.85em; }
+@media (min-width: 1024px) {
+    .lb-guard { grid-template-columns: 2.25rem minmax(0, 1fr) minmax(0, 22rem); column-gap: 1.5rem; align-items: start; }
+    .lb-guard::before { grid-row: auto; }
+    .lb-guard-chip { grid-column: 3; justify-self: end; margin-top: 0.2rem; }
+}
+
+/* 04 · the building blocks: flat tiles, a rule on top, numbered by CSS (direct mode skips two) */
+.lb-bricks { list-style: none; margin: 0; padding: 0; counter-reset: brick; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem 1.25rem; }
+@media (min-width: 640px) { .lb-bricks { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .lb-bricks { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2rem 1.5rem; } }
+.lb-brick { counter-increment: brick; min-width: 0; padding-top: 0.85rem; border-top: 1px solid var(--border-strong); }
+.lb-brick::before { content: "0" counter(brick); display: block; margin-bottom: 0.6rem; font-family: var(--font-mono); font-size: var(--text-meta); color: var(--muted); }
+.lb-brick strong { display: block; font-size: 1.05rem; font-weight: 750; letter-spacing: -0.02em; line-height: 1.3; color: var(--text); overflow-wrap: anywhere; }
+.lb-brick span { display: block; margin-top: 0.3rem; font-size: var(--text-body); line-height: 1.5; color: var(--muted); }
+.lb-brick.is-mint { border-top-color: var(--brand-500); }
+.lb-brick.is-mint::before, .lb-brick.is-mint strong { color: var(--brand-500); }
+
+/* 05 · one column per signature, the payout framed in mint */
+.lb-path { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+@media (min-width: 640px) { .lb-path { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; } }
+@media (min-width: 1024px) { .lb-path { grid-template-columns: repeat(var(--steps, 4), minmax(0, 1fr)); } }
+.lb-path-step { display: flex; flex-direction: column; min-width: 0; min-height: 10rem; padding-top: 1rem; border-top: 1px solid var(--border-strong); }
+.lb-path-who { font-family: var(--font-mono); font-size: var(--text-meta); color: var(--muted); }
+.lb-path-step h3 { margin: 0.9rem 0 0.4rem; font-size: 1.3rem; font-weight: 750; letter-spacing: -0.03em; color: var(--text); }
+.lb-path-step p { margin: 0; font-size: var(--text-body); line-height: 1.55; color: var(--muted); }
+.lb-path-call { align-self: flex-start; margin-top: auto; padding-top: 1rem; font-family: var(--font-mono); font-size: var(--text-meta); color: var(--muted); }
+.lb-path-step.is-final { border-top-color: var(--brand-500); }
+.lb-path-step.is-final .lb-path-who, .lb-path-step.is-final h3, .lb-path-step.is-final .lb-path-call { color: var(--brand-500); }
+
+/* the closing band */
+.lb-close { display: grid; gap: 1.5rem; justify-items: start; margin-top: 5rem; padding: 3.5rem 0 1.5rem; border-top: 1px solid var(--rule); }
+.lb-close-tagline { margin: 0; max-width: 20ch; font-size: clamp(1.5rem, 3vw, 2.25rem); line-height: 1.1; font-weight: 800; letter-spacing: -0.04em; color: var(--text); }
+.lb-close-meta { margin: 0; font-family: var(--font-mono); font-size: var(--text-meta); color: var(--muted); }
 
 /* ====== Task board: score bar, candidate rows, project cards, kanban, star rating ====== */
 .ui-scorebar {

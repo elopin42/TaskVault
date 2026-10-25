@@ -82,7 +82,7 @@ Because a race to the lowest price produces rushed work and punishes the freelan
 A newcomer can still reach 20 points on skills, and the company can choose anyone: "Choose" is on every row. The history and rating parts only count the company's own experience with that freelance, so being well rated elsewhere does not crush a newcomer here, and one paid delivery rated 3 stars or more is enough to become "Validated".
 
 **3. What if the freelance never delivers?**
-The money stays in the escrow: it only moves to the freelance after the company approves and releases. For disagreements, Trustless Work has a dispute-resolver role; every escrow is deployed with the platform address (`LOWBID_PLATFORM_ADDRESS`) in that role, but the dispute screens were not built during the hackathon.
+The money stays in the escrow: it only moves to the freelance after the company approves and releases. For disagreements, the company opens an on-chain dispute while the task is delivered, and the freelance can open one when the company stays silent past the review window; the arbiter (`LOWBID_DISPUTE_RESOLVER`) splits the escrow between the two from `/litiges/`. See section E.
 
 **4. Why one escrow per task and not one per project?**
 Trustless Work v1 fixes the receiver when the escrow is deployed, and freezes it once funded. Tasks get their freelance at different times, so a project-wide escrow funded up front could not pay them. Multi-release escrows (one milestone per task) were studied: they allow a receiver per milestone, but only one service provider per escrow, so freelances could not sign their own delivery, and adding a task after deploy needs a platform signature. One single-release escrow per task keeps each freelance in control of their own delivery, and each escrow holds exactly one task's price.
@@ -104,6 +104,22 @@ What you see in the video ran on Stellar testnet with test USDC: every stellar.e
 
 **10. Why Django and not React?**
 Server-side rendering, fewer moving parts, faster to build in a weekend and more robust in a demo. The Stellar part runs in the browser with the official SDK and Freighter, which is where signing must happen; a framework changes nothing there.
+
+## E. Anti-cheat
+
+« Lowbid ne détient ni l'argent, ni la vérité. » TaskVault holds neither the money nor the truth: the money of cheaters finances the protection of the honest, and everything is verifiable on Stellar.
+
+Every fact a dispute could turn on lives on chain and links to stellar.expert; the database only remembers who clicked what.
+
+| Cheat | Answer | Where the proof is |
+|---|---|---|
+| The freelance swaps the work after approval | The delivery carries a **fingerprint** (git commit SHA or SHA-256) sent as the milestone evidence (`git:<sha> <link>`); the full deliverable is revealed to the company only once the task is paid, and must match the fingerprint | `change-milestone-status` tx |
+| The company sits on a delivery to avoid paying | A **review window** (`LOWBID_REVIEW_DAYS`, 7 days by default) starts at the delivery tx; the company may ask for changes at most `LOWBID_MAX_REVISIONS` times (each re-delivery is a new evidence tx), then it is validate or dispute | delivery txs, review deadline computed from them |
+| Either side disputes in bad faith | **On-chain dispute**: the company while the task is delivered, the freelance once the review window is over ("dispute for silence"). The arbiter signs the split in Freighter; an arbiter never judges a case it is party to | `dispute-escrow` and `resolve-dispute` txs |
+| A company posts ghost listings to harvest applications | A **publication deposit** (max(1 % of the budget, 5 USDC)) is locked in a dedicated escrow before the project is visible. Closed project or no application after 30 days: refunded. Applications but no freelance chosen after 14 days, or cancelled after applications: **forfeited, 100 % to the guarantee fund**, never to the candidates (fake accounts would farm it) and never to TaskVault | deposit escrow, `resolve-dispute` tx to `LOWBID_GUARANTEE_FUND_ADDRESS`, public `/fonds/` page |
+| A wallet claims a history it does not have | Badges are computed only from escrows with confirmed transactions, counting distinct partners: "Reliable payer", "New account", and "wallet without history" shown on a chosen candidate. Freelances rate companies too. Optional "Verified GitHub": a public gist signed with the wallet, GitHub account older than a year, one account per wallet | release / payment txs behind every figure |
+
+What TaskVault signs itself: only the deposit's refund and forfeit (two testnet keys in `.env`, never in a template or a log). What the users sign in Freighter: everything else. What stays in the database only: applications, scores, ratings, messages and the arbiter's reasons.
 
 ## D. Demo-day checklist
 

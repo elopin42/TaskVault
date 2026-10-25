@@ -2,8 +2,9 @@
 <header class="lb-nav" role="banner">
   <div class="lb-nav-inner">
     <a href="{% url 'core:landing' %}" class="lb-brand" aria-label="Lowbid — accueil">
-      <span class="lb-brand-name">lowbid<span class="lb-brand-dot">.</span></span>
-      <span class="ui-badge ui-badge-neutral hidden sm:inline-flex">{{ STELLAR_NETWORK }}</span>
+      <span class="lb-brand-mark" aria-hidden="true"></span>
+      <span class="lb-brand-name">lowbid</span>
+      <span class="ui-badge ui-badge-neutral font-mono hidden sm:inline-flex">{{ STELLAR_NETWORK }}</span>
     </a>
 
     <nav class="lb-nav-links" aria-label="Navigation principale">

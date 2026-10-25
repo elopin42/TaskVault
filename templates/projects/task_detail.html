@@ -29,7 +29,7 @@
 </div>
 
 <section class="ui-kpi-band mb-6" aria-label="Chiffres clés">
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Prix fixe</span><span class="ui-kpi-value">{{ task.price|usdc:"" }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if pay_mode == 'direct' %}payé à la validation{% else %}bloqué en escrow, libéré à la validation{% endif %}</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Prix fixe</span><span class="ui-kpi-value">{{ task.price|usdc_parts }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if pay_mode == 'direct' %}payé à la validation{% else %}bloqué en escrow, libéré à la validation{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Candidats</span><span class="ui-kpi-value" data-kpi-count>{{ rows|length }}</span><span class="ui-kpi-hint ui-meta">{% if task_open %}l’entreprise choisit{% else %}candidatures closes{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Projet</span><span class="ui-kpi-value text-base"><a href="{% url 'projects:project_detail' project.pk %}" class="ui-link">{{ project.title|truncatechars:28 }}</a></span><span class="ui-kpi-hint ui-meta">{{ project.paid_count }}/{{ project.tasks_count }} tâche{{ project.tasks_count|pluralize }} payée{{ project.paid_count|pluralize }}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Étape</span><span class="ui-kpi-value text-base">{{ task.status_label }}</span><span class="ui-kpi-hint ui-meta">{% if task.status == 'open' %}candidatures ouvertes{% elif task.status == 'taken' %}livraison attendue{% elif task.status == 'delivered' %}validation attendue{% else %}payée {% if task.paid_at %}le {{ task.paid_at|date:"d/m" }}{% endif %}{% endif %}</span></div>
@@ -45,8 +45,8 @@
     {% endif %}
 
     {% if task.delivery_link %}
-    <section class="ui-panel" id="delivery-panel" style="border-color: var(--brand-600)">
-      <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-truck-fast" style="color: var(--brand-500)" aria-hidden="true"></i> Livraison</h2><p class="ui-panel-sub">déclarée {% if task.delivered_at %}le {{ task.delivered_at|date:"d/m/Y à H:i" }}{% endif %} par {{ task.assigned_to.display_name|default:task.assigned_to.short_address }}</p></div></div>
+    <section class="ui-panel" id="delivery-panel" style="border-color: var(--icon-accent)">
+      <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> Livraison</h2><p class="ui-panel-sub">déclarée {% if task.delivered_at %}le {{ task.delivered_at|date:"d/m/Y à H:i" }}{% endif %} par {{ task.assigned_to.display_name|default:task.assigned_to.short_address }}</p></div></div>
       <a href="{{ task.delivery_link }}" class="ui-link break-all" target="_blank" rel="noopener noreferrer" data-delivery-link><i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i> {{ task.delivery_link }}</a>
       {% if rating %}
         <div class="ui-alert ui-alert-ok mt-4" data-rating="{{ rating.note }}"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Validée et notée <strong class="text-strong">{{ rating.note }}/5</strong>{% if rating.comment %} — « {{ rating.comment }} »{% endif %}{% if task.status == 'paid' %} · {{ task.price|usdc:asset_code }} versés au freelance.{% endif %}</span></div>
@@ -115,7 +115,7 @@
         </section>
       {% elif my_application %}
         <section class="ui-panel" id="my-application">
-          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-paper-plane" style="color: var(--brand-500)" aria-hidden="true"></i> Votre candidature</h2><p class="ui-panel-sub">envoyée <span data-time-ago="{{ my_application.created_at|date:'c' }}">{{ my_application.created_at|date:"d/m H:i" }}</span> · score <strong class="text-strong ui-num">{{ my_application.score|stringformat:".1f" }}</strong>/100</p></div></div>
+          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-paper-plane" style="color: var(--icon-accent)" aria-hidden="true"></i> Votre candidature</h2><p class="ui-panel-sub">envoyée <span data-time-ago="{{ my_application.created_at|date:'c' }}">{{ my_application.created_at|date:"d/m H:i" }}</span> · score <strong class="text-strong ui-num">{{ my_application.score|stringformat:".1f" }}</strong>/100</p></div></div>
           {% if my_application.message %}<p class="text-sm break-words">{{ my_application.message }}</p>{% endif %}
           {% include "components/tags.html" with tags=my_application.tags matched=task.tags class="mt-2" %}
           <div class="ui-alert ui-alert-info mt-4"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>L’entreprise choisit un freelance parmi les candidats. Vous serez prévenu sur votre tableau.</span></div>
@@ -144,7 +144,7 @@
       {% elif task.status == 'delivered' and is_assignee %}
         <div class="ui-alert ui-alert-attn"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i><span>Livraison déclarée. L’entreprise vérifie, valide et vous note : le paiement suit.</span></div>
       {% elif task.status == 'paid' %}
-        <section class="ui-panel" style="border-color: var(--brand-600)">
+        <section class="ui-panel" style="border-color: var(--icon-accent)">
           <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-circle-check" style="color: var(--success)" aria-hidden="true"></i> Tâche payée</h2><p class="ui-panel-sub">{% if task.paid_at %}le {{ task.paid_at|date:"d/m/Y à H:i" }}{% endif %}</p></div></div>
           <div class="flex flex-wrap items-center justify-between gap-2">
             {% include "components/wallet.html" with address=task.assigned_to.stellar_address name=task.assigned_to.display_name size="lg" %}

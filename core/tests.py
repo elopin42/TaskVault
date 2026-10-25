@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.test import TestCase
 from django.urls import reverse
 
-from core.templatetags.lowbid_extras import plain, short_addr, usdc
+from core.templatetags.lowbid_extras import plain, short_addr, usdc, usdc_parts
 
 
 class LandingTests(TestCase):
@@ -34,6 +34,36 @@ class LandingTests(TestCase):
         self.assertEqual(resp.context["latest_projects"][0].tag_list, ["django", "ui"])
         self.assertContains(resp, "project-card")
         self.assertEqual(resp.context["latest_projects"][0].total_amount, Decimal("300"))
+
+    def test_landing_receipt_and_ledger_tape_come_from_real_escrows(self):
+        from stellar_sdk import Keypair
+
+        from accounts.models import WalletUser
+        from payments.models import Escrow
+        from projects import services
+
+        company = WalletUser.objects.create(stellar_address=Keypair.random().public_key)
+        freelance = WalletUser.objects.create(stellar_address=Keypair.random().public_key)
+        project = services.create_project(company, "Projet vitrine", "Une description.")
+        task = services.add_task(project, company, "Landing page", "", "300", ["django"])
+        # Open task only: the receipt shows it with every step ahead, no tape yet.
+        resp = self.client.get(reverse("core:landing"))
+        self.assertEqual(resp.context["receipt"]["task"], task)
+        self.assertTrue(all(s["state"] == "todo" for s in resp.context["receipt"]["steps"]))
+        self.assertEqual(resp.context["tape"], [])
+        self.assertNotContains(resp, "lb-tape-item")
+
+        Escrow.objects.create(
+            task=task, mode=Escrow.Mode.ESCROW, amount=Decimal("300"), payer_address=company.stellar_address,
+            payee_address=freelance.stellar_address, status=Escrow.Status.FUNDED,
+            deploy_tx_hash="a" * 64, fund_tx_hash="b" * 64,
+        )
+        resp = self.client.get(reverse("core:landing"))
+        self.assertEqual([s["state"] for s in resp.context["receipt"]["steps"]], ["done", "done", "current", "todo"])
+        labels = {e["label"] for e in resp.context["tape"]}
+        self.assertEqual(labels, {"ESCROW CRÉÉ", "FONDS BLOQUÉS"})
+        self.assertGreaterEqual(len(resp.context["tape"]), 8)  # looped so one copy fills the viewport
+        self.assertContains(resp, "FONDS BLOQUÉS")
 
     def test_landing_ignores_offsite_next(self):
         resp = self.client.get(reverse("core:landing") + "?next=https://evil.example/")
@@ -66,6 +96,10 @@ class FilterTests(TestCase):
         self.assertEqual(usdc("1234.5"), "1,234.50 USDC")
         self.assertEqual(usdc(0), "0.00 USDC")
         self.assertEqual(usdc(None), "—")
+
+    def test_usdc_parts(self):
+        self.assertEqual(usdc_parts("1234.5"), '1,234<span class="ui-dec">.50</span>')
+        self.assertEqual(usdc_parts(None), "—")
 
     def test_underline_last(self):
         from core.templatetags.lowbid_extras import underline_last

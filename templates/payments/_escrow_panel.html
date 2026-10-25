@@ -9,42 +9,42 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
 #deliver-panel #deliver-link [data-deliver] · #validate-panel form[data-validate] [data-rate] [data-validate-submit] ·
 [data-pay-trustline] · [data-usdc-balance].
 {% endcomment %}
-<section class="glass-card p-5" id="escrow-panel" data-task="{{ task.pk }}" data-status="{{ task.status }}" data-escrow-status="{{ status }}" data-mode="{{ mode }}">
+<section class="glass-card ui-receipt-card" id="escrow-panel" data-task="{{ task.pk }}" data-status="{{ task.status }}" data-escrow-status="{{ status }}" data-mode="{{ mode }}">
   <a id="paiement" class="block -mt-20 pt-20 pointer-events-none" aria-hidden="true"></a>
-  <div class="ui-panel-head">
-    <div class="min-w-0">
-      <h2 class="ui-panel-title flex flex-wrap items-center gap-2">
-        <i class="fa-solid {% if is_direct %}fa-bolt{% else %}fa-shield-halved{% endif %}" style="color: var(--brand-500)" aria-hidden="true"></i>
-        {% if is_direct %}Paiement direct {{ asset_code }} <span class="ui-badge ui-badge-attn" title="Sans escrow : un paiement signé dans Freighter à la validation">sans escrow</span>{% else %}Paiement en escrow{% endif %}
-      </h2>
-      <p class="ui-panel-sub">{% if is_direct %}Paiement {{ asset_code }} de wallet à wallet sur Stellar à la validation, sans escrow.{% else %}Le prix de la tâche est bloqué dans un contrat Soroban (Trustless Work) jusqu’à la validation.{% endif %}</p>
+  {# The receipt: always in the Coffre palette, whatever the page theme #}
+  <div class="ui-receipt theme-coffre">
+    <div class="ui-receipt-head">
+      <h2 class="ui-receipt-title">{% if is_direct %}Paiement direct {{ asset_code }}{% else %}Paiement en escrow{% endif %} · tâche #{{ task.pk }}{% if is_direct %} <span class="ui-badge ui-badge-attn" title="Sans escrow : un paiement signé dans Freighter à la validation">sans escrow</span>{% endif %}</h2>
+      <span class="ui-badge {{ badge_class }} whitespace-nowrap" data-escrow-badge>{{ status_label }}</span>
     </div>
-    <span class="ui-badge {{ badge_class }} whitespace-nowrap" data-escrow-badge>{{ status_label }}</span>
+    <p class="ui-receipt-amount"><span>{{ amount|usdc_parts }}</span> <span class="ui-receipt-unit">{{ asset_code }}</span></p>
+    <p class="ui-receipt-sub">{% if is_direct %}Paiement {{ asset_code }} de wallet à wallet sur Stellar à la validation, sans escrow.{% else %}Le prix est bloqué dans un contrat Soroban (Trustless Work) jusqu’à la validation.{% endif %}</p>
+
+    <ol class="ui-stepper" aria-label="Avancement du paiement">
+      {% for s in steps %}
+        <li class="ui-step is-{{ s.state }}"{% if s.state == 'current' %} aria-current="step"{% endif %}>
+          <span class="ui-step-dot">0{{ forloop.counter }}</span>
+          <span class="ui-step-label">{{ s.label }}</span>
+        </li>
+      {% endfor %}
+    </ol>
+
+    <dl class="ui-receipt-rows"{% if links %} data-explorer-links{% endif %}>
+      <dt>Freelance</dt>
+      <dd class="flex items-center justify-end gap-1.5 min-w-0">
+        <a href="{{ payee_explorer_url }}" target="_blank" rel="noopener" class="ui-link font-mono truncate" title="{{ payee }}">{{ payee|short_addr }}</a>
+        <button type="button" class="ui-copy-btn shrink-0" data-copy="{{ payee }}" title="Copier l’adresse" aria-label="Copier l’adresse du freelance"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
+      </dd>
+      <dt>Solde {{ asset_code }} du freelance</dt>
+      <dd><span class="ui-num ui-balance" data-usdc-balance="{{ payee }}" data-watch title="Lu sur Horizon toutes les 5 s">…</span></dd>
+      {% for l in links %}
+        <dt>{{ l.label }}</dt>
+        <dd><a href="{{ l.url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ l.value }}">{{ l.value|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a></dd>
+      {% endfor %}
+    </dl>
   </div>
 
-  {# Stepper #}
-  <ol class="ui-stepper" aria-label="Avancement du paiement">
-    {% for s in steps %}
-      <li class="ui-step is-{{ s.state }}"{% if s.state == 'current' %} aria-current="step"{% endif %}>
-        <span class="ui-step-dot">{% if s.state == 'done' %}<i class="fa-solid fa-check" aria-hidden="true"></i>{% else %}{{ forloop.counter }}{% endif %}</span>
-        <span class="ui-step-label">{{ s.label }}</span>
-      </li>
-    {% endfor %}
-  </ol>
-
-  {# Amount / payee / live balance #}
-  <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 mt-4 text-sm items-center">
-    <dt class="ui-label mb-0">Montant</dt>
-    <dd class="text-end"><span class="ui-price text-lg">{{ amount|usdc:"" }}<span class="ui-price-unit">{{ asset_code }}</span></span></dd>
-    <dt class="ui-label mb-0">Freelance</dt>
-    <dd class="text-end flex items-center justify-end gap-1.5 min-w-0">
-      <a href="{{ payee_explorer_url }}" target="_blank" rel="noopener" class="ui-link font-mono truncate" title="{{ payee }}">{{ payee|short_addr }}</a>
-      <button type="button" class="ui-btn ui-btn-ghost ui-btn-sm !px-2 shrink-0" data-copy="{{ payee }}" title="Copier l’adresse" aria-label="Copier l’adresse du freelance"><i class="fa-regular fa-copy" aria-hidden="true"></i></button>
-    </dd>
-    <dt class="ui-label mb-0">Solde {{ asset_code }} du freelance</dt>
-    <dd class="text-end"><span class="ui-num font-semibold text-strong ui-balance" data-usdc-balance="{{ payee }}" data-watch title="Lu sur Horizon toutes les 5 s">…</span></dd>
-  </dl>
-
+  <div class="ui-receipt-body">
   {% if platform_fallback and role == 'company' and not is_done %}
     <div class="ui-alert ui-alert-attn mt-4" role="status" data-platform-fallback>
       <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
@@ -65,7 +65,7 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
       <div class="ui-alert ui-alert-ok"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>{% if is_direct %}Paiement envoyé au freelance.{% else %}Fonds libérés vers le freelance.{% endif %} Tâche payée{% if task.paid_at %} le {{ task.paid_at|date:"d/m/Y à H:i" }}{% endif %}.</span></div>
     {% elif action and action.mine and action.step == 'validate' %}
       <div id="validate-panel" class="ui-form-scope">
-        <p class="text-sm mb-3"><i class="fa-solid fa-star" style="color: var(--brand-500)" aria-hidden="true"></i> Vérifiez la livraison, puis notez {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} de 1 à 5. {% if is_direct %}La note enregistrée, vous signez le paiement de {{ amount|usdc:asset_code }} dans Freighter.{% else %}La note enregistrée, vous signez la validation puis la libération des {{ amount|usdc:asset_code }} (deux signatures).{% endif %}</p>
+        <p class="text-sm mb-3"><i class="fa-solid fa-star" style="color: var(--icon-accent)" aria-hidden="true"></i> Vérifiez la livraison, puis notez {{ task.assigned_to.display_name|default:task.assigned_to.short_address }} de 1 à 5. {% if is_direct %}La note enregistrée, vous signez le paiement de {{ amount|usdc:asset_code }} dans Freighter.{% else %}La note enregistrée, vous signez la validation puis la libération des {{ amount|usdc:asset_code }} (deux signatures).{% endif %}</p>
         <form id="validate-form" class="ui-form-grid" novalidate data-validate data-validate-url="{{ validate_url }}">
           <fieldset class="ui-field ui-field-wide">
             <legend class="ui-label">Note</legend>
@@ -93,7 +93,7 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
       </div>
     {% elif action and action.mine and action.evidence %}
       <div id="deliver-panel" class="ui-form-scope">
-        <p class="text-sm mb-3"><i class="fa-solid fa-truck-fast" style="color: var(--brand-500)" aria-hidden="true"></i> Vous êtes choisi pour cette tâche. Déposez le lien de votre livraison (PR, démo, dépôt){% if not action.no_tx %} : il est enregistré comme preuve sur Stellar (une signature Freighter){% endif %}. L’entreprise valide, vous note, et le paiement suit.</p>
+        <p class="text-sm mb-3"><i class="fa-solid fa-truck-fast" style="color: var(--icon-accent)" aria-hidden="true"></i> Vous êtes choisi pour cette tâche. Déposez le lien de votre livraison (PR, démo, dépôt){% if not action.no_tx %} : il est enregistré comme preuve sur Stellar (une signature Freighter){% endif %}. L’entreprise valide, vous note, et le paiement suit.</p>
         <form id="deliver-form" class="ui-form-grid" data-pay-form novalidate onsubmit="return false">
           <div class="ui-field ui-field-wide">
             <label for="deliver-link" class="ui-label">Lien de la livraison</label>
@@ -126,15 +126,5 @@ DOM contract (e2e): #escrow-panel · #paiement · [data-pay-step][data-prepare-u
     </div>
   {% endif %}
 
-  {# Explorer links #}
-  {% if links %}
-    <ul class="ui-list mt-4 border-t pt-3" style="border-color: var(--divider)" data-explorer-links>
-      {% for l in links %}
-        <li class="flex items-center justify-between gap-3 py-1 text-sm">
-          <span class="ui-meta">{{ l.label }}</span>
-          <a href="{{ l.url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ l.value }}">{{ l.value|short_addr:6 }} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]" aria-hidden="true"></i></a>
-        </li>
-      {% endfor %}
-    </ul>
-  {% endif %}
+  </div>
 </section>

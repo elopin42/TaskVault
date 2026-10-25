@@ -31,6 +31,87 @@ def landing_stats() -> dict:
     }
 
 
+# On-chain events shown on the landing's ledger tape, in flow order: (tx hash field, label, timestamp field).
+TAPE_EVENTS = (
+    ("deploy_tx_hash", "ESCROW CRÉÉ", "created_at"),
+    ("fund_tx_hash", "FONDS BLOQUÉS", "funded_at"),
+    ("deliver_tx_hash", "LIVRAISON", "delivered_at"),
+    ("approve_tx_hash", "LIVRAISON VALIDÉE", "released_at"),
+    ("release_tx_hash", "FONDS LIBÉRÉS", "released_at"),
+    ("payment_tx_hash", "PAIEMENT DIRECT", "released_at"),
+)
+
+
+def ledger_tape(limit: int = 10) -> list[dict]:
+    """The latest real on-chain events (one per stored tx hash), newest first: [{label, title, amount, tx, at}]."""
+    from payments.models import Escrow
+
+    events: list[dict] = []
+    for escrow in Escrow.objects.select_related("task").order_by("-updated_at")[:limit]:
+        for hash_field, label, time_field in TAPE_EVENTS:
+            tx = getattr(escrow, hash_field)
+            if tx:
+                events.append(
+                    {
+                        "label": label,
+                        "title": escrow.task.title,
+                        "amount": escrow.amount,
+                        "tx": tx,
+                        "at": getattr(escrow, time_field) or escrow.updated_at,
+                    }
+                )
+    events.sort(key=lambda e: e["at"], reverse=True)
+    return events[:limit]
+
+
+def tape_loop(events: list[dict], minimum: int = 8) -> list[dict]:
+    """Repeat a short event list so one copy of the tape is wider than the viewport (the marquee loops two copies)."""
+    if not events:
+        return []
+    looped = list(events)
+    while len(looped) < minimum:
+        looped.extend(events)
+    return looped
+
+
+def hero_receipt() -> dict | None:
+    """The escrow receipt shown in the hero: the most recently active escrow, else the newest open task
+    (steps all ahead). None on an empty database."""
+    from payments import services as pay
+    from payments import stellar
+    from payments.models import Escrow
+    from projects.models import Task
+
+    escrow = Escrow.objects.select_related("task__project").exclude(status=Escrow.Status.FAILED).order_by("-updated_at").first()
+    if escrow:
+        return {
+            "task": escrow.task,
+            "amount": escrow.amount,
+            "steps": pay.stepper(escrow.mode, escrow.status),
+            "status_label": escrow.status_label,
+            "payer": escrow.payer_address,
+            "payee": escrow.payee_address,
+            "contract": escrow.contract_id or "",
+            "links": escrow.explorer_links(),
+            "live": not escrow.is_done,
+        }
+    task = Task.objects.select_related("project__company").filter(status=Task.Status.OPEN).order_by("-created_at").first()
+    if not task:
+        return None
+    steps = [dict(step, state="todo") for step in pay.stepper(stellar.payment_mode(), "")]
+    return {
+        "task": task,
+        "amount": task.price,
+        "steps": steps,
+        "status_label": "En attente d’un freelance",
+        "payer": task.project.company.stellar_address,
+        "payee": "",
+        "contract": "",
+        "links": [],
+        "live": False,
+    }
+
+
 def landing(request: HttpRequest) -> HttpResponse:
     from projects.models import Project  # local import: core must stay importable without the domain apps
 
@@ -49,7 +130,13 @@ def landing(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "core/landing.html",
-        {"next_url": safe_next(request, request.GET.get("next")), "latest_projects": latest_projects, "stats": landing_stats()},
+        {
+            "next_url": safe_next(request, request.GET.get("next")),
+            "latest_projects": latest_projects,
+            "stats": landing_stats(),
+            "tape": tape_loop(ledger_tape()),
+            "receipt": hero_receipt(),
+        },
     )
 
 

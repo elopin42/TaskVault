@@ -61,6 +61,16 @@ def usdc(value, code: str | None = None) -> str:
     return f"{amount:,.2f} {code}"
 
 
+@register.filter
+def usdc_parts(value) -> str:
+    """'1,234<span class="ui-dec">.50</span>' — the |usdc number (no unit) with faint decimals; '—' when empty."""
+    text = usdc(value, "")
+    head, dot, tail = text.strip().partition(".")
+    if not dot:
+        return text
+    return mark_safe(f'{escape(head)}<span class="ui-dec">.{escape(tail)}</span>')
+
+
 @register.simple_tag(takes_context=True)
 def qs(context, **kwargs):
     """Current query string with some keys replaced: `{% qs page=2 %}` → `?tab=open&page=2`.

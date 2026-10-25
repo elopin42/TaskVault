@@ -9,7 +9,7 @@ project has an assigned task (or always in direct mode, as the honest "no escrow
 <section class="ui-panel" id="funding-panel" data-pay-summary data-mode="{{ funding.mode }}">
   <div class="ui-panel-head">
     <div>
-      <h2 class="ui-panel-title"><i class="fa-solid {% if funding.is_direct %}fa-bolt{% else %}fa-shield-halved{% endif %}" style="color: var(--brand-500)" aria-hidden="true"></i> {% if funding.is_direct %}Paiement direct {{ asset_code }}{% else %}Financement en escrow{% endif %}</h2>
+      <h2 class="ui-panel-title"><i class="fa-solid {% if funding.is_direct %}fa-bolt{% else %}fa-shield-halved{% endif %}" style="color: var(--icon-accent)" aria-hidden="true"></i> {% if funding.is_direct %}Paiement direct {{ asset_code }}{% else %}Financement en escrow{% endif %}</h2>
       <p class="ui-panel-sub">{% if funding.is_direct %}Mode paiement direct : chaque validation déclenche un paiement {{ asset_code }} signé dans Freighter.{% else %}Un escrow Trustless Work par tâche, créé et financé par l’entreprise une fois le freelance choisi (le destinataire est fixé au déploiement).{% endif %}</p>
     </div>
   </div>

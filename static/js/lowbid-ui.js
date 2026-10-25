@@ -3,7 +3,7 @@
  *   Lowbid.confirm({title, message, confirmLabel, cancelLabel, danger, icon}) -> Promise<boolean>
  *       Accessible replacement for window.confirm(), backed by <dialog id="lb-confirm"> (partials/modal.html).
  *   Lowbid.modal.open(el | "#id") / Lowbid.modal.close(el)
- *   Lowbid.identicon(address) -> {a, b}   two hues; applied to every [data-identicon] (CSS vars --id-a/--id-b)
+ *   Lowbid.identicon(address) -> {hue, cells}  mirrored 5×5 pixel grid; painted on every [data-identicon] as an SVG background
  *   Lowbid.timeAgo(isoOrDate) -> "il y a 3 min"; every [data-time-ago="ISO"] is refreshed each minute
  *   Lowbid.sparkline(el)      builds the SVG of <svg class="ui-sparkline" data-points="500,450,400" [data-cap="500"]>
  *   Lowbid.poll(fn, {interval, maxInterval}) -> {stop, now}   visibility-aware polling with backoff on errors
@@ -86,23 +86,34 @@
     });
   };
 
-  /* ---------- identicon ---------- */
+  /* ---------- identicon: a mirrored 5×5 pixel grid (blockies-like), Signal yellow + one hue from the address ---------- */
   Lowbid.identicon = function (address) {
-    var s = String(address || ""), h1 = 7, h2 = 13;
-    for (var i = 0; i < s.length; i++) {
-      var c = s.charCodeAt(i);
-      h1 = (h1 * 31 + c) >>> 0;
-      h2 = (h2 * 17 + c * 7) >>> 0;
+    var s = String(address || ""), h = 2166136261;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    var hue = h % 360, cells = [];
+    for (var y = 0; y < 5; y++) {
+      var row = [];
+      for (var x = 0; x < 3; x++) {
+        h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+        row.push(h % 3); // 0 empty · 1 hue · 2 signal
+      }
+      cells.push(row[0], row[1], row[2], row[1], row[0]);
     }
-    return { a: h1 % 360, b: (h2 % 360 + 120) % 360 };
+    return { hue: hue, cells: cells };
   };
+  function identiconSvg(address) {
+    var signal = getComputedStyle(document.documentElement).getPropertyValue("--brand-500").trim();
+    var id = Lowbid.identicon(address), fill = ["", "hsl(" + id.hue + " 58% 46%)", signal], rects = "";
+    id.cells.forEach(function (c, i) {
+      if (c) rects += '<rect x="' + (i % 5) + '" y="' + Math.floor(i / 5) + '" width="1" height="1" fill="' + fill[c] + '"/>';
+    });
+    return 'url("data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5" shape-rendering="crispEdges">' + rects + "</svg>") + '")';
+  }
   function applyIdenticons(root) {
     (root || document).querySelectorAll("[data-identicon]").forEach(function (el) {
       if (el.dataset.identiconDone) return;
-      var h = Lowbid.identicon(el.getAttribute("data-identicon"));
       var target = el.querySelector(".ui-identicon") || el;
-      target.style.setProperty("--id-a", h.a);
-      target.style.setProperty("--id-b", h.b);
+      target.style.backgroundImage = identiconSvg(el.getAttribute("data-identicon"));
       el.dataset.identiconDone = "1";
     });
   }

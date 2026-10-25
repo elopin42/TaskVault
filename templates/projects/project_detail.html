@@ -44,7 +44,7 @@ payments.services.project_funding().
 </div>
 
 <section class="ui-kpi-band mb-6" aria-label="Chiffres clés">
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Budget total</span><span class="ui-kpi-value" data-kpi-total>{{ project.total_amount|usdc:"" }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if funding.is_direct %}payé à chaque validation{% else %}{{ funding.funded|usdc:asset_code }} bloqués ou versés{% endif %}</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Budget total</span><span class="ui-kpi-value" data-kpi-total>{{ project.total_amount|usdc_parts }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if funding.is_direct %}payé à chaque validation{% else %}{{ funding.funded|usdc:asset_code }} bloqués ou versés{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Tâches</span><span class="ui-kpi-value" data-kpi-count>{{ tasks|length }}</span><span class="ui-kpi-hint ui-meta">{{ project.open_count }} ouverte{{ project.open_count|pluralize }}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Candidatures</span><span class="ui-kpi-value">{{ pending_total }}</span><span class="ui-kpi-hint ui-meta">en attente de choix</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Payées</span><span class="ui-kpi-value">{{ project.paid_count }}<span class="ui-price-unit">/ {{ tasks|length }}</span></span><span class="ui-kpi-hint ui-meta">{{ project.progress_pct }} % du projet</span></div>
@@ -116,8 +116,8 @@ payments.services.project_funding().
 
     {% if viewer_is_company %}
       {% if to_validate %}
-        <section class="ui-panel" style="border-color: var(--brand-600)">
-          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-star" style="color: var(--brand-500)" aria-hidden="true"></i> À valider</h2><p class="ui-panel-sub">Livraison déclarée : vérifiez le lien, notez de 1 à 5.</p></div></div>
+        <section class="ui-panel" style="border-color: var(--icon-accent)">
+          <div class="ui-panel-head"><div><h2 class="ui-panel-title"><i class="fa-solid fa-star" style="color: var(--icon-accent)" aria-hidden="true"></i> À valider</h2><p class="ui-panel-sub">Livraison déclarée : vérifiez le lien, notez de 1 à 5.</p></div></div>
           <div class="ui-next-list">
             {% for t in to_validate %}
               {% url 'projects:task_detail' t.pk as t_url %}

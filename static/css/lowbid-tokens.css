@@ -1,86 +1,92 @@
-/* Lowbid design tokens — ONE :root palette, LIGHT-first ("coutrio" look), dark via html[data-theme="dark"].
+/* Lowbid design tokens — the « Registre » direction. ONE :root palette (light « Papier »), dark « Coffre »
+   via html[data-theme="dark"] — and the same Coffre values on any .theme-coffre element (landing hero,
+   escrow receipt), whatever the page theme.
    base.html loads this FIRST; lowbid-components.css and tailwind.css read these var(--*).
-   The DNA: a warm off-white canvas, pure-white cards with a 1px warm hairline and almost no shadow,
-   near-black text, BLACK pills for the primary actions / active tabs, and ONE accent — amber — used
-   sparingly (price pills, the underline of a title's last word, live dots, progress). */
+   The DNA: a cool mineral canvas, near-white surfaces with a 1px hairline, graphite ink, 6px corners.
+   ONE accent — Signal, Stellar yellow — and it means money: a signature that moves funds, locked
+   funds, the live dot. Everything that lives on chain (amounts, addresses, hashes) is set in mono. */
 
 :root {
-    /* Brand (amber) — the only accent hue */
-    --brand-500: #F2A93B;
-    --brand-600: #E89B22;
-    --brand-700: #C47F12;
-    --brand-800: #9A620A;
-    --brand-soft: rgba(242,169,59,0.16);
-    --brand-ink: #141414;          /* text on a filled amber pill ("dès 23 €") — 9:1 */
+    /* Signal (Stellar yellow) — the only accent hue */
+    --brand-500: #FDDA24;
+    --brand-600: #E6C20A;
+    --brand-700: #8A6D00;          /* yellow-family TEXT on the light canvas (≥ 4.5:1) */
+    --brand-800: #6B5500;
+    --brand-hover: #F0CC10;
+    --brand-soft: rgba(253,218,36,0.22);
+    --brand-ink: #151922;          /* text on a filled Signal surface — 12:1 */
 
     /* Brand RGB triplets for Tailwind alpha utilities (bg-brand-500/20 …) */
-    --brand-50-rgb:  254 247 234;
-    --brand-100-rgb: 253 237 207;
-    --brand-200-rgb: 250 220 160;
-    --brand-300-rgb: 247 199 112;
-    --brand-400-rgb: 244 184 80;
-    --brand-500-rgb: 242 169 59;
-    --brand-600-rgb: 232 155 34;
-    --brand-700-rgb: 196 127 18;
-    --brand-800-rgb: 154 98 10;
-    --brand-900-rgb: 112 70 8;
-    --brand-950-rgb: 66 40 4;
+    --brand-50-rgb:  255 251 230;
+    --brand-100-rgb: 255 245 194;
+    --brand-200-rgb: 254 236 140;
+    --brand-300-rgb: 254 228 92;
+    --brand-400-rgb: 253 223 60;
+    --brand-500-rgb: 253 218 36;
+    --brand-600-rgb: 230 194 10;
+    --brand-700-rgb: 138 109 0;
+    --brand-800-rgb: 107 85 0;
+    --brand-900-rgb: 82 65 0;
+    --brand-950-rgb: 46 36 0;
 
-    /* Ink — the black pill (primary button, active nav tab, active chip, search button) */
-    --ink: #141414;
-    --ink-hover: #2B2B2B;
-    --on-ink: #FFFFFF;
+    /* Ink — graphite: primary off-chain actions, active nav tab, active chip */
+    --ink: #151922;
+    --ink-hover: #2A303C;
+    --on-ink: #F1F3F5;
+    --icon-accent: var(--ink);     /* accent icons: graphite on paper, Signal in the Coffre */
 
-    /* Secondary (sky) + accent (violet) — occasional */
-    --secondary-500: #0ea5e9;
-    --secondary-soft: rgba(14,165,233,0.12);
-    --accent-500: #7c5cd6;
-    --accent-soft: rgba(124,92,214,0.12);
+    /* Secondary + accent — occasional (identicon / data) */
+    --secondary-500: #3E6BE0;
+    --secondary-soft: rgba(62,107,224,0.12);
+    --accent-500: #C2410C;
+    --accent-soft: rgba(194,65,12,0.12);
 
-    /* Status — soft tinted pills with dark text (≥ 4.5:1 on their fill) */
-    --success: #1F7A45;
-    --success-soft: #E3F3E8;
-    --warning: #9A5A08;
-    --warning-soft: #FDEBCB;
+    /* Status — soft tinted fills with dark text (≥ 4.5:1 on their fill) */
+    --success: #1E7A52;
+    --success-soft: #DDF1E6;
+    --warning: #8A5A00;
+    --warning-soft: #FFF3C4;
     --error: #B42318;
     --error-soft: #FBE4E1;
     --on-error: #FFFFFF;
-    --info: #2F5680;
-    --info-soft: #E7EEF6;
+    --info: #2F4F86;
+    --info-soft: #E3E9F5;
 
-    --ui-badge-ok-text:     #1B6B3A;
-    --ui-badge-attn-text:   #8A4B08;
+    --ui-badge-ok-text:     #14593B;
+    --ui-badge-attn-text:   #6B4600;
     --ui-badge-danger-text: #A12A22;
     --ui-badge-brand-text:  var(--brand-ink);
-    --ui-badge-info-text:   #2C4A6E;
+    --ui-badge-info-text:   #29467A;
 
-    /* Type scale — Meta 12 / Body 14 / Heading 15.5 / Display 23 */
+    /* Type scale — Meta 12 / Body 14 / Heading 15.5 / Display 30 */
     --text-meta:    0.75rem;
     --text-body:    0.875rem;
     --text-heading: 0.97rem;
-    --text-display: 1.45rem;
+    --text-display: 1.85rem;
     --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
 
     /* Surfaces / text / borders */
-    --bg-1: #F4F3EF;
-    --bg-2: #F4F3EF;
-    --bg-3: #F4F3EF;
-    --surface: #FFFFFF;
-    --surface-soft: #F3F2EE;        /* icon tiles, inset chips */
-    --text-main: #141414;
-    --text-muted: #6B6B6B;
-    --text-faint: #9A9A96;
+    --bg-1: #F1F3F5;
+    --bg-2: #F1F3F5;
+    --bg-3: #F1F3F5;
+    --surface: #FBFCFC;
+    --surface-soft: #E8EBEF;       /* chips, inset tiles, empty identicon cells */
+    --text-main: #151922;
+    --text-muted: #4F5664;
+    --text-faint: #6F7582;         /* trailing decimals, placeholders (≥ 4.5:1 on surface) */
     --text: var(--text-main);
     --muted: var(--text-muted);
-    --border: #E6E4DE;
-    --border-strong: #D6D3CB;
-    --shadow: 0 1px 2px rgba(20,20,20,0.03);
-    --shadow-pop: 0 12px 32px -16px rgba(20,20,20,0.25);
-    --backdrop: rgba(20,20,20,0.35);
-    --radius-lg: 16px;
-    --radius-md: 13px;
-    --radius-sm: 10px;
+    --border: #DDE1E6;
+    --border-strong: #C9CED6;
+    --rule: var(--ink);            /* the heavy top rule of a ledger line */
+    --shadow: none;
+    --shadow-pop: 0 16px 36px -18px rgba(21,25,34,0.32);
+    --backdrop: rgba(14,17,23,0.45);
+    --radius-lg: 12px;
+    --radius-md: 10px;
+    --radius-sm: 6px;
+    --radius-xs: 4px;
 
     --glass-bg: var(--surface);
     --glass-border: var(--border);
@@ -88,42 +94,44 @@
     --soft-bg: var(--surface-soft);
     --soft-border: var(--border);
     --hover-border: var(--border-strong);
-    --hover-shadow: 0 1px 2px rgba(20,20,20,0.04), 0 6px 18px -12px rgba(20,20,20,0.18);
+    --hover-shadow: 0 6px 18px -14px rgba(21,25,34,0.35);
     --glow-1: transparent;
     --glow-2: transparent;
-    --divider: #ECEAE4;
-    --row-hover: #FAF9F6;
-    --focus-ring: rgba(242,169,59,0.38);
+    --divider: #E3E6EA;
+    --row-hover: #F5F7F8;
+    --focus-ring: rgba(21,25,34,0.3);
 
-    /* Navbar (canvas-coloured bar, the links sit in a white pill) */
-    --nav-bg: rgba(244,243,239,0.92);
-    --nav-border: transparent;
+    /* Navbar */
+    --nav-bg: rgba(241,243,245,0.92);
+    --nav-border: var(--border);
     --nav-link-hover-bg: var(--surface-soft);
     --nav-active: var(--ink);
 }
 
-/* DARK — the former default palette, kept coherent: the black pill becomes an off-white pill. */
-html[data-theme="dark"] {
-    --brand-500: #FBBF24;
-    --brand-600: #F59E0B;
-    --brand-700: #D97706;
-    --brand-800: #B45309;
-    --brand-soft: rgba(245,158,11,0.16);
-    --brand-ink: #1a1200;
+/* COFFRE — graphite vault. The dark theme, and the fixed surface of the landing hero + escrow receipts. */
+html[data-theme="dark"], .theme-coffre {
+    --brand-500: #FDDA24;
+    --brand-600: #FDDA24;
+    --brand-700: #FDDA24;
+    --brand-800: #FFE873;
+    --brand-hover: #FFE45C;
+    --brand-soft: rgba(253,218,36,0.14);
+    --brand-ink: #151922;
 
-    --ink: #F4F3EF;
+    --ink: #E9ECF1;
     --ink-hover: #FFFFFF;
-    --on-ink: #141414;
+    --on-ink: #151922;
+    --icon-accent: var(--brand-500);
 
-    --success: #34D399;
-    --success-soft: rgba(16,185,129,0.16);
-    --warning: #fbbf6a;
-    --warning-soft: rgba(251,146,60,0.16);
-    --error: #f87171;
+    --success: #4FD08F;
+    --success-soft: rgba(79,208,143,0.14);
+    --warning: #FFD86B;
+    --warning-soft: rgba(253,218,36,0.12);
+    --error: #F87171;
     --error-soft: rgba(220,38,38,0.18);
-    --on-error: #1a0505;
-    --info: #7dd3fc;
-    --info-soft: rgba(14,165,233,0.14);
+    --on-error: #1A0505;
+    --info: #8FB0F5;
+    --info-soft: rgba(62,107,224,0.18);
 
     --ui-badge-ok-text:     var(--success);
     --ui-badge-attn-text:   var(--warning);
@@ -131,37 +139,39 @@ html[data-theme="dark"] {
     --ui-badge-brand-text:  var(--brand-ink);
     --ui-badge-info-text:   var(--info);
 
-    --bg-1: #0b0e14;
-    --bg-2: #080a10;
-    --bg-3: #05060a;
-    --surface: #121722;
-    --surface-soft: #1a2130;
-    --text-main: rgba(255,255,255,0.92);
-    --text-muted: rgba(255,255,255,0.58);
-    --text-faint: rgba(255,255,255,0.4);
+    --bg-1: #0E1117;
+    --bg-2: #0B0E13;
+    --bg-3: #080A0E;
+    --surface: #151922;
+    --surface-soft: #1D2230;
+    --text-main: #E9ECF1;
+    --text-muted: #9AA1AE;
+    --text-faint: #7A8292;
     --text: var(--text-main);
     --muted: var(--text-muted);
-    --border: rgba(255,255,255,0.09);
-    --border-strong: rgba(255,255,255,0.16);
-    --shadow: 0 1px 2px rgba(0,0,0,0.24);
-    --shadow-pop: 0 20px 44px -26px rgba(0,0,0,0.7);
-    --backdrop: rgba(5,6,10,0.62);
+    --border: #262C3A;
+    --border-strong: #343B4D;
+    --rule: #E9ECF1;
+    --shadow: none;
+    --shadow-pop: 0 20px 44px -24px rgba(0,0,0,0.75);
+    --backdrop: rgba(5,6,10,0.66);
 
     --glass-bg: var(--surface);
     --glass-border: var(--border);
     --glass-shadow: var(--shadow);
     --soft-bg: var(--surface-soft);
-    --soft-border: rgba(255,255,255,0.05);
-    --hover-border: rgba(255,255,255,0.22);
-    --hover-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 14px rgba(0,0,0,0.36);
-    --glow-1: rgba(245,158,11,0.10);
-    --glow-2: rgba(251,191,36,0.05);
-    --divider: var(--border);
-    --row-hover: rgba(255,255,255,0.04);
-    --focus-ring: rgba(245,158,11,0.4);
+    --soft-border: var(--border);
+    --hover-border: #3E465A;
+    --hover-shadow: 0 6px 18px -12px rgba(0,0,0,0.6);
+    --glow-1: transparent;
+    --glow-2: transparent;
+    --divider: #1F2431;
+    --row-hover: rgba(255,255,255,0.03);
+    --focus-ring: rgba(253,218,36,0.45);
 
-    --nav-bg: rgba(8,10,16,0.82);
-    --nav-border: rgba(255,255,255,0.07);
+    --nav-bg: rgba(14,17,23,0.88);
+    --nav-border: #1F2431;
     --nav-link-hover-bg: rgba(255,255,255,0.06);
     --nav-active: var(--ink);
 }
+.theme-coffre { background: var(--bg-1); color: var(--text); }

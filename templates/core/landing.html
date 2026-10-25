@@ -3,64 +3,128 @@
 {% block title %}Lowbid — le tableau de tâches des freelances, payé en USDC sur Stellar{% endblock %}
 
 {% block content %}
-<section class="lb-hero">
-  <span class="ui-badge ui-badge-brand mb-4"><i class="fa-solid fa-bolt" aria-hidden="true"></i>&nbsp;Hack Meridian · Stellar testnet</span>
-  <h1 class="lb-hero-title">Découpez un projet en tâches à <span class="lb-hero-accent">prix fixe</span>, choisissez vos freelances, payez en USDC à la validation.</h1>
-  <p class="lb-hero-sub">Pas de négociation ni de compte à rebours : l’entreprise fixe le prix de chaque tâche, les freelances postulent avec un message et leurs compétences, un score transparent (historique, notes, compétences) aide à choisir. À la livraison validée, la part de la tâche est versée — sans intermédiaire.</p>
-  <div class="lb-hero-cta">
-    {% if wallet_address %}
-      <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> Nouveau projet</a>
-      <a href="{% url 'projects:board' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> Tableau des tâches</a>
-    {% else %}
-      <button type="button" class="ui-btn ui-btn-primary ui-btn-lg" data-wallet-connect data-next="{% if next_url %}{{ next_url }}{% else %}{% url 'dashboard:home' %}{% endif %}">
-        <i class="fa-solid fa-wallet" aria-hidden="true"></i> Connecter mon wallet Freighter
-      </button>
-      <a href="{% url 'projects:project_list' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Parcourir les projets</a>
+{# Hero: the Coffre (graphite) band, full bleed, whatever the page theme #}
+<div class="lb-hero-band theme-coffre">
+  <div class="lb-hero-grid">
+    <section class="lb-hero">
+      <p class="lb-kicker">Stellar {{ STELLAR_NETWORK }} · Soroban · Trustless Work</p>
+      <h1 class="lb-hero-title">Le prix est fixé. L’argent est bloqué. Le travail est payé.</h1>
+      <p class="lb-hero-sub">L’entreprise découpe son projet en tâches à prix fixe. Chaque tâche a son propre escrow {{ asset_code }} sur Stellar : le freelance voit les fonds verrouillés avant de commencer, et reçoit sa part quelques secondes après la validation.</p>
+      <div class="lb-hero-cta">
+        {% if wallet_address %}
+          <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary ui-btn-signal ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> Nouveau projet</a>
+          <a href="{% url 'projects:board' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-table-columns" aria-hidden="true"></i> Tableau des tâches</a>
+        {% else %}
+          <button type="button" class="ui-btn ui-btn-primary ui-btn-signal ui-btn-lg" data-wallet-connect data-next="{% if next_url %}{{ next_url }}{% else %}{% url 'dashboard:home' %}{% endif %}">
+            <i class="fa-solid fa-wallet" aria-hidden="true"></i> Connecter mon wallet Freighter
+          </button>
+          <a href="{% url 'projects:project_list' %}" class="ui-btn ui-btn-lg"><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Parcourir les projets</a>
+        {% endif %}
+      </div>
+      <p class="lb-hero-stats" aria-label="Chiffres en direct" data-landing-stats>
+        <span><strong class="ui-num">{{ stats.open_tasks }}</strong> tâche{{ stats.open_tasks|pluralize }} ouverte{{ stats.open_tasks|pluralize }}</span>
+        <span><strong class="ui-num">{{ stats.projects }}</strong> projet{{ stats.projects|pluralize }}</span>
+        <span><strong class="ui-num">{{ stats.paid_usdc|usdc:"" }}</strong> {{ asset_code }} versés aux freelances</span>
+      </p>
+      {% if next_url %}
+        <p class="ui-alert ui-alert-attn mt-4 inline-flex"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Connectez votre wallet pour continuer vers <code class="font-mono">{{ next_url }}</code>.</span></p>
+      {% endif %}
+    </section>
+
+    {% if receipt %}
+    {# The latest real escrow on the board, as a receipt #}
+    <aside class="ui-receipt lb-hero-receipt" aria-label="Dernier escrow">
+      <div class="ui-receipt-head">
+        <span class="ui-receipt-title">Escrow · tâche #{{ receipt.task.pk }}</span>
+        {% if receipt.live %}<span class="ui-live"><span class="ui-live-dot" aria-hidden="true"></span>en cours</span>{% else %}<span class="ui-meta">{{ receipt.status_label }}</span>{% endif %}
+      </div>
+      <p class="ui-receipt-sub">{{ receipt.task.title }} · {{ receipt.task.project.title|truncatechars:38 }}</p>
+      <p class="ui-receipt-amount"><span>{{ receipt.amount|usdc_parts }}</span> <span class="ui-receipt-unit">{{ asset_code }}</span></p>
+      <ol class="ui-stepper" aria-label="Avancement">
+        {% for s in receipt.steps %}
+          <li class="ui-step is-{{ s.state }}"><span class="ui-step-dot">0{{ forloop.counter }}</span><span class="ui-step-label">{{ s.label }}</span></li>
+        {% endfor %}
+      </ol>
+      <dl class="ui-receipt-rows">
+        <dt>Entreprise</dt><dd class="font-mono">{{ receipt.payer|short_addr }}</dd>
+        {% if receipt.payee %}<dt>Freelance</dt><dd class="font-mono">{{ receipt.payee|short_addr }}</dd>{% endif %}
+        {% for l in receipt.links|slice:":3" %}
+          <dt>{{ l.label }}</dt><dd><a href="{{ l.url }}" target="_blank" rel="noopener" class="ui-link font-mono" title="{{ l.value }}">{{ l.value|short_addr:6 }}</a></dd>
+        {% empty %}
+          <dt>Statut</dt><dd>{{ receipt.status_label }}</dd>
+        {% endfor %}
+      </dl>
+      <a href="{% url 'projects:task_detail' receipt.task.pk %}" class="lb-receipt-foot">
+        <span>{% if receipt.links %}Fonds vérifiables sur Stellar{% else %}Voir la tâche{% endif %}</span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+      </a>
+    </aside>
     {% endif %}
   </div>
-  <p class="ui-meta mt-5 flex flex-wrap items-center gap-x-4 gap-y-1" aria-label="Chiffres en direct" data-landing-stats>
-    <span><strong class="text-strong ui-num">{{ stats.open_tasks }}</strong> tâche{{ stats.open_tasks|pluralize }} ouverte{{ stats.open_tasks|pluralize }}</span>
-    <span><strong class="text-strong ui-num">{{ stats.projects }}</strong> projet{{ stats.projects|pluralize }}</span>
-    <span><strong class="text-strong ui-num">{{ stats.paid_usdc|usdc }}</strong> payés aux freelances</span>
-  </p>
-  {% if next_url %}
-    <p class="ui-alert ui-alert-attn mt-4 inline-flex"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>Connectez votre wallet pour continuer vers <code class="font-mono">{{ next_url }}</code>.</span></p>
-  {% endif %}
-</section>
+</div>
 
-<section class="lb-steps" aria-label="Comment ça marche">
-  <article class="glass-card lb-step">
-    <div class="lb-step-num">1</div>
-    <h2 class="lb-step-title"><i class="fa-solid fa-list-check" aria-hidden="true"></i> L’entreprise découpe le projet</h2>
-    <p class="lb-step-desc">Un projet, des tâches : titre, description, prix fixe en USDC et jusqu’à 3 compétences par tâche. Le montant total est bloqué en escrow Soroban.</p>
-  </article>
-  <article class="glass-card lb-step">
-    <div class="lb-step-num">2</div>
-    <h2 class="lb-step-title"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Les freelances postulent, l’entreprise choisit</h2>
-    <p class="lb-step-desc">Un message, des compétences, pas de prix à proposer. Un score transparent (historique avec vous 40 · notes ×8 · compétences 20) désigne le candidat <span class="ui-badge ui-badge-brand">Recommandé</span> ; le badge <span class="ui-badge ui-badge-ok">Validé</span> signale qui a déjà livré pour vous.</p>
-  </article>
-  <article class="glass-card lb-step">
-    <div class="lb-step-num">3</div>
-    <h2 class="lb-step-title"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Livré, validé, noté, payé</h2>
-    <p class="lb-step-desc">Le freelance livre un lien, l’entreprise valide avec une note de 1 à 5 et la part de la tâche est libérée de l’escrow Trustless Work vers son wallet. Identité = wallet Stellar.</p>
-  </article>
+{% if tape %}
+{# Ledger tape: the latest real on-chain events, looped (the second copy is decorative) #}
+<div class="lb-tape" aria-label="Derniers événements on-chain">
+  <div class="lb-tape-track">
+    {% for copy in "ab" %}
+      <ul class="lb-tape-list"{% if forloop.last %} aria-hidden="true"{% endif %}>
+        {% for e in tape %}
+          <li class="lb-tape-item"><b>{{ e.label }}</b><span>{{ e.title|truncatechars:40 }} · {{ e.amount|usdc }}</span><span class="lb-tape-tx">tx {{ e.tx|short_addr:4 }}</span></li>
+        {% endfor %}
+      </ul>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<section class="ui-section lb-chain" aria-labelledby="chain-title">
+  <div class="lb-chain-head">
+    <h2 id="chain-title" class="lb-section-title">Quatre blocs, deux signataires, zéro relance.</h2>
+    <p class="ui-page-sub">Chaque étape qui touche l’argent passe par une signature Freighter. Les autres restent hors chaîne et gratuites.</p>
+  </div>
+  <div class="lb-steps">
+    <article class="lb-step">
+      <div class="lb-step-head"><span>BLOC 01</span><span>ENTREPRISE</span></div>
+      <h3 class="lb-step-title">Découper</h3>
+      <p class="lb-step-desc">Un projet, des tâches : titre, prix fixe en {{ asset_code }}, jusqu’à 3 compétences. Personne ne négocie.</p>
+      <code class="lb-step-call">hors chaîne</code>
+    </article>
+    <article class="lb-step">
+      <div class="lb-step-head"><span>BLOC 02</span><span>ENTREPRISE</span></div>
+      <h3 class="lb-step-title">Choisir</h3>
+      <p class="lb-step-desc">Les freelances postulent sans prix. Score public : historique 40, note ×8, compétences 20. Il désigne le candidat <span class="ui-badge ui-badge-brand">Recommandé</span> ; <span class="ui-badge ui-badge-ok">Validé</span> signale qui a déjà livré pour vous.</p>
+      <code class="lb-step-call">hors chaîne</code>
+    </article>
+    <article class="lb-step is-signal">
+      <div class="lb-step-head"><span>BLOC 03</span><span>SIGNATURE ×2</span></div>
+      <h3 class="lb-step-title">Bloquer</h3>
+      <p class="lb-step-desc">Un escrow Trustless Work par tâche, financé avant le premier commit. Le freelance le vérifie lui-même.</p>
+      <code class="lb-step-call">deploy · fund</code>
+    </article>
+    <article class="lb-step theme-coffre">
+      <div class="lb-step-head"><span>BLOC 04</span><span>SIGNATURE ×3</span></div>
+      <h3 class="lb-step-title">Livrer, libérer</h3>
+      <p class="lb-step-desc">Le lien de livraison devient la preuve on-chain. L’entreprise valide, note de 1 à 5, et les fonds partent vers le wallet du freelance.</p>
+      <code class="lb-step-call">deliver · approve · release</code>
+    </article>
+  </div>
 </section>
 
 {% if latest_projects %}
 <section class="ui-section" aria-label="Projets ouverts">
   {% url 'projects:project_list' as list_url %}
-  {% include "components/section_head.html" with title="Projets avec des tâches ouvertes" sub="Les plus récents." icon="fa-bolt" link_href=list_url link_label="Tous les projets" %}
+  {% include "components/section_head.html" with title="Projets avec des tâches ouvertes" sub="Les plus récents." link_href=list_url link_label="Tous les projets" %}
   <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
     {% for project in latest_projects %}{% include "projects/_project_card.html" with project=project %}{% endfor %}
   </div>
 </section>
 {% endif %}
 
-<section class="ui-kpi-band mt-10" aria-label="Repères">
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Frais réseau</span><span class="ui-kpi-value">≈ 0</span><span class="ui-kpi-hint ui-meta">≈ 0,00001 XLM par transaction</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Règlement</span><span class="ui-kpi-value">USDC</span><span class="ui-kpi-hint ui-meta">Stellar {{ STELLAR_NETWORK }}</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Finalité</span><span class="ui-kpi-value">~5 s</span><span class="ui-kpi-hint ui-meta">ledger Stellar</span></div>
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Identité</span><span class="ui-kpi-value">Wallet</span><span class="ui-kpi-hint ui-meta">signature Freighter, zéro mot de passe</span></div>
+<section class="ui-kpi-band mt-12" aria-label="Repères">
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Frais réseau</span><span class="ui-kpi-value">≈ 0.00001 XLM</span><span class="ui-kpi-hint ui-meta">par transaction</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Finalité</span><span class="ui-kpi-value">~5 s</span><span class="ui-kpi-hint ui-meta">un ledger Stellar</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Règlement</span><span class="ui-kpi-value">{{ asset_code }}</span><span class="ui-kpi-hint ui-meta">Stellar {{ STELLAR_NETWORK }}</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">Identité</span><span class="ui-kpi-value">SEP-53</span><span class="ui-kpi-hint ui-meta">signature Freighter, zéro mot de passe</span></div>
 </section>
 {% endblock %}
 

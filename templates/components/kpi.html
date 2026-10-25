@@ -1,5 +1,5 @@
 {% comment %}
-KPI tile: {% include "components/kpi.html" with label="Fixed price" value="300" unit=asset_code hint="paid on validation" icon="fa-coins" href=url attr="data-kpi-price" %}
+KPI tile: {% include "components/kpi.html" with label="Budget" value="300" unit=asset_code hint="paid on validation" icon="fa-coins" href=url attr="data-kpi-price" %}
 `value` is rendered as-is (pass pre-formatted text); `unit` adds a .ui-price-unit span.
 {% endcomment %}<{% if href %}a href="{{ href }}"{% else %}div{% endif %} class="ui-kpi-tile{% if href %} is-link{% endif %}">
   <span class="ui-kpi-head"><span class="ui-kpi-label">{{ label }}</span>{% if icon %}<span class="ui-kpi-icon" aria-hidden="true"><i class="fa-solid {{ icon }}"></i></span>{% endif %}</span>

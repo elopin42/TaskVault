@@ -2,7 +2,7 @@
 
 Research spike, 2026-10-24, updated for the task board (one escrow per task). Target: **Stellar testnet only**. Stack: Django builds/proxies, vanilla JS + Freighter signs in the browser.
 
-In TaskVault terms: the **company** owns a project and its fixed-price tasks; the **freelance** is the one the company chose for a task. Each task with a chosen freelance gets its own single-release escrow (§1.2, §8).
+In TaskVault terms: the **company** owns a project and its tasks (each with a budget; the chosen freelance's price becomes the task's price); the **freelance** is the one the company chose for a task. Each task with a chosen freelance gets its own single-release escrow (§1.2, §8).
 
 > **How this was verified.** The research sandbox could not open HTTPS to `horizon-testnet.stellar.org`, `friendbot.stellar.org`, `*.trustlesswork.com` or `docs.freighter.app` (egress policy 403), so nothing below is "curl-verified against the live API". Instead every claim was checked against **primary source code**: the npm tarballs of `@stellar/freighter-api@6.0.1`, `@stellar/stellar-sdk@17.3.0`, `@trustless-work/escrow@3.0.5` (latest tag), the PyPI wheel `stellar-sdk==16.1.1`, a clone of `Trustless-Work/trustlesswork-skill` (commit `80e2467`, 2026-09-26 — the vendor's own REST reference), and a clone of `stellar/freighter` (extension source, `b1e795c`). The Confidence table after §6 says which is which. **First thing to do on a real network: run the smoke test in §6.**
 
@@ -73,7 +73,7 @@ Every write below returns `{"status":"SUCCESS","unsignedTransaction":"AAAAAg..."
   "signer": "G<COMPANY>",
   "engagementId": "taskvault-task-42",
   "title": "Landing page redesign",
-  "description": "TaskVault task #42 Landing page, fixed price 25 USDC",
+  "description": "TaskVault task #42 Landing page, agreed price 25 USDC",
   "roles": {
     "approver": "G<COMPANY>", "serviceProvider": "G<FREELANCER>", "receiver": "G<FREELANCER>",
     "releaseSigner": "G<COMPANY>", "disputeResolver": "G<PLATFORM>", "platformAddress": "G<PLATFORM>"

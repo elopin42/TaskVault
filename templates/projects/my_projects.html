@@ -60,7 +60,7 @@
 {% else %}
   {% url 'projects:project_create' as create_url %}
   {% if tab == 'active' %}
-    {% include "components/empty_state.html" with icon="fa-pen-to-square" title="No projects in progress" desc="Describe your project, split it into fixed-price tasks and let freelancers apply." cta_href=create_url cta_label="New project" cta_icon="fa-plus" %}
+    {% include "components/empty_state.html" with icon="fa-pen-to-square" title="No projects in progress" desc="Describe your project, split it into tasks with a budget and let freelancers propose their price." cta_href=create_url cta_label="New project" cta_icon="fa-plus" %}
   {% else %}
     {% include "components/empty_state.html" with icon="fa-folder-open" title="Nothing here" desc="No projects in this tab." %}
   {% endif %}

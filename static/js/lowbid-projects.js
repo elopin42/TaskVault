@@ -8,7 +8,7 @@
      [data-choose="<app_pk>"][data-choose-url]   company picks a candidate (project or task page)
      [data-task-delete="<task_pk>"]              company deletes an open task (any project status)
      [data-add-tag="x"][data-target="input-id"]  adds a suggested tag to the target input
-   Forms: #task-form [data-task-add] · #apply-form [data-apply-submit] ·
+   Forms: #task-form [data-task-add] · #apply-form (#apply-price ≤ data-budget) [data-apply-submit] ·
           #validate-form[data-validate] [data-rate] radios + [data-validate-submit] (escrow panel) ·
           [data-request-changes] reveals #request-changes-form (#request-changes-message, [data-request-changes-submit]):
           the company sends the delivery back, behind Lowbid.confirm (POST urls.requestChanges) ·
@@ -126,7 +126,7 @@
       if (!url) return;
       Lowbid.confirm({
         title: "Choose this freelancer?",
-        message: (choose.dataset.chooseLabel || "This candidate") + " will take the task. The other applications will move to \"Not selected\".",
+        message: (choose.dataset.chooseLabel || "This candidate") + " will take the task" + (choose.dataset.choosePrice ? " for " + choose.dataset.choosePrice : "") + ". The other applications will move to \"Not selected\".",
         confirmLabel: "Choose", icon: "fa-user-check"
       }).then(function (ok) {
         if (!ok) return;
@@ -225,7 +225,7 @@
   /* ----- apply form ----- */
   var applyForm = document.getElementById("apply-form");
   if (applyForm) {
-    var APPLY_FIELD = { bad_tags: "tags", invalid: "message" };
+    var APPLY_FIELD = { bad_tags: "tags", invalid: "price", over_budget: "price" };
     var applying = false;
     applyForm.addEventListener("submit", function (ev) {
       ev.preventDefault();
@@ -233,10 +233,14 @@
       clearErrors(applyForm);
       var tags = Lowbid.parseTags(document.getElementById("apply-tags").value);
       if (tags.length > 3) { fieldError(applyForm, "tags", "At most 3 skills."); return; }
+      var priceInput = document.getElementById("apply-price");
+      var price = parseFloat(priceInput.value);
+      if (!(price > 0)) { fieldError(applyForm, "price", "The price must be greater than zero."); priceInput.focus(); return; }
+      if (price > parseFloat(priceInput.dataset.budget)) { fieldError(applyForm, "price", "At most the budget, " + Lowbid.formatUsdc(priceInput.dataset.budget) + "."); priceInput.focus(); return; }
       applying = true;
       var btn = applyForm.querySelector("[data-apply-submit]");
       setBusy(btn, true, "Sending…");
-      Lowbid.api(cfg.urls.apply, { method: "POST", body: { message: document.getElementById("apply-message").value, tags: tags } }).then(function (data) {
+      Lowbid.api(cfg.urls.apply, { method: "POST", body: { message: document.getElementById("apply-message").value, tags: tags, price: priceInput.value } }).then(function (data) {
         Lowbid.toast(data.message || "Application sent.", "success", { title: "Application" });
         setTimeout(function () { location.reload(); }, 500);
       }).catch(function (err) {

@@ -82,7 +82,7 @@ def tape_loop(events: list[dict], minimum: int = 8) -> list[dict]:
 
 
 # Decorative content of the landing's scroll story (the 3D "project cube" in core/landing.html): one
-# project split into four fixed-price tasks, three applications per task, the chosen one first. Not read
+# project split into four tasks with a budget, three applications per task, the chosen one first. Not read
 # from the database: the figures are a worked example, the live numbers live in landing_stats(). Every
 # score is reachable with projects.scoring (40 · paid history + 8 · avg note + 20 · tag ratio): e.g.
 # 92 = 40 + 8 × 4.5 + 20 × 0.8, and 20 / 15 / 10 / 5 are newcomers scored on matching skills only.

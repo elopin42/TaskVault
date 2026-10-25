@@ -221,7 +221,7 @@ class CoverageTests(DepositBase):
     def test_apply_endpoint_maps_codes_to_409(self):
         login(self.client, self.freelance)
         r = self.client.post(
-            reverse("projects:apply_create", args=[self.t1.pk]), data=json.dumps({"message": "x"}),
+            reverse("projects:apply_create", args=[self.t1.pk]), data=json.dumps({"message": "x", "price": "100"}),
             content_type="application/json", **JSON,
         )
         self.assertEqual((r.status_code, r.json()["error"]), (409, "not_published"))

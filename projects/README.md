@@ -1,7 +1,7 @@
 # projects
 
-The task board: a company's `Project` is split into fixed-price `Task`s, freelances send an
-`Application` (message + tags, no price), the company chooses one per task, the chosen freelance
+The task board: a company's `Project` is split into `Task`s with a budget, freelances send an
+`Application` (price ≤ budget + message + tags), the company chooses one per task at that price, the chosen freelance
 delivers a link, the company validates with a `Rating` (1–5). Nothing Stellar-related lives here.
 
 - `models.py` — `Project` (`draft → funded → closed`, queryset `with_totals()` / `active()`), `Task` (`open → taken → delivered → paid`),

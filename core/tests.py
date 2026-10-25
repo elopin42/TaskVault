@@ -12,7 +12,7 @@ class LandingTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "TaskVault")
         self.assertContains(resp, "data-wallet-connect")
-        self.assertRegex(resp.content.decode(), r"(?i)fixed[- ]price")
+        self.assertContains(resp, "name your price")
         self.assertContains(resp, "data-landing-stats")
         self.assertNotRegex(resp.content.decode(), r"(?i)auction|enchère")
 

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static lowbid_extras %}
 {% block title %}Projects · TaskVault{% endblock %}
-{% block meta_description %}Projects split into fixed-price USDC tasks: apply to an open task, deliver, get paid.{% endblock %}
+{% block meta_description %}Projects split into USDC tasks: propose your price on an open task, deliver, get paid.{% endblock %}
 
 {% block content %}
 <div class="ui-page-header">
@@ -64,7 +64,7 @@
 {% else %}
   {% if wallet_address %}
     {% url 'projects:project_create' as create_url %}
-    {% include "components/empty_state.html" with icon="fa-diagram-project" title="No projects" desc="Create the first project: describe it, split it into fixed-price tasks, and freelancers apply." cta_href=create_url cta_label="New project" cta_icon="fa-plus" %}
+    {% include "components/empty_state.html" with icon="fa-diagram-project" title="No projects" desc="Create the first project: describe it, split it into tasks with a budget, and freelancers propose their price." cta_href=create_url cta_label="New project" cta_icon="fa-plus" %}
   {% else %}
     {% include "components/empty_state.html" with icon="fa-diagram-project" title="No projects" desc="Connect your Freighter wallet to post a project or apply to a task." %}
   {% endif %}

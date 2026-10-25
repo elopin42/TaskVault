@@ -340,9 +340,12 @@ def delete_task(task: Task, company) -> None:
 
 # --- freelance: apply / deliver ------------------------------------------------------------
 
-def apply(task: Task, freelancer, message, tags) -> Application:
-    """Anyone with a wallet (validated or not) may apply once to an open task — except the company."""
+def apply(task: Task, freelancer, message, tags, price=None) -> Application:
+    """Anyone with a wallet (validated or not) may apply once to an open task — except the company — with
+    their own price, at most the task's budget (`Task.price` until a freelance is chosen). `price=None` bids
+    the full budget (seed, tests); the HTTP endpoint always sends one."""
     tags = clean_tags(tags)
+    price = None if price is None else parse_price(price)
     message = str(message or "").strip()
     if len(message) > MAX_MESSAGE:
         raise ProjectError("invalid", f"The message is at most {MAX_MESSAGE} characters.")
@@ -355,20 +358,28 @@ def apply(task: Task, freelancer, message, tags) -> Application:
             raise ProjectError("own_task", "You cannot apply to your own task.")
         if locked.applications.filter(freelancer=freelancer).exists():
             raise ProjectError("duplicate", "You have already applied to this task.")
+        if price is None:
+            price = locked.price
+        elif price > locked.price:
+            raise ProjectError("over_budget", f"Your price cannot exceed the task's budget ({dec_str(locked.price)}).")
         score = score_application(locked, freelancer, tags)
         try:
             with transaction.atomic():
                 app = Application.objects.create(
-                    task=locked, freelancer=freelancer, message=message, tags=tags, score=score
+                    task=locked, freelancer=freelancer, message=message, tags=tags, price=price, score=score
                 )
         except IntegrityError:
             raise ProjectError("duplicate", "You have already applied to this task.") from None
-    logger.info("application created task=%s application=%s freelancer=%s score=%s", task.pk, app.pk, freelancer.pk, score)
+    logger.info(
+        "application created task=%s application=%s freelancer=%s price=%s score=%s",
+        task.pk, app.pk, freelancer.pk, price, score,
+    )
     return app
 
 
 def choose(task: Task, application: Application, company) -> Task:
-    """The company picks ANY candidate of an open task (the score is only a hint)."""
+    """The company picks ANY candidate of an open task (the score is only a hint); the chosen price becomes
+    the task's price, i.e. the amount the escrow locks or the direct payment sends."""
     _require_company(task.project, company)
     with transaction.atomic():
         locked = _locked_task(task)
@@ -383,9 +394,12 @@ def choose(task: Task, application: Application, company) -> Task:
         Application.objects.filter(pk=fresh.pk).update(status=Application.Status.CHOSEN)
         locked.status = Task.Status.TAKEN
         locked.assigned_to = fresh.freelancer
-        locked.save(update_fields=["status", "assigned_to", "updated_at"])
+        locked.price = fresh.price
+        locked.save(update_fields=["status", "assigned_to", "price", "updated_at"])
         _after_choose(locked)
-    logger.info("task taken task=%s application=%s freelancer=%s", locked.pk, fresh.pk, fresh.freelancer_id)
+    logger.info(
+        "task taken task=%s application=%s freelancer=%s price=%s", locked.pk, fresh.pk, fresh.freelancer_id, fresh.price
+    )
     return locked
 
 

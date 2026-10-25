@@ -1,7 +1,8 @@
 """Project → Task → Application (+ Rating, Delivery, RevisionRequest, Dispute): the task-board domain.
 
-A company splits a Project into fixed-price Tasks; freelances apply to open tasks; the
-company picks one freelance per task; the chosen one delivers; the company validates and
+A company splits a Project into Tasks with a budget each; freelances apply to open tasks with their own
+price (at most the budget); the company picks one freelance per task, whose price becomes the task's
+price; the chosen one delivers; the company validates and
 rates — or sends the delivery back for changes (at most LOWBID_MAX_REVISIONS times, before the
 Rating) — or either party opens a dispute (escrow mode: the company while the delivery is
 unrated, the freelance once the review window is over) that the arbiter wallet settles with a split
@@ -267,6 +268,9 @@ class Application(models.Model):
     freelancer = models.ForeignKey("accounts.WalletUser", on_delete=models.PROTECT, related_name="applications")
     message = models.CharField(max_length=280, blank=True)
     tags = models.JSONField(default=list, blank=True)
+    # The freelance's own price (≤ Task.price, the company's budget); projects.services.choose copies it onto
+    # the task, so the escrow / direct payment moves exactly this amount.
+    price = models.DecimalField(max_digits=18, decimal_places=7)
     # Deterministic server-side score (projects.scoring), stored at creation and refreshed by services.rescore().
     score = models.DecimalField(max_digits=5, decimal_places=1, default=ZERO)
     status = models.CharField(max_length=8, choices=Status.choices, default=Status.PENDING, db_index=True)

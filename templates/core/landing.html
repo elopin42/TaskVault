@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static lowbid_extras %}
 {% block title %}TaskVault — the freelancer task board, paid in {{ asset_code }} on Stellar{% endblock %}
-{% block meta_description %}TaskVault — projects split into fixed-price tasks for freelancers, paid in {{ asset_code }} on Stellar.{% endblock %}
+{% block meta_description %}TaskVault — projects split into tasks, freelancers propose their price, paid in {{ asset_code }} on Stellar.{% endblock %}
 
 {% block content %}
 {% comment %}
@@ -18,8 +18,8 @@
   <div class="lb-story-grid" data-story-grid>
     <section class="lb-hero" data-story-hero>
       <p class="lb-kicker">Stellar {{ STELLAR_NETWORK }}{% if escrow == "escrow" %} · Soroban · Trustless Work{% else %} · direct payment{% endif %}</p>
-      <h1 class="lb-hero-title">{% if escrow == "escrow" %}The price is fixed. <span class="lb-hero-accent">The money is vaulted.</span> The work gets paid.{% else %}The price is fixed. <span class="lb-hero-accent">The delivery is validated.</span> The work gets paid.{% endif %}</h1>
-      <p class="lb-hero-sub">Fixed-price tasks, paid in {{ asset_code }} on Stellar once the company validates the delivery.</p>
+      <h1 class="lb-hero-title">{% if escrow == "escrow" %}You name your price. <span class="lb-hero-accent">The money is vaulted.</span> The work gets paid.{% else %}You name your price. <span class="lb-hero-accent">The delivery is validated.</span> The work gets paid.{% endif %}</h1>
+      <p class="lb-hero-sub">Tasks with a budget, freelancers name their price, paid in {{ asset_code }} on Stellar once the company validates the delivery.</p>
       <div class="lb-hero-cta">
         {% if wallet_address %}
           <a href="{% url 'projects:project_create' %}" class="ui-btn ui-btn-primary ui-btn-signal ui-btn-lg"><i class="fa-solid fa-plus" aria-hidden="true"></i> New project</a>
@@ -44,19 +44,19 @@
     <div class="lb-story-flow">
       <div class="lb-story-intro">
         <h2 id="story-title" class="lb-section-title">One project. Everyone takes the part they want.</h2>
-        <p class="lb-story-sub">A company posts a project cut into fixed-price tasks. Freelancers apply to the part they want with a message and their skills: the price is set by the company, nobody quotes one. The one chosen for each task is paid in {{ asset_code }}{% if escrow == "escrow" %}, from an escrow the company funds before the delivery{% else %}, straight from the company's wallet at validation{% endif %}.</p>
+        <p class="lb-story-sub">A company posts a project cut into tasks, each with a budget. Freelancers apply to the part they want with their price, a message and their skills: the company sets the ceiling, each freelancer quotes their own. The one chosen for each task is paid in {{ asset_code }}{% if escrow == "escrow" %}, from an escrow the company funds before the delivery{% else %}, straight from the company's wallet at validation{% endif %}.</p>
       </div>
       <ol class="lb-story-steps">
       <li class="lb-step" data-story-step>
         <div class="lb-step-head"><span>BLOCK 01</span><span>COMPANY</span></div>
         <h3 class="lb-step-title">Split</h3>
-        <p class="lb-step-desc">One project, cut into fixed-price tasks. Any freelancer can apply to any open task.</p>
+        <p class="lb-step-desc">One project, cut into tasks with a budget each. Any freelancer can apply to any open task.</p>
         <code class="lb-step-call">off-chain</code>
       </li>
       <li class="lb-step" data-story-step>
         <div class="lb-step-head"><span>BLOCK 02</span><span>FREELANCERS · COMPANY</span></div>
         <h3 class="lb-step-title">Apply</h3>
-        <p class="lb-step-desc">Freelancers apply with a message and their skills, no price. A score out of 100 (paid history and ratings with this company, matching skills) is a hint; the company chooses one per task.</p>
+        <p class="lb-step-desc">Freelancers apply with their price (at most the budget), a message and their skills. A score out of 100 (paid history and ratings with this company, matching skills) is a hint; the company chooses one per task.</p>
         <code class="lb-step-call">off-chain</code>
       </li>
       <li class="lb-step is-signal" data-story-step>
@@ -68,7 +68,7 @@
         {% else %}
         <div class="lb-step-head"><span>BLOCK 03</span><span>FREELANCER</span></div>
         <h3 class="lb-step-title">Work</h3>
-        <p class="lb-step-desc">The chosen freelancer does the work at the fixed price. In direct mode no escrow is deployed: nothing moves on chain yet.</p>
+        <p class="lb-step-desc">The chosen freelancer does the work at the price they proposed. In direct mode no escrow is deployed: nothing moves on chain yet.</p>
         <code class="lb-step-call">off-chain</code>
         {% endif %}
       </li>

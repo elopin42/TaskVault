@@ -9,7 +9,7 @@ can_delete / my_application / is_mine set by the view), viewer_is_company.
     {% if task.tags %}<div class="mt-1">{% include "components/tags.html" with tags=task.tags linked=True %}</div>{% endif %}
     {% if task.description %}<p class="ui-meta mt-1 line-clamp-2">{{ task.description }}</p>{% endif %}
   </td>
-  <td data-label="Price" class="ui-col-end ui-num">{% include "components/price.html" with amount=task.price %}</td>
+  <td data-label="{% if task.status == 'open' %}Budget{% else %}Price{% endif %}" class="ui-col-end ui-num">{% if task.status == 'open' %}<span class="ui-meta">up to </span>{% endif %}{% include "components/price.html" with amount=task.price %}</td>
   <td data-label="Status">
     {% include "components/status_badge.html" with obj=task %}
     {% if task.pay_status_label and task.status != 'open' and task.status != 'paid' %}<span class="ui-badge {{ task.pay_badge_class }}" title="Payment" data-pay-badge>{{ task.pay_status_label }}</span>{% endif %}

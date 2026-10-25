@@ -151,7 +151,10 @@ def _candidate_rows(task: Task, wallet) -> list[dict]:
 
 
 def _fingerprint(task: Task, rows: list[dict]) -> str:
-    ids = ",".join(f"{r['app'].pk}:{r['fmt']['score']}:{r['network'].level if r['network'] else ''}" for r in rows)
+    ids = ",".join(
+        f"{r['app'].pk}:{r['fmt']['score']}:{dec_str(r['app'].price)}:{r['network'].level if r['network'] else ''}"
+        for r in rows
+    )
     return f"{task.status}:{len(rows)}:{task.assigned_to_id or 0}:{ids}"
 
 
@@ -177,6 +180,7 @@ def _candidate_json(row: dict) -> dict:
         "name": app.freelancer.display_name,
         "message": app.message,
         "tags": app.tags,
+        "price": dec_str(app.price),
         "score": row["fmt"]["score"],
         "parts": {"history": row["fmt"]["history"], "rating": row["fmt"]["rating"], "tags": row["fmt"]["tags"]},
         "validated": row["validated"],
@@ -261,7 +265,7 @@ def project_create(request: HttpRequest) -> HttpResponse:
         if form.is_valid():
             project = form.save(company=wallet)
             logger.info("project created project=%s company=%s", project.pk, wallet.pk)
-            messages.success(request, "Project created. Now add your fixed-price tasks.")
+            messages.success(request, "Project created. Now add your tasks and their budget.")
             return redirect("projects:project_detail", pk=project.pk)
     else:
         form = ProjectForm()
@@ -578,14 +582,18 @@ def task_delete(request: HttpRequest, pk: int) -> JsonResponse:
 def apply_create(request: HttpRequest, pk: int) -> JsonResponse:
     task = get_object_or_404(Task.objects.select_related("project"), pk=pk)
     data = _json_body(request)
+    if data.get("price") in (None, ""):
+        return _error_response(ProjectError("invalid", "Propose your price."))
     try:
-        app = services.apply(task, get_wallet(request), message=data.get("message"), tags=data.get("tags"))
+        app = services.apply(
+            task, get_wallet(request), message=data.get("message"), tags=data.get("tags"), price=data.get("price")
+        )
     except ProjectError as e:
         return _error_response(e)
     return JsonResponse(
         {
             "ok": True,
-            "application": {"id": app.pk, "score": f"{app.score:.1f}", "tags": app.tags},
+            "application": {"id": app.pk, "score": f"{app.score:.1f}", "tags": app.tags, "price": dec_str(app.price)},
             "message": "Application sent. The company chooses among the candidates.",
         },
         status=201,

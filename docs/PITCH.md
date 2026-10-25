@@ -3,7 +3,7 @@
 > Aligned with the real UI (English labels copied from the templates). The click-by-click script is [`DEMO_RUNBOOK.md`](DEMO_RUNBOOK.md) §3.
 > Testnet amounts (the Circle faucet gives 10 USDC per day): T1 "Landing page" **3 USDC**, T2 "Freighter integration" 5 USDC, T3 "Dashboard" 2 USDC. Only T1 is funded and paid on camera.
 
-One-line pitch: **"A company splits its project into fixed-price tasks; each task's money is locked on Stellar before the work starts and released to the freelance's wallet the moment the company approves."**
+One-line pitch: **"A company splits its project into tasks, freelances name their price; each task's money is locked on Stellar before the work starts and released to the freelance's wallet the moment the company approves."**
 
 ## A. Video script (2:30 to 3:00)
 
@@ -13,7 +13,7 @@ The voice-over is recorded in French for the demo; the English text below is the
 "Freelances get paid late, sometimes never. Small companies that split a project between several freelances juggle quotes, invoices and trust, one person at a time. In between, the big platforms typically take 10 to 20 % and hold the money until their payout cycle. TaskVault fixes both sides."
 
 **0:25 — Project, tasks, candidates** *(screen)*
-"I'm Claire, I run Studio Nova. I connect my Freighter wallet and sign: no account, no password. I create my project, a booking site for a yoga studio, and split it into three tasks with a fixed price each: the landing page at 3 dollars — we're on testnet —, the Freighter integration, the dashboard.
+"I'm Claire, I run Studio Nova. I connect my Freighter wallet and sign: no account, no password. I create my project, a booking site for a yoga studio, and split it into three tasks with a budget each: the landing page at 3 dollars — we're on testnet —, the Freighter integration, the dashboard.
 Yanis and Nora apply to the landing page: a short message and their skills. Nobody haggles: the price is mine. My candidate list updates live. TaskVault ranks them with a simple, explainable score, and Yanis gets "Recommended". I choose him."
 
 **1:10 — Funding** *(screen, then stellar.expert)*
@@ -31,7 +31,7 @@ Yanis and Nora apply to the landing page: a short message and their skills. Nobo
 > Never say "escrow" or "contract" in this variant.
 
 **2:35 — Why Stellar** *(slide 4)*
-"Why Stellar? Because digital dollars, USDC, settle in five seconds for a fraction of a cent. Because the contract that holds the money runs on Soroban, with no bank in the middle. And because the wallet, Freighter, is both the identity and the signature. Three building blocks, one flow. TaskVault: fixed prices, earned trust, guaranteed payment."
+"Why Stellar? Because digital dollars, USDC, settle in five seconds for a fraction of a cent. Because the contract that holds the money runs on Soroban, with no bank in the middle. And because the wallet, Freighter, is both the identity and the signature. Three building blocks, one flow. TaskVault: fair prices, earned trust, guaranteed payment."
 
 *(About 350 spoken words, 2:45 at a normal pace including waits. Read it aloud once with a timer before recording. Cut the Freighter popup waits in editing.)*
 
@@ -44,11 +44,11 @@ Yanis and Nora apply to the landing page: a short message and their skills. Nobo
 - *Speaker note: one figure, one sentence per problem, 30 seconds max.*
 
 **Slide 2 — Solution**
-- The company splits a project into tasks with a fixed price in USDC.
-- Freelances apply with a message and their skills; no race to the bottom.
+- The company splits a project into tasks with a budget in USDC.
+- Freelances apply with their price (capped by the budget), a message and their skills.
 - A deterministic score (history with this company, ratings, skills) recommends; the company chooses.
 - Each task's price is locked in its own Trustless Work escrow once the freelance is chosen, released when the company approves the delivery.
-- *Speaker note: stress "the company chooses" and "fixed price".*
+- *Speaker note: stress "the company chooses" and "the freelance names the price".*
 
 **Slide 3 — Demo (screenshots from `docs/screenshots/`)**
 - `03-projet-entreprise.png` — the project page: tasks, statuses, candidates, funding panel.
@@ -77,8 +77,8 @@ Yanis and Nora apply to the landing page: a short message and their skills. Nobo
 
 **Personalised trust network (the angle).** Freelance platforms ask you to trust five-star reviews from strangers. Lowbid asks a better question: *do the people I trust vouch for this freelance?* Any wallet can follow and recommend another; when Studio Nova opens its candidates, Chloé's row says « Yanis recommends » because Studio Nova follows Yanis, who delivered T1 for them. The signal is **one hop only** — only the wallets you chose to follow count — so a ring of fake accounts recommending each other shows nothing to you. And it is a hint, never a verdict: it never overrides the deterministic score (A still 90 vs B 20), the « Validé » / « Recommandé » badges or the order of the list.
 
-**1. Why fixed prices instead of letting freelances compete on price?**
-Because a race to the lowest price produces rushed work and punishes the freelances who are good. The company knows what a task is worth; freelances compete on fit and track record. The score is public and explainable: 40 points if this company has already paid the freelance for at least one task, 8 points per star of average rating from this company, up to 20 points for the share of the task's skills they match. Maximum 100.
+**1. Doesn't letting freelances name their price start a race to the bottom?**
+No: the price is shown next to each candidate but never enters the score, and the company is free to choose a more expensive freelance with a better track record. The company caps the price with its budget; the freelance names what the work is worth to them. The score is public and explainable: 40 points if this company has already paid the freelance for at least one task, 8 points per star of average rating from this company, up to 20 points for the share of the task's skills they match. Maximum 100.
 
 **2. Isn't the score unfair to newcomers?**
 A newcomer can still reach 20 points on skills, and the company can choose anyone: "Choose" is on every row. The history and rating parts only count the company's own experience with that freelance, so being well rated elsewhere does not crush a newcomer here, and one paid delivery rated 3 stars or more is enough to become "Validated".

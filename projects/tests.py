@@ -259,6 +259,19 @@ class ApplyTests(BaseProjectTest):
         self.assertEqual(ctx.exception.code, "bad_tags")
         self.assertEqual(Application.objects.count(), 0)
 
+    def test_apply_with_a_price_up_to_the_budget(self):
+        app = services.apply(self.t1, self.a, "", [], "249.50")
+        self.assertEqual(app.price, Decimal("249.50"))
+        self.assertEqual(services.apply(self.t1, self.b, "", [], "300").price, Decimal("300"))
+        self.assertEqual(services.apply(self.t2, self.a, "", []).price, Decimal("500"), "no price = the budget")
+
+    def test_apply_refuses_a_price_over_the_budget_or_not_positive(self):
+        for raw, code in (("300.01", "over_budget"), ("0", "invalid"), ("-5", "invalid"), ("abc", "invalid")):
+            with self.assertRaises(ProjectError) as ctx:
+                services.apply(self.t1, self.a, "", [], raw)
+            self.assertEqual(ctx.exception.code, code, raw)
+        self.assertEqual(Application.objects.count(), 0)
+
 
 # --- company: choose ----------------------------------------------------------------------------
 
@@ -276,6 +289,13 @@ class ChooseTests(BaseProjectTest):
         self.assertEqual(app_of(self.t1, self.a).status, Application.Status.REJECTED)
         self.assertEqual(task.status_label, "Taken")
         self.assertTrue(task.is_assignee(self.b))
+
+    def test_the_chosen_price_becomes_the_task_price(self):
+        services.apply(self.t2, self.a, "", [], "420")
+        services.apply(self.t2, self.b, "", [], "380")
+        task = services.choose(self.t2, app_of(self.t2, self.a), self.company)
+        self.assertEqual(task.price, Decimal("420"))
+        self.assertEqual(Task.objects.get(pk=self.t2.pk).price, Decimal("420"))
 
     def test_any_candidate_may_be_chosen_not_only_the_recommended(self):
         # B has the lower score (10 vs 20) and is still a valid choice.
@@ -674,13 +694,15 @@ class TaskDetailViewTests(BaseProjectTest):
     def test_freelance_sees_the_apply_form_then_their_application(self):
         login(self.client, self.a)
         html = self.client.get(self.url()).content.decode()
-        for marker in ('id="apply-form"', 'id="apply-message"', 'id="apply-tags"', "data-apply-submit", 'data-error-for="message"', 'data-error-for="tags"', 'data-error-for="_"', "window.LOWBID_TASK", 'data-candidates data-count="0"'):
+        for marker in ('id="apply-form"', 'id="apply-price"', 'data-budget="300"', 'data-error-for="price"', 'id="apply-message"', 'id="apply-tags"', "data-apply-submit", 'data-error-for="message"', 'data-error-for="tags"', 'data-error-for="_"', "window.LOWBID_TASK", 'data-candidates data-count="0"'):
             self.assertIn(marker, html, marker)
         self.assertIn(reverse("projects:apply_create", args=[self.t1.pk]), html)
-        services.apply(self.t1, self.a, "Moi", ["django"])
+        services.apply(self.t1, self.a, "Moi", ["django"], "275")
         html = self.client.get(self.url()).content.decode()
         self.assertNotIn('id="apply-form"', html)
         self.assertIn('id="my-application"', html)
+        self.assertIn('data-my-price="275"', html)
+        self.assertIn('data-bid-price="275"', html)
         self.assertIn("Your application", html)
         self.assertIn('data-candidates data-count="1"', html)
 
@@ -903,22 +925,27 @@ class TaskAddDeleteEndpointTests(BaseProjectTest):
 class ApplyChooseEndpointTests(BaseProjectTest):
     def test_apply_endpoint(self):
         url = reverse("projects:apply_create", args=[self.t1.pk])
-        r = self.post_json(self.client, url, {"message": "x", "tags": ["django"]})
+        r = self.post_json(self.client, url, {"message": "x", "tags": ["django"], "price": "250"})
         self.assertEqual((r.status_code, r.json()["error"]), (401, "wallet_required"))
         login(self.client, self.a)
         r = self.post_json(self.client, url, {"message": "Je prends.", "tags": ["Django", "ui"]})
+        self.assertEqual((r.status_code, r.json()["error"]), (400, "invalid"), "the price is required")
+        r = self.post_json(self.client, url, {"message": "Je prends.", "tags": ["Django", "ui"], "price": "250"})
         self.assertEqual(r.status_code, 201, r.content)
         self.assertEqual(r.json()["application"]["score"], "20.0")
         self.assertEqual(r.json()["application"]["tags"], ["django", "ui"])
-        r = self.post_json(self.client, url, {"message": "encore"})
+        self.assertEqual(r.json()["application"]["price"], "250")
+        r = self.post_json(self.client, url, {"message": "encore", "price": "200"})
         self.assertEqual((r.status_code, r.json()["error"]), (409, "duplicate"))
         login(self.client, self.company)
-        r = self.post_json(self.client, url, {"message": "moi"})
+        r = self.post_json(self.client, url, {"message": "moi", "price": "200"})
         self.assertEqual((r.status_code, r.json()["error"]), (403, "own_task"))
         login(self.client, self.b)
-        r = self.post_json(self.client, url, {"tags": ["a", "b", "c", "d"]})
+        r = self.post_json(self.client, url, {"tags": ["a", "b", "c", "d"], "price": "200"})
         self.assertEqual((r.status_code, r.json()["error"]), (400, "bad_tags"))
         self.assertIn("At most 3", r.json()["message"])
+        r = self.post_json(self.client, url, {"price": "300.01"})
+        self.assertEqual((r.status_code, r.json()["error"]), (400, "over_budget"))
 
     def test_choose_endpoint(self):
         services.apply(self.t1, self.a, "", [])

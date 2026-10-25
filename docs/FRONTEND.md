@@ -85,7 +85,7 @@ Server-side field errors from `Lowbid.api` land in `<span|p class="ui-error" dat
   <a href="…" class="ui-kpi-tile is-link">
     <span class="ui-kpi-head"><span class="ui-kpi-label">Total budget</span><span class="ui-kpi-icon" aria-hidden="true"><i class="fa-solid fa-coins"></i></span></span>
     <span class="ui-kpi-value" data-kpi-total>1,200<span class="ui-dec">.00</span><span class="ui-price-unit">USDC</span></span>
-    <span class="ui-kpi-hint ui-meta">3 fixed-price tasks</span>
+    <span class="ui-kpi-hint ui-meta">3 tasks</span>
   </a>
 </section>
 ```
@@ -436,7 +436,7 @@ Profile `#network-panel` only: `[data-follow]` toggles follow / unfollow, `[data
 
 **Detail page (two columns)**
 ```django
-<section class="ui-kpi-band mb-6" aria-label="Key figures">{% include "components/kpi.html" with label="Fixed price" value=… unit=asset_code %}…</section>
+<section class="ui-kpi-band mb-6" aria-label="Key figures">{% include "components/kpi.html" with label="Budget" value=… unit=asset_code %}…</section>
 <div class="ui-split">
   <div class="ui-stack"><section class="ui-panel" id="candidates-panel">…<div id="candidates-list" data-fingerprint="…">{% include "projects/_candidates.html" %}</div></section></div>
   <aside class="ui-stack">{% escrow_panel task wallet %}</aside>

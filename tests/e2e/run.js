@@ -184,6 +184,7 @@ async function addTaskUI(page, task, expectedCount) {
 }
 async function applyUI(page, taskId, app) {
   await page.goto(`/taches/${taskId}/`);
+  if (app.price) await page.fill("#apply-price", String(app.price));  // prefilled with the budget otherwise
   if (app.message) await page.fill("#apply-message", app.message);
   await page.fill("#apply-tags", app.tags);
   await page.click("[data-apply-submit]");
@@ -207,7 +208,7 @@ async function waitForServer() {
 
 const PROJECT = {
   title: "Booking platform for a yoga studio",
-  description: "Class booking site (schedule, memberships, USDC payment via Freighter) for a 3-room studio. Figma mockups provided, deployment on our VPS. Split into three fixed-price tasks.",
+  description: "Class booking site (schedule, memberships, USDC payment via Freighter) for a 3-room studio. Figma mockups provided, deployment on our VPS. Split into three tasks with a budget each.",
 };
 const TASKS = [
   { title: "Landing page", description: "Responsive home page (Django + Tailwind) from the mockup, contact form.", price: 300, tags: "django, ui" },
@@ -337,12 +338,16 @@ async function main() {
     await step("3. A and B apply to T1 (A: django,ui · B: django); company cannot apply; duplicates refused", async () => {
       await applyUI(pa, taskIds[0], { message: "Django + Tailwind every day, I deliver in 5 days including deployment.", tags: "django, ui" });
       assert((await pa.locator("#my-application").innerText()).includes("20.0"), "A's score is 20.0 (tags only, no history)");
-      await applyUI(pb, taskIds[0], { message: "Clean build from Figma, 2 iterations included.", tags: "django" });
+      await applyUI(pb, taskIds[0], { message: "Clean build from Figma, 2 iterations included.", tags: "django", price: 280 });
       assert((await pb.locator("#my-application").innerText()).includes("10.0"), "B's score is 10.0");
+      assert(await pb.locator('#my-application [data-my-price="280"]').count() === 1, "B's own price (280) is shown");
+      assert(await pb.locator('.cand-row [data-bid-price="280"]').count() === 1, "B's price is on the candidate row");
+      const over = await api(pa, `/taches/${taskIds[1]}/postuler/`, { message: "x", tags: [], price: "501" });
+      assert(over.status === 400 && over.json.error === "over_budget", `a bid over the 500 budget is refused, got ${over.status} ${JSON.stringify(over.json)}`);
       assert(await pb.locator('[data-candidates][data-count="2"]').count() === 1, "B sees 2 candidates");
-      const dup = await api(pa, `/taches/${taskIds[0]}/postuler/`, { message: "again", tags: ["django"] });
+      const dup = await api(pa, `/taches/${taskIds[0]}/postuler/`, { message: "again", tags: ["django"], price: "300" });
       assert(dup.status === 409 && dup.json.error === "duplicate", `second application refused with duplicate, got ${dup.status} ${JSON.stringify(dup.json)}`);
-      const own = await api(cp, `/taches/${taskIds[0]}/postuler/`, { message: "me", tags: [] });
+      const own = await api(cp, `/taches/${taskIds[0]}/postuler/`, { message: "me", tags: [], price: "300" });
       assert(own.status === 403 && own.json.error === "own_task", `own_task refused, got ${own.status}`);
       assert(/own task/i.test(own.json.message), `English own_task message, got "${own.json.message}"`);
       await pa.goto(`/taches/${taskIds[0]}/`);
@@ -360,7 +365,7 @@ async function main() {
       const pc = track(await cctx.newPage(), "freelanceC");
       await pc.goto("/");
       await connect(pc, fc, ".lb-hero [data-wallet-connect]");
-      const r = await api(pc, `/taches/${taskIds[0]}/postuler/`, { message: "Available right away.", tags: ["ui"] });
+      const r = await api(pc, `/taches/${taskIds[0]}/postuler/`, { message: "Available right away.", tags: ["ui"], price: "290" });
       assert(r.status === 201, `C applies: HTTP ${r.status}`);
       const t0 = Date.now();
       await cp.locator('[data-candidates][data-count="3"]').waitFor({ timeout: 8000 });

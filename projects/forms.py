@@ -17,7 +17,7 @@ class ProjectForm(forms.ModelForm):
                 attrs={
                     "class": "ui-textarea",
                     "rows": 6,
-                    "placeholder": "The context, the goal, what you expect in the end. You will then split it into fixed-price tasks.",
+                    "placeholder": "The context, the goal, what you expect in the end. You will then split it into tasks with a budget.",
                 }
             ),
         }

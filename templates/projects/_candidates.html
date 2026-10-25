@@ -2,7 +2,7 @@
 {% comment %}
 Ranked candidates of one task. Rendered in task_detail / project_detail AND returned as `html` by
 candidats.json so the page swaps it in place. Context: task, rows (see views._candidate_rows),
-viewer_is_company, task_open, can_choose. ({# #} comments are single-line in Django: never use them here.)
+viewer_is_company, task_open, can_choose. Each row shows the freelance's own price (`data-bid-price`). ({# #} comments are single-line in Django: never use them here.)
 {% endcomment %}
 {% if rows %}
 <div class="ui-list" data-candidates data-count="{{ rows|length }}" data-task="{{ task.pk }}">
@@ -34,11 +34,14 @@ viewer_is_company, task_open, can_choose. ({# #} comments are single-line in Dja
         <span class="ui-meta ui-num"><strong class="text-strong" data-score="{{ r.fmt.score }}">{{ r.fmt.score }}</strong> / 100</span>
       </div>
     </div>
-    {% if can_choose %}
-      <button type="button" class="ui-btn ui-btn-primary ui-btn-sm" data-choose="{{ r.app.pk }}" data-choose-url="{{ r.choose_url }}" data-choose-label="{{ r.app.freelancer.display_name|default:r.app.freelancer.short_address }}">
-        <i class="fa-solid fa-check" aria-hidden="true"></i> Choose
-      </button>
-    {% endif %}
+    <div class="flex flex-col items-end gap-2 shrink-0">
+      <span class="text-right" data-bid-price="{{ r.app.price|plain }}"><span class="ui-label block mb-0.5">Price</span>{% include "components/price.html" with amount=r.app.price %}</span>
+      {% if can_choose %}
+        <button type="button" class="ui-btn ui-btn-primary ui-btn-sm" data-choose="{{ r.app.pk }}" data-choose-url="{{ r.choose_url }}" data-choose-label="{{ r.app.freelancer.display_name|default:r.app.freelancer.short_address }}" data-choose-price="{{ r.app.price|usdc:asset_code }}">
+          <i class="fa-solid fa-check" aria-hidden="true"></i> Choose
+        </button>
+      {% endif %}
+    </div>
   </div>
   {% endfor %}
 </div>
@@ -51,6 +54,6 @@ viewer_is_company, task_open, can_choose. ({# #} comments are single-line in Dja
 <div class="empty-state" data-candidates data-count="0" data-task="{{ task.pk }}">
   <div class="empty-state-icon"><i class="fa-solid fa-user-plus" aria-hidden="true"></i></div>
   <div class="empty-state-title">No {% if not task_open %}selected {% endif %}candidates</div>
-  <p class="empty-state-desc">{% if task_open %}Be the first to apply: a short message and your skills are enough.{% else %}This task is no longer open to applications.{% endif %}</p>
+  <p class="empty-state-desc">{% if task_open %}Be the first to apply: your price, a short message and your skills are enough.{% else %}This task is no longer open to applications.{% endif %}</p>
 </div>
 {% endif %}

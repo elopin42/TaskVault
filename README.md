@@ -2,7 +2,7 @@
 
 # TaskVault
 
-**A company splits a project into fixed-price tasks, freelances apply, the company picks one per task, and each task is paid in USDC from its own Trustless Work escrow on Stellar.**
+**A company splits a project into tasks with a budget, freelances apply with their own price, the company picks one per task, and each task is paid in USDC from its own Trustless Work escrow on Stellar.**
 
 - **Demo video:** TODO: link
 - **Pitch deck:** TODO: link
@@ -21,12 +21,12 @@
    -------                          ------------------                     -----------------
 1. Connect Freighter  ------------> signMessage check (SEP-53)  <--------- Freighter wallet
 2. Create a project + tasks ------> project "Draft", tasks "Open"
-   (title, fixed price, ≤ 3 tags)
+   (title, budget, ≤ 3 tags)
                         FREELANCES
 3.                      Connect Freighter, open the kanban (/taches/)
-4.                      « Apply »: message + tags -----> application scored (no price)
+4.                      « Apply »: price + message + tags -> application scored (price ≤ budget)
 5. See ranked candidates ---------> score = history + ratings + skills, « Validated » / « Recommended »
-6. « Choose » one freelance ------> task "Taken", the others "Not selected"
+6. « Choose » one freelance ------> task "Taken" at that price, the others "Not selected"
 7. « Fund the project » ----------> Trustless Work API (proxied) -------> one single-release escrow
    2 signatures per task:           deploy, then fund                     PER TASK, USDC locked
 8.                      « Declare the delivery » + link ------------------> milestone marked done
@@ -40,9 +40,9 @@ Fallback (LOWBID_PAYMENT_MODE=direct): no escrow; delivery is a declaration and 
 ```
 
 1. The **company** connects its **Freighter** wallet (Stellar testnet). Login is a signed message, no password.
-2. It creates a **project** (title, description) and splits it into **tasks**, each with a title, a **fixed price** in USDC and up to 3 skill tags. Tasks can be added until the project is closed; an open task can still be deleted.
+2. It creates a **project** (title, description) and splits it into **tasks**, each with a title, a **budget** in USDC (the maximum price) and up to 3 skill tags. Tasks can be added until the project is closed; an open task can still be deleted.
 3. **Freelances** connect their own wallet. The kanban (`/taches/`) shows every open task of other companies plus the tasks assigned to them, in four columns: Open, Taken, Delivered, Paid.
-4. A freelance **applies** to a task with a short message and their skills. There is no price to fight over: the price is fixed by the company.
+4. A freelance **applies** to a task with **their price** (at most the budget), a short message and their skills. Once chosen, that price is the task's price: it is what the escrow locks and what the freelance is paid.
 5. TaskVault ranks the candidates with a **deterministic score** (no AI). Two badges help: **« Validated »** (already paid by this company with an average rating ≥ 3) and **« Recommended »** (the best score among the pending candidates).
 6. **The company chooses** any candidate. The score is a hint, not a rule.
 7. Once a freelance is chosen, the company clicks **« Fund the project »**. For every task with a chosen freelance, Trustless Work deploys a **single-release escrow** (first Freighter signature) and the company funds it with the task's price (second signature).
@@ -153,7 +153,7 @@ Three Stellar building blocks composed into one flow: **Freighter** for identity
 ## Status / what works
 
 - [ ] Wallet login (Freighter signMessage) on a live testnet
-- [x] Projects, fixed-price tasks, applications, scoring, choice, delivery, rating (unit + e2e tested)
+- [x] Projects, tasks with a budget, priced applications, scoring, choice, delivery, rating (unit + e2e tested)
 - [x] Direct payment end to end in the e2e (fake Horizon: trustline, payment, explorer link)
 - [ ] Escrow deploy + fund on the live testnet
 - [ ] Escrow deliver + approve + release on the live testnet

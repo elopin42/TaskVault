@@ -161,9 +161,9 @@ class Command(BaseCommand):
         Escrow.objects.filter(pk=escrow.pk).update(status=Escrow.Status.PAID, payment_tx_hash=_demo_hash(f"t1-{t1.pk}"), released_at=now)
         services.mark_paid(t1)
         payment_services.sync_project_status(t1.project)  # what confirm_direct_pay / confirm_release do live
-        services.apply(t2, a, "I have already wired Freighter and Horizon into a Django back office.", ["stellar"])
-        services.apply(t2, b, "Stellar/JS specialist: SEP-53, trustlines, Soroban.", ["stellar", "js"])
-        services.apply(t3, c, "Django dashboards with Chart.js and CSV exports are my daily job, 6 days.", ["django", "charts"])
+        services.apply(t2, a, "I have already wired Freighter and Horizon into a Django back office.", ["stellar"], "450")
+        services.apply(t2, b, "Stellar/JS specialist: SEP-53, trustlines, Soroban.", ["stellar", "js"], "480")
+        services.apply(t3, c, "Django dashboards with Chart.js and CSV exports are my daily job, 6 days.", ["django", "charts"], "380")
 
         # 4. The trust network (one hop): company → A, A recommends C, A → B. Scores are untouched.
         network.follow(company, a)

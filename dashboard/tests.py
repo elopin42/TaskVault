@@ -333,7 +333,7 @@ class ProfileNetworkTests(TestCase):
         self.assertRegex(html, r"data-followers-count>1<")
         self.assertRegex(html, r"data-following-count>1<")
         self.assertRegex(html, r"data-recommendations-count>1<")
-        for label in ("Followers", "Following", "Recommendations"):
+        for label in ("Sponsorship", "Followers", "Following", "Sponsors"):
             self.assertIn(label, html)
         follow = _tag(html, "data-follow-url")
         self.assertIn(f'data-follow-url="{reverse("network:follow", args=[self.target.stellar_address])}"', follow)
@@ -369,7 +369,7 @@ class ProfileNetworkTests(TestCase):
         self.assertIn('id="network-panel"', html)
         self.assertNotIn("data-follow-url", html)
         self.assertNotIn('id="recommend-form"', html)
-        self.assertIn("Connect your wallet to follow or recommend", html)
+        self.assertIn("Connect your wallet to follow or sponsor this wallet.", html)
         panel = html[html.index('id="network-panel"'):html.index('id="recommendations"')]
         self.assertIn(f'data-next="{self.url(self.target)}"', _tag(panel, "data-wallet-connect"))
 
@@ -385,7 +385,7 @@ class ProfileNetworkTests(TestCase):
         html = self.client.get(self.url(self.target)).content.decode()
         self.assertNotIn(" hidden", _tag(html, "data-unrecommend "))
         self.assertIn('data-recommended="1"', _tag(html, "data-recommend "))
-        self.assertIn("Edit recommendation", html)
+        self.assertIn("Edit sponsorship", html)
         self.assertRegex(html, r'id="recommend-message"[^>]*>Ships fast</textarea>')
 
     def test_known_followers_singular_and_plural(self):
@@ -413,7 +413,7 @@ class ProfileNetworkTests(TestCase):
         r = self.client.get(self.url(self.target))
         html = r.content.decode()
         section = html[html.index('id="recommendations"'):]
-        self.assertIn("Recommendations received", html)
+        self.assertIn("Sponsored by", html)
         self.assertEqual(section.count("ui-timeline-item"), 2)
         self.assertIn("Nora", section)
         self.assertIn("Omar", section)
@@ -422,7 +422,7 @@ class ProfileNetworkTests(TestCase):
 
     def test_recommendations_empty_state(self):
         r = self.client.get(self.url(self.target))
-        self.assertContains(r, "No recommendations yet")
+        self.assertContains(r, "No sponsors yet")
 
     def test_recommends_badge_in_header_when_followed_wallet_recommends(self):
         network.follow(self.me, self.friend)
@@ -453,7 +453,7 @@ class HomeNetworkFeedTests(TestCase):
         self.assertIn("In your network", html)
         feed = html[html.index('id="network-feed"'):]
         self.assertIn("ui-network-feed-item is-recommendation", feed)
-        self.assertIn("recommends", feed)
+        self.assertIn("sponsors", feed)
         self.assertIn("Yanis", feed)
         self.assertIn("Top freelancer", feed)
         self.assertNotIn("Your network is quiet", html)

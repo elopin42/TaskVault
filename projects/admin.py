@@ -6,7 +6,7 @@ from .models import Application, Delivery, Dispute, Project, Rating, RevisionReq
 class TaskInline(admin.TabularInline):
     model = Task
     extra = 0
-    fields = ("position", "title", "price", "tags", "status", "assigned_to", "delivered_at", "paid_at")
+    fields = ("position", "title", "budget", "price", "tags", "status", "assigned_to", "delivered_at", "paid_at")
     readonly_fields = ("delivered_at", "paid_at")
     raw_id_fields = ("assigned_to",)
 
@@ -31,7 +31,7 @@ class ApplicationInline(admin.TabularInline):
 
 @admin.register(Task)
 class TaskAdmin(admin.ModelAdmin):
-    list_display = ("id", "title", "project", "price", "status", "assigned_to", "created_at")
+    list_display = ("id", "title", "project", "budget", "price", "status", "assigned_to", "created_at")
     list_filter = ("status",)
     search_fields = ("title", "project__title")
     readonly_fields = ("created_at", "updated_at", "delivered_at", "paid_at", "resolved_at")

@@ -1,4 +1,6 @@
-/* Lowbid trust network: follow / unfollow and recommend / withdraw on a wallet profile (#network-panel).
+/* Lowbid trust network: follow / unfollow and recommend / withdraw on a wallet profile (#network-panel),
+   and the Sponsor toggle on candidate rows (task + project pages). Loaded once by base.html on every page.
+   UI copy says "sponsor" / "sponsorship"; code, URLs and data-attributes keep "recommend".
    Depends on lowbid-base.js (Lowbid.api, Lowbid.toast) + lowbid-ui.js (Lowbid.confirm, Lowbid.setBusy).
    Every handler is delegated on document (survives innerHTML swaps). Endpoints answer
    {ok, following, followers_count, recommendation: {message}|null, recommendations_count, message};
@@ -10,7 +12,7 @@
      [data-followers-count]        text = followers count (updated in place)
      [data-following-count]        text = following count (server-rendered only)
      [data-recommendations-count]  text = received recommendations count (updated in place)
-     [data-recommend]              button; toggles #recommend-form; data-recommended="1|0" (label Recommend / Edit recommendation)
+     [data-recommend]              button; toggles #recommend-form; data-recommended="1|0" (label Sponsor / Edit sponsorship)
      #recommend-form               form.ui-network-form, `hidden` when the viewer has no recommendation yet
      #recommend-message            textarea maxlength=280 (prefilled with the viewer's current message)
      [data-recommend-counter]      "n / 280" live counter (.is-near from 250, .is-over above 280)
@@ -19,13 +21,23 @@
    After a successful recommend / withdraw the counters and buttons update, then the page reloads so the
    #recommendations list refreshes.
 
+   Candidate rows (_candidates.html, swapped by the 5 s poll of lowbid-projects.js: delegation only):
+     [data-sponsor]                button; data-address, data-name, data-recommend-url, data-unrecommend-url,
+                                   data-sponsoring="1|0", aria-pressed. Label "Sponsor" / "Sponsoring ✓".
+                                   Sponsor → opens the row's form; Sponsoring ✓ → Lowbid.confirm → POST unrecommend.
+     [data-sponsor-form]           form.ui-network-form in the same .cand-row, `hidden` until asked; data-address
+     [data-sponsor-message]        textarea maxlength=280
+     [data-sponsor-counter]        "n / 280" live counter
+     [data-sponsor-submit]         submit (Publish) → POST {message} to the button's data-recommend-url
+     [data-sponsor-cancel]         hides the form
+
    Reference profile markup (agent B2: copy, keep every id / data-attribute; `net` = profile_network(...)):
 
    <section id="network-panel" class="ui-panel ui-network-panel">
      <ul class="ui-network-counts">
        <li class="ui-network-count"><span class="ui-network-count-value" data-followers-count>{{ net.followers_count }}</span><span class="ui-network-count-label">Followers</span></li>
        <li class="ui-network-count"><span class="ui-network-count-value" data-following-count>{{ net.following_count }}</span><span class="ui-network-count-label">Following</span></li>
-       <li class="ui-network-count"><span class="ui-network-count-value" data-recommendations-count>{{ net.recommendations_count }}</span><span class="ui-network-count-label">Recommendations</span></li>
+       <li class="ui-network-count"><span class="ui-network-count-value" data-recommendations-count>{{ net.recommendations_count }}</span><span class="ui-network-count-label">Sponsors</span></li>
      </ul>
      {% include "components/network_badges.html" with signal=net.signal %}
      {% if net.known_followers %}<p class="ui-network-known" data-known-followers>Followed by {{ net.known_followers|length }} people you follow: <strong>{{ net.known_followers|join:", " }}</strong></p>{% endif %}
@@ -37,12 +49,12 @@
          {% if net.viewer_follows %}<i class="fa-solid fa-check" aria-hidden="true"></i> Following{% else %}<i class="fa-solid fa-user-plus" aria-hidden="true"></i> Follow{% endif %}
        </button>
        <button type="button" class="ui-btn" data-recommend data-recommended="{{ net.viewer_recommendation|yesno:'1,0' }}" aria-controls="recommend-form" aria-expanded="false">
-         <i class="fa-solid fa-user-group" aria-hidden="true"></i> {% if net.viewer_recommendation %}Edit recommendation{% else %}Recommend{% endif %}
+         <i class="fa-solid fa-user-group" aria-hidden="true"></i> {% if net.viewer_recommendation %}Edit sponsorship{% else %}Sponsor{% endif %}
        </button>
        <button type="button" class="ui-btn ui-btn-ghost" data-unrecommend data-unrecommend-url="{% url 'network:unrecommend' profile.stellar_address %}" data-name="{{ profile }}"{% if not net.viewer_recommendation %} hidden{% endif %}>Withdraw</button>
      </div>
      <form id="recommend-form" class="ui-network-form" hidden>
-       <label class="ui-label" for="recommend-message">Your recommendation (optional)</label>
+       <label class="ui-label" for="recommend-message">Why do you sponsor them? (optional)</label>
        <textarea id="recommend-message" class="ui-textarea" maxlength="280" placeholder="What did they do well?">{{ net.viewer_recommendation.message|default:"" }}</textarea>
        <div class="ui-network-form-foot">
          <span class="ui-network-counter" data-recommend-counter>0 / 280</span>
@@ -57,6 +69,8 @@
   "use strict";
 
   var Lowbid = window.Lowbid || (window.Lowbid = {});
+  if (Lowbid._networkBound) return; // loaded once: never bind the delegated handlers twice
+  Lowbid._networkBound = true;
   var MAX = 280;
   var ICON = { follow: "fa-user-plus", following: "fa-check", recommend: "fa-user-group" };
 
@@ -131,7 +145,7 @@
   function renderRecommended(recommended) {
     document.querySelectorAll("[data-recommend]").forEach(function (b) {
       b.dataset.recommended = recommended ? "1" : "0";
-      setLabel(b, ICON.recommend, recommended ? "Edit recommendation" : "Recommend");
+      setLabel(b, ICON.recommend, recommended ? "Edit sponsorship" : "Sponsor");
     });
     document.querySelectorAll("[data-unrecommend]").forEach(function (b) {
       if (recommended) b.removeAttribute("hidden"); else b.setAttribute("hidden", "");
@@ -171,7 +185,7 @@
       if (!res || res.ok === false) { setBusy(btn, false); refused(res); return; }
       setText("[data-recommendations-count]", res.recommendations_count);
       renderRecommended(true);
-      Lowbid.toast(res.message || "Recommendation published.", "success");
+      Lowbid.toast(res.message || "You now sponsor " + (btn.dataset.name || "this wallet") + ".", "success");
       reloadSoon();
     }).catch(function (err) { setBusy(btn, false); toastError(err); });
   }
@@ -180,8 +194,8 @@
     var url = btn.dataset.unrecommendUrl;
     if (!url) return;
     Lowbid.confirm({
-      title: "Withdraw your recommendation?",
-      message: "Your recommendation of " + (btn.dataset.name || "this wallet") + " will be removed from their profile.",
+      title: "Withdraw your sponsorship?",
+      message: "Your sponsorship of " + (btn.dataset.name || "this wallet") + " will be removed from their profile.",
       confirmLabel: "Withdraw", cancelLabel: "Keep", danger: true
     }).then(function (ok) {
       if (!ok) return;
@@ -195,8 +209,98 @@
         if (ta) ta.value = "";
         if (f) f.setAttribute("hidden", "");
         renderCounter();
-        Lowbid.toast(res.message || "Recommendation withdrawn.", "success");
+        Lowbid.toast(res.message || "Sponsorship withdrawn.", "success");
         reloadSoon();
+      }).catch(function (err) { setBusy(btn, false); toastError(err); });
+    });
+  }
+
+  /* ---------- Sponsor on a candidate row ---------- */
+  function sponsorRow(el) { return el.closest(".cand-row") || el.closest("[data-candidates]") || document; }
+  function sponsorForm(btn) { return sponsorRow(btn).querySelector("[data-sponsor-form]"); }
+  function sponsorButton(formEl) { return sponsorRow(formEl).querySelector("[data-sponsor]"); }
+
+  function sponsorButtonsFor(address) {
+    return Array.prototype.filter.call(document.querySelectorAll("[data-sponsor]"), function (b) {
+      return b.dataset.address === address;
+    });
+  }
+
+  function renderSponsoring(address, on) {
+    sponsorButtonsFor(address).forEach(function (b) {
+      b.dataset.sponsoring = on ? "1" : "0";
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      b.classList.toggle("is-sponsoring", on);
+      setLabel(b, ICON.recommend, on ? "Sponsoring ✓" : "Sponsor");
+    });
+  }
+
+  function renderSponsorCounter(formEl) {
+    var ta = formEl && formEl.querySelector("[data-sponsor-message]");
+    var counter = formEl && formEl.querySelector("[data-sponsor-counter]");
+    if (!ta || !counter) return;
+    var n = ta.value.length;
+    counter.textContent = n + " / " + MAX;
+    counter.classList.toggle("is-near", n >= MAX - 30 && n <= MAX);
+    counter.classList.toggle("is-over", n > MAX);
+  }
+
+  function hideSponsorForm(formEl) {
+    if (!formEl) return;
+    formEl.setAttribute("hidden", "");
+    var b = sponsorButton(formEl);
+    if (b) b.setAttribute("aria-expanded", "false");
+  }
+
+  function clickSponsor(btn) {
+    if (btn.dataset.sponsoring === "1") { withdrawSponsor(btn); return; }
+    var f = sponsorForm(btn);
+    if (!f) return;
+    var open = f.hasAttribute("hidden");
+    if (!open) { hideSponsorForm(f); btn.focus(); return; }
+    f.removeAttribute("hidden");
+    btn.setAttribute("aria-expanded", "true");
+    renderSponsorCounter(f);
+    var ta = f.querySelector("[data-sponsor-message]");
+    if (ta) ta.focus();
+  }
+
+  function submitSponsor(formEl) {
+    var btn = sponsorButton(formEl);
+    var submit = formEl.querySelector("[data-sponsor-submit]");
+    if (!btn || !btn.dataset.recommendUrl || (submit && submit.disabled)) return;
+    var ta = formEl.querySelector("[data-sponsor-message]");
+    var message = ta ? ta.value.trim() : "";
+    if (message.length > MAX) { Lowbid.toast("Keep it under " + MAX + " characters.", "error"); if (ta) ta.focus(); return; }
+    var name = btn.dataset.name || "this wallet";
+    setBusy(submit, true, "Publishing…");
+    Lowbid.api(btn.dataset.recommendUrl, { method: "POST", body: { message: message } }).then(function (res) {
+      setBusy(submit, false);
+      if (!res || res.ok === false) { refused(res); return; }
+      renderSponsoring(btn.dataset.address, true);
+      if (ta) ta.value = "";
+      renderSponsorCounter(formEl);
+      hideSponsorForm(formEl);
+      Lowbid.toast(res.message || "You now sponsor " + name + ".", "success");
+    }).catch(function (err) { setBusy(submit, false); toastError(err); });
+  }
+
+  function withdrawSponsor(btn) {
+    var url = btn.dataset.unrecommendUrl;
+    if (!url) return;
+    var name = btn.dataset.name || "this wallet";
+    Lowbid.confirm({
+      title: "Withdraw your sponsorship?",
+      message: "You will no longer sponsor " + name + ". Your quote disappears from their profile and candidate rows.",
+      confirmLabel: "Withdraw", cancelLabel: "Keep", danger: true
+    }).then(function (ok) {
+      if (!ok) return;
+      setBusy(btn, true, "…");
+      Lowbid.api(url, { method: "POST" }).then(function (res) {
+        setBusy(btn, false);
+        if (!res || res.ok === false) { refused(res); return; }
+        renderSponsoring(btn.dataset.address, false);
+        Lowbid.toast(res.message || "Sponsorship withdrawn.", "success");
       }).catch(function (err) { setBusy(btn, false); toastError(err); });
     });
   }
@@ -205,7 +309,11 @@
   document.addEventListener("click", function (ev) {
     var t = ev.target;
     if (!(t instanceof Element)) return;
-    var el = t.closest("[data-follow]");
+    var el = t.closest("[data-sponsor-cancel]");
+    if (el) { ev.preventDefault(); var f = el.closest("[data-sponsor-form]"); hideSponsorForm(f); var b = f && sponsorButton(f); if (b) b.focus(); return; }
+    el = t.closest("[data-sponsor]");
+    if (el) { ev.preventDefault(); clickSponsor(el); return; }
+    el = t.closest("[data-follow]");
     if (el) { ev.preventDefault(); toggleFollow(el); return; }
     el = t.closest("[data-recommend-submit]");
     if (el) { ev.preventDefault(); submitRecommend(el); return; }
@@ -217,11 +325,13 @@
 
   // Enter in a field / implicit submission of #recommend-form goes through the same path (never a page POST).
   document.addEventListener("submit", function (ev) {
-    if (ev.target && ev.target.id === "recommend-form") { ev.preventDefault(); submitRecommend(null); }
+    if (ev.target && ev.target.id === "recommend-form") { ev.preventDefault(); submitRecommend(null); return; }
+    if (ev.target instanceof Element && ev.target.matches("[data-sponsor-form]")) { ev.preventDefault(); submitSponsor(ev.target); }
   });
 
   document.addEventListener("input", function (ev) {
-    if (ev.target && ev.target.id === "recommend-message") renderCounter();
+    if (ev.target && ev.target.id === "recommend-message") { renderCounter(); return; }
+    if (ev.target instanceof Element && ev.target.matches("[data-sponsor-message]")) renderSponsorCounter(ev.target.closest("[data-sponsor-form]"));
   });
 
   renderCounter();

@@ -45,7 +45,7 @@ payments.services.project_funding().
 </div>
 
 <section class="ui-kpi-band mb-6" aria-label="Key figures">
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">Total budget</span><span class="ui-kpi-value" data-kpi-total>{{ project.total_amount|usdc_parts }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if funding.is_direct %}paid on each validation{% else %}{{ funding.funded|usdc:asset_code }} locked or paid out{% endif %}</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">{% if budget_differs %}Total agreed{% else %}Total budget{% endif %}</span><span class="ui-kpi-value" data-kpi-total>{{ project.total_amount|usdc_parts }}<span class="ui-price-unit">{{ asset_code }}</span></span>{% if budget_differs %}<span class="ui-kpi-hint ui-meta ui-num" data-total-budget="{{ total_budget|plain }}">Budget {{ total_budget|usdc }}</span>{% endif %}<span class="ui-kpi-hint ui-meta">{% if funding.is_direct %}paid on each validation{% else %}{{ funding.funded|usdc:asset_code }} locked or paid out{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Tasks</span><span class="ui-kpi-value" data-kpi-count>{{ tasks|length }}</span><span class="ui-kpi-hint ui-meta">{{ project.open_count }} open</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Applications</span><span class="ui-kpi-value">{{ pending_total }}</span><span class="ui-kpi-hint ui-meta">awaiting a choice</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Paid</span><span class="ui-kpi-value">{{ project.paid_count }}<span class="ui-price-unit">/ {{ tasks|length }}</span></span><span class="ui-kpi-hint ui-meta">{{ project.progress_pct }}% of the project</span></div>

@@ -319,7 +319,8 @@ def add_task(project: Project, company, title, description, price, tags) -> Task
             raise ProjectError("wrong_state", f"The project is {locked.get_status_display().lower()}: no new tasks.")
         position = (locked.tasks.count() or 0) + 1
         task = Task.objects.create(
-            project=locked, title=title, description=description, price=price, tags=tags, position=position
+            project=locked, title=title, description=description, price=price, budget=price, tags=tags,
+            position=position,
         )
     logger.info("task added project=%s task=%s price=%s", project.pk, task.pk, price)
     return task
@@ -342,7 +343,7 @@ def delete_task(task: Task, company) -> None:
 
 def apply(task: Task, freelancer, message, tags, price=None) -> Application:
     """Anyone with a wallet (validated or not) may apply once to an open task — except the company — with
-    their own price, at most the task's budget (`Task.price` until a freelance is chosen). `price=None` bids
+    their own price, at most the task's budget (`Task.budget`, equal to `Task.price` while open). `price=None` bids
     the full budget (seed, tests); the HTTP endpoint always sends one."""
     tags = clean_tags(tags)
     price = None if price is None else parse_price(price)
@@ -359,9 +360,9 @@ def apply(task: Task, freelancer, message, tags, price=None) -> Application:
         if locked.applications.filter(freelancer=freelancer).exists():
             raise ProjectError("duplicate", "You have already applied to this task.")
         if price is None:
-            price = locked.price
-        elif price > locked.price:
-            raise ProjectError("over_budget", f"Your price cannot exceed the task's budget ({dec_str(locked.price)}).")
+            price = locked.budget
+        elif price > locked.budget:
+            raise ProjectError("over_budget", f"Your price cannot exceed the task's budget ({dec_str(locked.budget)}).")
         score = score_application(locked, freelancer, tags)
         try:
             with transaction.atomic():
@@ -379,7 +380,8 @@ def apply(task: Task, freelancer, message, tags, price=None) -> Application:
 
 def choose(task: Task, application: Application, company) -> Task:
     """The company picks ANY candidate of an open task (the score is only a hint); the chosen price becomes
-    the task's price, i.e. the amount the escrow locks or the direct payment sends."""
+    the task's price, i.e. the amount the escrow locks or the direct payment sends. `Task.budget` (the
+    company's maximum) is left alone, so the page can still say "up to <budget>"."""
     _require_company(task.project, company)
     with transaction.atomic():
         locked = _locked_task(task)

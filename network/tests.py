@@ -172,6 +172,8 @@ class SignalTests(TestCase):
                 "recommends": [{"address": self.a.stellar_address, "name": "Yanis"}],
                 "followed_by": [{"address": self.b.stellar_address, "name": "Nora"}],
                 "following": True,
+                "quote": "",
+                "quote_by": "",
             },
         )
 
@@ -211,6 +213,56 @@ class SignalTests(TestCase):
         self.assertEqual(sig.label, f"{anon.short_address} and 3 others recommend")
 
 
+class QuoteTests(TestCase):
+    """The sponsor's quote rides on the strong signal: one hop only, first non-empty message by recommender name."""
+
+    def setUp(self):
+        self.v = make_wallet("Viewer")
+        self.a = make_wallet("Yanis")
+        self.b = make_wallet("Nora")
+        self.t = make_wallet("Target")
+
+    def test_quote_of_a_followed_recommender(self):
+        services.follow(self.v, self.a)
+        services.recommend(self.a, self.t, "Worked with her twice. Clean, fast, reliable.")
+        sig = services.signals(self.v, [self.t])[self.t.pk]
+        self.assertEqual(sig.quote, "Worked with her twice. Clean, fast, reliable.")
+        self.assertEqual(sig.quote_author.pk, self.a.pk)
+        self.assertEqual(sig.quotes, [(self.a, "Worked with her twice. Clean, fast, reliable.")])
+        self.assertEqual(sig.as_json()["quote"], "Worked with her twice. Clean, fast, reliable.")
+        self.assertEqual(sig.as_json()["quote_by"], "Yanis")
+
+    def test_first_non_empty_message_by_name(self):
+        services.follow(self.v, self.a)
+        services.follow(self.v, self.b)
+        services.recommend(self.b, self.t, "")  # Nora sorts first but wrote nothing
+        services.recommend(self.a, self.t, "Ships on time.")
+        sig = services.signals(self.v, [self.t])[self.t.pk]
+        self.assertEqual([w.pk for w, _ in sig.quotes], [self.b.pk, self.a.pk])
+        self.assertEqual(sig.quote, "Ships on time.")
+        self.assertEqual(sig.quote_author.pk, self.a.pk)
+
+    def test_no_quote_without_message_or_without_the_hop(self):
+        services.recommend(self.a, self.t, "Not followed by the viewer")
+        sig = services.signals(self.v, [self.t])[self.t.pk]
+        self.assertEqual(sig.quote, "")
+        self.assertIsNone(sig.quote_author)
+        services.follow(self.v, self.a)
+        services.recommend(self.a, self.t, "")
+        sig = services.signals(self.v, [self.t])[self.t.pk]
+        self.assertEqual(sig.level, "strong")
+        self.assertEqual(sig.quote, "")
+
+    def test_quotes_keep_the_query_budget(self):
+        services.follow(self.v, self.a)
+        services.recommend(self.a, self.t, "Great")
+        with self.assertNumQueries(3):
+            sig = services.signals(self.v, [self.t])[self.t.pk]
+        with self.assertNumQueries(0):
+            self.assertEqual(sig.quote, "Great")
+            self.assertEqual(sig.as_json()["quote_by"], "Yanis")
+
+
 class LabelTests(TestCase):
     def setUp(self):
         self.names = [make_wallet(n) for n in ("Yanis", "Nora", "Zoé")]
@@ -232,7 +284,8 @@ class LabelTests(TestCase):
         self.assertEqual(empty.label, "")
         self.assertFalse(empty)
         self.assertEqual(
-            empty.as_json(), {"level": "", "label": "", "recommends": [], "followed_by": [], "following": False}
+            empty.as_json(),
+            {"level": "", "label": "", "recommends": [], "followed_by": [], "following": False, "quote": "", "quote_by": ""},
         )
 
     def test_short_address_when_no_display_name(self):
@@ -459,7 +512,7 @@ class EndpointTests(TestCase):
         self.assertTrue(body["ok"])
         self.assertEqual(body["recommendation"], {"message": "Ships fast"})
         self.assertEqual(body["recommendations_count"], 1)
-        self.assertEqual(body["message"], "Recommendation saved.")
+        self.assertEqual(body["message"], "You now sponsor Yanis.")
         # upsert through the endpoint
         body = self.post("recommend", self.t.stellar_address, {"message": "Updated"}).json()
         self.assertEqual(body["recommendation"], {"message": "Updated"})
@@ -469,7 +522,7 @@ class EndpointTests(TestCase):
         body = res.json()
         self.assertIsNone(body["recommendation"])
         self.assertEqual(body["recommendations_count"], 0)
-        self.assertEqual(body["message"], "Recommendation withdrawn.")
+        self.assertEqual(body["message"], "Sponsorship withdrawn.")
 
     def test_form_post_is_accepted(self):
         login(self.client, self.v)

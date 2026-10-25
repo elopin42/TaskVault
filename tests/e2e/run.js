@@ -741,11 +741,11 @@ async function main() {
       await pa.fill("#recommend-message", RECO);
       assert((await pa.locator("[data-recommend-counter]").innerText()).trim() === `${RECO.length} / 280`, `live counter, got "${await pa.locator("[data-recommend-counter]").innerText()}"`);
       await pa.locator("[data-recommend-submit]").click();
-      await pa.locator(".lb-toast", { hasText: /Recommendation saved/ }).waitFor();
+      await pa.locator(".lb-toast", { hasText: /You now sponsor/ }).waitFor();
       // the JS updates the counters, then reloads so the list of received recommendations refreshes
       await pa.locator("#recommendations .ui-timeline-item", { hasText: RECO }).waitFor({ timeout: 10000 });
       assert((await pa.locator("[data-recommendations-count]").innerText()).trim() === "1", "B has 1 recommendation");
-      assert(/Edit recommendation/.test(await pa.locator("#network-panel [data-recommend]").innerText()), "button reads Edit recommendation");
+      assert(/Edit sponsorship/.test(await pa.locator("#network-panel [data-recommend]").innerText()), "button reads Edit sponsorship");
       assert(await pa.locator("#network-panel [data-unrecommend]:not([hidden])").count() === 1, "Withdraw offered after recommending");
       // refusals: yourself (400 self) and anonymous (401)
       const self = await api(pa, `/profil/${fa.address}/recommander/`, { message: "x" });

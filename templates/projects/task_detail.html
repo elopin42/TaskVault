@@ -30,7 +30,7 @@
 </div>
 
 <section class="ui-kpi-band mb-6" aria-label="Key figures">
-  <div class="ui-kpi-tile"><span class="ui-kpi-label">{% if task_open %}Budget{% else %}Agreed price{% endif %}</span><span class="ui-kpi-value">{{ task.price|usdc_parts }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if task_open %}maximum price · freelancers propose theirs{% elif pay_mode == 'direct' %}paid on validation{% else %}locked in escrow, released on validation{% endif %}</span></div>
+  <div class="ui-kpi-tile"><span class="ui-kpi-label">{% if task_open %}Budget{% else %}Agreed price{% endif %}</span><span class="ui-kpi-value">{{ task.price|usdc_parts }}<span class="ui-price-unit">{{ asset_code }}</span></span><span class="ui-kpi-hint ui-meta">{% if task_open %}maximum price · freelancers propose theirs{% else %}{% if task.negotiated %}<span data-task-budget="{{ task.budget|plain }}">budget was up to {{ task.budget|usdc }}</span> · freelancer's price · {% endif %}{% if pay_mode == 'direct' %}paid on validation{% else %}locked in escrow, released on validation{% endif %}{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Candidates</span><span class="ui-kpi-value" data-kpi-count>{{ rows|length }}</span><span class="ui-kpi-hint ui-meta">{% if task_open %}the company chooses{% else %}applications closed{% endif %}</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Project</span><span class="ui-kpi-value text-base"><a href="{% url 'projects:project_detail' project.pk %}" class="ui-link">{{ project.title|truncatechars:28 }}</a></span><span class="ui-kpi-hint ui-meta">{{ project.settled_count }}/{{ project.tasks_count }} task{{ project.tasks_count|pluralize }} settled</span></div>
   <div class="ui-kpi-tile"><span class="ui-kpi-label">Stage</span><span class="ui-kpi-value text-base">{{ task.status_label }}</span><span class="ui-kpi-hint ui-meta">{% if task.status == 'open' %}applications open{% elif task.status == 'taken' %}delivery expected{% elif task.status == 'delivered' %}validation expected{% elif task.status == 'disputed' %}arbiter's decision expected{% elif task.status == 'resolved' %}settled {% if task.resolved_at %}on {{ task.resolved_at|date:"M j" }}{% endif %}{% else %}paid {% if task.paid_at %}on {{ task.paid_at|date:"M j" }}{% endif %}{% endif %}</span></div>
@@ -152,14 +152,14 @@
           <div class="ui-panel-head">
             <div>
               <h2 class="ui-panel-title">Apply</h2>
-              <p class="ui-panel-sub">Budget: up to <strong class="text-strong">{{ task.price|usdc }}</strong>. Propose your price.</p>
+              <p class="ui-panel-sub">Budget: up to <strong class="text-strong">{{ task.budget|usdc }}</strong>. Propose your price.</p>
             </div>
           </div>
           <form id="apply-form" class="ui-form-grid" novalidate>
             <div class="ui-field ui-field-wide">
               <label for="apply-price" class="ui-label">My price</label>
-              <div class="ui-input-group"><input id="apply-price" name="price" class="ui-input" type="number" inputmode="decimal" step="0.01" min="0.01" max="{{ task.price|plain }}" value="{{ task.price|plain }}" required data-budget="{{ task.price|plain }}"><span class="ui-input-addon">{{ asset_code }}</span></div>
-              <span class="ui-help">At most the budget, {{ task.price|usdc }}. If you are chosen, this is the amount you are paid.</span>
+              <div class="ui-input-group"><input id="apply-price" name="price" class="ui-input" type="number" inputmode="decimal" step="0.01" min="0.01" max="{{ task.budget|plain }}" value="{{ task.budget|plain }}" required data-budget="{{ task.budget|plain }}"><span class="ui-input-addon">{{ asset_code }}</span></div>
+              <span class="ui-help">At most the budget, {{ task.budget|usdc }}. If you are chosen, this is the amount you are paid.</span>
               <span class="ui-error" data-error-for="price" hidden></span>
             </div>
             <div class="ui-field ui-field-wide">

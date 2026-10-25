@@ -2,7 +2,11 @@
 {% comment %}
 Ranked candidates of one task. Rendered in task_detail / project_detail AND returned as `html` by
 candidats.json so the page swaps it in place. Context: task, rows (see views._candidate_rows),
-viewer_is_company, task_open, can_choose. Each row shows the freelance's own price (`data-bid-price`). ({# #} comments are single-line in Django: never use them here.)
+viewer_is_company, task_open, can_choose. Each row shows the freelance's own price (`data-bid-price`),
+"New account" (`data-badge="new-account"`, every row but the chosen one, which carries `{% history_signal %}`),
+the sponsor's quote (`[data-network-quote]`, one hop only) and, for a signed-in viewer who is not the candidate,
+the Sponsor button (`[data-sponsor]`) + its inline form (`[data-sponsor-form]`, lowbid-network.js).
+None of it changes the score or the order. ({# #} comments are single-line in Django: never use them here.)
 {% endcomment %}
 {% if rows %}
 <div class="ui-list" data-candidates data-count="{{ rows|length }}" data-task="{{ task.pk }}">
@@ -17,8 +21,10 @@ viewer_is_company, task_open, can_choose. Each row shows the freelance's own pri
         {% if r.is_chosen %}<span class="ui-badge ui-badge-brand"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Chosen</span> {% history_signal r.app.freelancer %}
         {% elif r.is_rejected %}<span class="ui-badge ui-badge-neutral">Not selected</span>
         {% elif r.recommended %}<span class="ui-badge ui-badge-brand" data-recommended title="Best score among the candidates"><i class="fa-solid fa-star" aria-hidden="true"></i> Recommended</span>{% endif %}
+        {% if r.new_account and not r.is_chosen %}<span class="ui-badge ui-badge-neutral" data-badge="new-account" title="No confirmed on-chain payout yet">New account</span>{% endif %}
         {% include "components/network_badges.html" with signal=r.network %}
       </div>
+      {% if r.network.quote %}<p class="ui-netquote" data-network-quote>“{{ r.network.quote }}” <span class="ui-meta">— {{ r.network.quote_author }}</span></p>{% endif %}
       {% if r.app.message %}<p class="mt-1 break-words text-sm">{{ r.app.message }}</p>{% endif %}
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
         {% if r.tags %}<span class="flex flex-wrap gap-1">{% for t in r.tags %}<span class="ui-tag{% if t.match %} is-match{% endif %}">{{ t.name }}</span>{% endfor %}</span>{% endif %}
@@ -33,12 +39,30 @@ viewer_is_company, task_open, can_choose. Each row shows the freelance's own pri
         </div>
         <span class="ui-meta ui-num"><strong class="text-strong" data-score="{{ r.fmt.score }}">{{ r.fmt.score }}</strong> / 100</span>
       </div>
+      {% if r.can_sponsor %}
+      <form class="ui-network-form ui-sponsor-form" data-sponsor-form data-address="{{ r.app.freelancer.stellar_address }}" hidden>
+        <label class="ui-label" for="sponsor-message-{{ r.app.pk }}">Why do you sponsor {{ r.app.freelancer }}? (optional)</label>
+        <textarea id="sponsor-message-{{ r.app.pk }}" class="ui-textarea" maxlength="280" placeholder="What did they do well?" data-sponsor-message></textarea>
+        <div class="ui-network-form-foot">
+          <span class="ui-network-counter" data-sponsor-counter>0 / 280</span>
+          <span class="ui-sponsor-actions">
+            <button type="button" class="ui-btn ui-btn-ghost ui-btn-sm" data-sponsor-cancel>Cancel</button>
+            <button type="submit" class="ui-btn ui-btn-primary ui-btn-sm" data-sponsor-submit>Publish</button>
+          </span>
+        </div>
+      </form>
+      {% endif %}
     </div>
     <div class="flex flex-col items-end gap-2 shrink-0">
       <span class="text-right" data-bid-price="{{ r.app.price|plain }}"><span class="ui-label block mb-0.5">Price</span>{% include "components/price.html" with amount=r.app.price %}</span>
       {% if can_choose %}
         <button type="button" class="ui-btn ui-btn-primary ui-btn-sm" data-choose="{{ r.app.pk }}" data-choose-url="{{ r.choose_url }}" data-choose-label="{{ r.app.freelancer.display_name|default:r.app.freelancer.short_address }}" data-choose-price="{{ r.app.price|usdc:asset_code }}">
           <i class="fa-solid fa-check" aria-hidden="true"></i> Choose
+        </button>
+      {% endif %}
+      {% if r.can_sponsor %}
+        <button type="button" class="ui-btn ui-btn-ghost ui-btn-sm{% if r.viewer_sponsors %} is-sponsoring{% endif %}" data-sponsor data-address="{{ r.app.freelancer.stellar_address }}" data-name="{{ r.app.freelancer }}" data-recommend-url="{% url 'network:recommend' r.app.freelancer.stellar_address %}" data-unrecommend-url="{% url 'network:unrecommend' r.app.freelancer.stellar_address %}" data-sponsoring="{{ r.viewer_sponsors|yesno:'1,0' }}" aria-pressed="{{ r.viewer_sponsors|yesno:'true,false' }}">
+          <i class="fa-solid fa-user-group" aria-hidden="true"></i> {% if r.viewer_sponsors %}Sponsoring ✓{% else %}Sponsor{% endif %}
         </button>
       {% endif %}
     </div>
@@ -49,6 +73,7 @@ viewer_is_company, task_open, can_choose. Each row shows the freelance's own pri
   <span><span class="ui-scorebar-key is-history"></span> History (40)</span>
   <span><span class="ui-scorebar-key is-rating"></span> Ratings (×8)</span>
   <span><span class="ui-scorebar-key is-skills"></span> Skills (20)</span>
+  <span data-score-note><i class="fa-solid fa-ban" aria-hidden="true"></i> Price never enters the score</span>
 </p>
 {% else %}
 <div class="empty-state" data-candidates data-count="0" data-task="{{ task.pk }}">

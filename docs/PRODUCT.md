@@ -46,7 +46,7 @@ The rules below are derived from `projects/services.py`, `projects/scoring.py` a
 
 ### Projects and tasks
 - **R2** Any signed-in wallet can create a project; it becomes that project's company. Title 3 to 120 characters, description required. A new project is `draft` ("Draft").
-- **R3** Only the project's company can add a task (`forbidden`, 403), at any time until the project is `closed` (`wrong_state`, 409): one escrow per task means funding locks a task's price, never the project. Title 3 to 120 characters; price strictly positive (a comma is accepted as decimal separator), at most 7 decimals, below 10¹¹ (`invalid`, 400); tags given as a list or as a string split on commas, spaces or semicolons, normalised to lowercase slugs, de-duplicated, at most 3, at most 24 characters each (`bad_tags`, 400); description optional.
+- **R3** Only the project's company can add a task (`forbidden`, 403), at any time until the project is `closed` (`wrong_state`, 409): one escrow per task means funding locks a task's price, never the project. Title 3 to 120 characters; price strictly positive (a comma is accepted as decimal separator), at most 7 decimals, below 10¹¹ (`invalid`, 400); tags given as a list or as a string split on commas, spaces or semicolons, normalised to lowercase slugs, de-duplicated, at most 3, at most 24 characters each (`bad_tags`, 400); description optional. The task's `budget` (the maximum) and its `price` (the amount that moves) start equal.
 - **R4** A task can be deleted only by the company and only while it is `open` (`wrong_state` once a freelance is chosen), whatever the project status. Its applications are deleted with it.
 
 ### Applications, score and badges
@@ -57,7 +57,7 @@ The rules below are derived from `projects/services.py`, `projects/scoring.py` a
 - **R9** "Validated" is relative to the company looking at the candidate: the freelance has at least one task **paid** by this company **and** an average rating from this company of at least 3. The same freelance can be "Validated" for one company and new to another.
 
 ### Choice
-- **R10** Only the company chooses (`forbidden`), only on an `open` task (`wrong_state`: "A freelancer has already been chosen for this task."). It may choose **any** application of the task, recommended or not. The chosen application becomes `chosen`, every other one `rejected`, the task `taken` with `assigned_to` = the freelance and `price` = the chosen application's price (what the escrow locks or the direct payment sends; it can only lower the project budget, so deposit coverage holds). A choice cannot be undone.
+- **R10** Only the company chooses (`forbidden`), only on an `open` task (`wrong_state`: "A freelancer has already been chosen for this task."). It may choose **any** application of the task, recommended or not. The chosen application becomes `chosen`, every other one `rejected`, the task `taken` with `assigned_to` = the freelance and `price` = the chosen application's price (what the escrow locks or the direct payment sends; it can only lower the project budget, so deposit coverage holds). `Task.budget` keeps the company's maximum (set once by R3, never changed by the choice): once a cheaper price is agreed, the project table, the board card and the task KPI show the budget as a muted "up to <budget>" line above the agreed price, and the project KPI adds a "Budget" line when the sum of budgets differs from the sum of prices (`[data-kpi-total]` stays the sum of prices). A choice cannot be undone.
 
 ### Funding
 - **R11** A task can be funded only once a freelance is chosen (`not_chosen`): Trustless Work fixes the escrow's receiver when it is deployed. In escrow mode the company signs `deploy` then `fund` for each task; the escrow's amount is the task's price and its receiver is the chosen freelance. "Fund the project" chains both steps for every `taken` task whose escrow is not funded yet (two signatures per task); with nothing to fund it is disabled and says why.
@@ -295,11 +295,13 @@ Reputation additions: the profile header carries the badges "Reliable payer", "N
 
 A personalised trust layer on top of the task board. It **informs** the company; it never decides anything.
 
+**Sponsorship breaks the no-reviews loop.** A newcomer has no paid task, so no rating, so no reason to be chosen. A recognised freelancer **sponsors** them: the company sees, on the newcomer's candidate row, « New account » next to « Yanis recommends » and Yanis's quote (“Worked with her twice. Clean, fast, reliable.”). In the UI a recommendation is called a **sponsorship** (button « Sponsor », counter « Sponsors », section « Sponsored by »); the code, URLs, data-attributes, JSON keys and the badge text (« Yanis recommends ») keep the word *recommend*.
+
 ### Rules
 
 - Any signed-in wallet (company or freelance) can **follow** any other wallet, and **unfollow** it. Never yourself. One follow per (follower, followed) pair; following twice is a no-op.
-- Any signed-in wallet can **recommend** any other wallet, with an optional message of at most **280 characters** (trimmed). Never yourself. One recommendation per (author, subject) pair: recommending again **updates** the message (upsert). A recommendation can be **withdrawn**.
-- Follows and recommendations are **public**: a profile shows its followers / following / recommendations counts and the list of recommendations received (author, message, date).
+- Any signed-in wallet can **recommend** (UI: **sponsor**) any other wallet — from its profile or from the « Sponsor » button on any candidate row —, with an optional message of at most **280 characters** (trimmed). Never yourself. One recommendation per (author, subject) pair: recommending again **updates** the message (upsert). A recommendation can be **withdrawn**.
+- Follows and sponsorships are **public**: a profile shows its Followers / Following / Sponsors counts and the « Sponsored by » list (author, message, date).
 - Refusals: `self` (yourself), `invalid` (message over 280 characters), `not_found` (unknown address).
 
 ### Signals (one hop)
@@ -312,19 +314,19 @@ A viewer V looking at a target T sees a badge only through the wallets **V follo
 | **followed_by** (weak) | someone V follows follows T | `Followed by Yanis` · several: `Followed by Yanis and 1 other` |
 | **following** | V follows T directly | `Following` |
 
-The strong badge wins over the weak one; `Following` is added next to either. An anonymous viewer, or V looking at their own wallet, sees no badge at all. A wallet is named by its display name, else its short address. A recommendation two hops away (V follows X, X follows Y, Y recommends T) shows **nothing**: strangers cannot push a freelance into your list by recommending each other.
+The strong signal also carries the sponsors' messages: the candidate row shows the **first non-empty message** among the recommenders V follows (sorted by name) as a quote, `“…” — Yanis` (`[data-network-quote]`). Same one-hop rule: a stranger's sponsorship shows neither badge nor quote. The strong badge wins over the weak one; `Following` is added next to either. An anonymous viewer, or V looking at their own wallet, sees no badge at all. A wallet is named by its display name, else its short address. A recommendation two hops away (V follows X, X follows Y, Y recommends T) shows **nothing**: strangers cannot push a freelance into your list by recommending each other.
 
 ### What it does NOT touch
 
-- The selection score (`projects/scoring.py`), the « Validated » / « Recommended » badges and the **order** of the candidate list: none of them read the network.
+- The selection score (`projects/scoring.py`), the « Validated » / « Recommended » badges and the **order** of the candidate list: none of them read the network, the quote, the « New account » badge or the Sponsor state. The legend under the list says it too: « Price never enters the score ».
 - The network badge is never the bare word "Recommended": it always carries a name (`Yanis recommends`).
 
 ### Where the badges show
 
-- Candidate rows (task page `#candidates-panel` and the project page candidate blocks): the badge after the Validated / Recommended badges, and a light highlight on the row (`.cand-row.is-network`, `.is-network-strong` when recommended). The 5 s poll re-renders when the signal changes.
+- Candidate rows (task page `#candidates-panel` and the project page candidate blocks): the badge after the Validated / Recommended badges, the sponsor's quote under the badges, and a light highlight on the row (`.cand-row.is-network`, `.is-network-strong` when recommended). Every row whose freelance has no confirmed on-chain payout shows « New account » (`data-badge="new-account"`, same rule as the profile badge; the chosen row keeps its « No history » signal instead). A signed-in viewer who is not the candidate (the company or another freelance) gets a « Sponsor » button (`[data-sponsor]`): it opens an inline form (message ≤ 280, Publish / Cancel); once published it reads « Sponsoring ✓ », and clicking it again withdraws after a confirmation. Anonymous viewers get no button. The 5 s poll re-renders when the signal or the viewer's sponsoring state changes (`sponsoring` in `candidats.json`).
 - The kanban cards (`/taches/`) and the project list cards: the badge next to the **company** chip.
-- The public profile (`/profil/<address>/`): counters, Follow / Recommend / Withdraw buttons, "Followed by N people you follow", the received recommendations.
-- The dashboard: an "In your network" feed of what the wallets you follow did recently (recommendations, follows, projects posted).
+- The public profile (`/profil/<address>/`): a « Sponsorship » panel with the counters (Followers · Following · Sponsors), Follow / Sponsor (« Edit sponsorship » once done) / Withdraw buttons, the form « Why do you sponsor them? (optional) », "Followed by N people you follow", and the « Sponsored by » list. Anonymous: « Connect your wallet to follow or sponsor this wallet. »
+- The dashboard: an "In your network" feed of what the wallets you follow did recently (« X sponsors Y » with the quote, follows, projects posted).
 
 ### The seed graph
 

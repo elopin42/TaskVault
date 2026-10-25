@@ -848,9 +848,17 @@ a.ui-next-card:hover { border-color: var(--hover-border); }
 .cand-row.is-network { box-shadow: inset 2px 0 0 var(--border-strong); }
 .cand-row.is-network-strong { box-shadow: inset 2px 0 0 var(--info); }
 .cand-row.is-network-strong:not(.is-chosen) { background: var(--info-soft); }
+/* Sponsorship on a candidate row: the sponsor's quote (one hop), the Sponsor toggle and its inline form. */
+.ui-netquote { margin: 0.35rem 0 0; padding-inline-start: 0.6rem; border-inline-start: 2px solid var(--info); color: var(--muted); font-size: var(--text-meta); font-style: italic; line-height: 1.45; overflow-wrap: anywhere; }
+.ui-netquote .ui-meta { font-style: normal; }
+[data-sponsor].is-sponsoring { border-color: var(--info); color: var(--ui-badge-info-text); }
+.ui-sponsor-form { margin-top: 0.6rem; }
+.ui-sponsor-form .ui-textarea { min-height: 72px; }
+.ui-sponsor-actions { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; }
 
 /* Profile block (#network-panel): counters row · action buttons · recommend form (textarea + live n / 280 counter). */
 .ui-network-panel { display: flex; flex-direction: column; gap: 0.9rem; }
+.ui-network-panel > .ui-panel-head { margin-bottom: 0; }
 .ui-network-counts { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; margin: 0; padding: 0 0 0.75rem; list-style: none; border-bottom: 1px solid var(--divider); }
 .ui-network-count { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
 .ui-network-count-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 1.25rem; font-weight: 700; line-height: 1.1; color: var(--text); }

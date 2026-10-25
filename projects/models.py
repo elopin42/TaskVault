@@ -184,7 +184,11 @@ class Task(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tasks")
     title = models.CharField(max_length=120)
     description = models.TextField(blank=True)
+    # The amount that moves: = budget while open, = the chosen application's price afterwards (choose).
     price = models.DecimalField(max_digits=18, decimal_places=7)
+    # The company's maximum, set once by add_task and never touched by choose (shown as "up to" once a
+    # cheaper price is agreed). save() fills it from price when a caller leaves it out.
+    budget = models.DecimalField(max_digits=18, decimal_places=7)
     tags = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.OPEN, db_index=True)
     assigned_to = models.ForeignKey(
@@ -215,6 +219,17 @@ class Task(models.Model):
 
     def __str__(self) -> str:
         return f"Task #{self.pk} {self.title} ({self.price} USDC)"
+
+    def save(self, *args, **kwargs):
+        # Fallback for callers that create a task without a budget (fixtures, tests): the budget is the price.
+        if self.budget is None:
+            self.budget = self.price
+        super().save(*args, **kwargs)
+
+    @property
+    def negotiated(self) -> bool:
+        """The agreed price differs from the company's budget (a display fact, not a rule)."""
+        return self.budget is not None and self.price is not None and self.budget != self.price
 
     @property
     def status_label(self) -> str:

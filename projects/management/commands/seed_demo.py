@@ -1,16 +1,20 @@
 """Seed the demo dataset: 5 wallets, 3 projects, a small trust network.
 
-  1. "Booking platform" at the pitch state — T1 "Landing page" paid to freelance A
-     (note 5, with its Escrow row: a direct payment and a demo tx hash so the explorer links render),
-     T2 "Freighter integration" open with A + B applying (A is Validated + Recommended:
-     40 + 5·8 + 20·(1/2) = 90 vs B 0 + 0 + 20·(2/2) = 20), T3 "Dashboard" open with C applying.
+  1. "Booking platform" at the pitch state — T1 "Landing page" (budget 300: A 285, B 270) paid to
+     freelance A at A's price 285 although B was cheaper (note 5, with its Escrow row: a direct payment
+     and a demo tx hash so the explorer links render), T2 "Freighter integration" (budget 500: A 450,
+     B 480) open with A + B applying (A is Validated + Recommended: 40 + 5·8 + 20·(1/2) = 90 vs
+     B 0 + 0 + 20·(2/2) = 20; the price never enters the score), T3 "Dashboard" (budget 400: C 380)
+     open with C applying — C has no history ("New account") and is recommended by A.
+     Every applicant proposes their own price below the budget; `choose` copies it onto Task.price, so
+     the escrow rows of chosen tasks carry the chosen price.
   2. A draft project with open tasks and no application.
   3. "Mobile app for a food truck", the anti-scam showcase:
-     - "Menu page" chosen freelance B, delivered with a fingerprint and a full-deliverable link, sent back
+     - "Menu page" (budget 350: B 330) chosen freelance B, delivered with a fingerprint and a full-deliverable link, sent back
        with a change request ("Please fix the mobile layout on the menu page."), then delivered again:
        `delivered`, revision 1/N, two Delivery rows + one RevisionRequest, review window running. A
        direct-mode Escrow row (like T1), so the company can still validate and pay it live.
-     - "Order tracking" chosen freelance A, an ESCROW-mode row with demo contract id + deploy / fund /
+     - "Order tracking" (budget 450: A 420) chosen freelance A, an ESCROW-mode row with demo contract id + deploy / fund /
        deliver / dispute hashes, delivered on chain (demo) then disputed by the company ("The demo does
        not match the agreed scope."): Task + Escrow `disputed`, a Dispute row, the funds locked. Its
        delivery link is on an unknown domain, so the "Unknown domain" warning shows on the page.
@@ -30,7 +34,9 @@ opens only for the wallet equal to that setting. The dev DB is throwaway: `rm da
 
 With publication deposits active (escrow mode, payments.deposits.deposits_active) the pitch project gets a
 funded deposit row (demo hashes) before taking applications, the draft stays unpublished (no deposit row),
-and a fourth, cancelled project shows a deposit forfeited to the guarantee fund (/fonds/). Direct mode seeds
+and a fourth, cancelled project ("Packaging design", budget 300: B 275, nobody chosen) shows a deposit
+forfeited to the guarantee fund (/fonds/). Deposits cover the budgets at publication time (before any
+choice), so the pitch deposit covers 1200 and the food-truck one 800. Direct mode seeds
 exactly the three projects above.
 
     python manage.py seed_demo [--flush]
@@ -142,10 +148,10 @@ class Command(BaseCommand):
         )
         if with_deposits:
             _demo_deposit(p1, company, ProjectDeposit.Status.FUNDED)
-        services.apply(t1, a, "Django + Tailwind every day, I deliver in 5 days including deployment.", ["django", "ui"])
-        services.apply(t1, b, "Clean build from Figma, 2 iterations included.", ["django"])
+        services.apply(t1, a, "Django + Tailwind every day, I deliver in 5 days including deployment.", ["django", "ui"], "285")
+        services.apply(t1, b, "Clean build from Figma, 2 iterations included.", ["django"], "270")
         app_a = Application.objects.get(task=t1, freelancer=a)
-        services.choose(t1, app_a, company)
+        t1 = services.choose(t1, app_a, company)  # the fresh row: price = A's 285, the amount the escrow row carries
         # T1 is settled as a DIRECT payment whatever the configured mode: the seed cannot sign anything
         # on chain, and a direct row is the only honest terminal state without a contract id. The row is
         # frozen in direct mode (status past `created`) BEFORE the DB-only delivery, which escrow mode refuses.
@@ -195,7 +201,7 @@ class Command(BaseCommand):
             )
             t6 = services.add_task(p4, company, "Packaging design", "Boxes, bags and labels, print-ready files.", "300", ["design"])
             _demo_deposit(p4, company, ProjectDeposit.Status.FORFEITED)
-            services.apply(t6, b, "Packaging for three food brands, print-ready in a week.", ["design"])
+            services.apply(t6, b, "Packaging for three food brands, print-ready in a week.", ["design"], "275")
             services.cancel_project(p4, company)
 
         scores = {app.freelancer.display_name: f"{app.score:.1f}" for app in t2.applications.select_related("freelancer")}
@@ -207,6 +213,11 @@ class Command(BaseCommand):
         self.stdout.write(f"  arbiter      {arbiter.stellar_address}")
         self.stdout.write(f"  freelancer C {c.stellar_address}")
         self.stdout.write(f"  projects: pitch=#{p1.pk} (T1 #{t1.pk} paid, T2 #{t2.pk} open A+B, T3 #{t3.pk} open C)  draft=#{p2.pk}")
+        self.stdout.write(
+            f"  prices: T1 budget 300: A 285 (chosen, paid {t1.price:.2f}), B 270 · T2 budget 500: A 450, B 480 · "
+            "T3 budget 400: C 380 · T4 budget 350: B 330 · T5 budget 450: A 420"
+            + (" · T6 budget 300: B 275" if with_deposits else "")
+        )
         self.stdout.write("  network: company follows A, A recommends C, A follows B")
         self.stdout.write("    as the company: T3 C \"Yanis (freelancer A) recommends\", T2 B \"Followed by Yanis (freelancer A)\"")
         self.stdout.write(f"  T1 payment: direct, demo hash {_demo_hash(f't1-{t1.pk}')[:12]}… → {stellar.explorer_tx_url(_demo_hash(f't1-{t1.pk}'))}")
@@ -251,8 +262,8 @@ class Command(BaseCommand):
 
         # T4 — chosen freelance B; delivered, sent back for changes, delivered again. Direct-mode row frozen
         # BEFORE the DB-only deliveries (escrow mode refuses them), moved like prepare_deliver does in direct mode.
-        services.apply(t4, b, "Mobile-first UI is my daily job; I deliver a Vercel preview for every iteration.", ["ui", "mobile"])
-        services.choose(t4, Application.objects.get(task=t4, freelancer=b), company)
+        services.apply(t4, b, "Mobile-first UI is my daily job; I deliver a Vercel preview for every iteration.", ["ui", "mobile"], "330")
+        t4 = services.choose(t4, Application.objects.get(task=t4, freelancer=b), company)
         hash_1, hash_2 = _demo_hash(f"t4-v1-{t4.pk}")[:40], _demo_hash(f"t4-v2-{t4.pk}")[:40]
         link_1 = "https://foodtruck-menu-v1.vercel.app/menu"
         link_2 = "https://foodtruck-menu-v2.vercel.app/menu"
@@ -278,8 +289,8 @@ class Command(BaseCommand):
 
         # T5 — chosen freelance A; an ESCROW-mode row as if deploy / fund / deliver / dispute had been signed
         # (demo hashes: the seed cannot sign), the delivery recorded with on_chain=True, then the company's dispute.
-        services.apply(t5, a, "I built live order queues for two restaurants (polling + Leaflet maps).", ["js", "maps"])
-        services.choose(t5, Application.objects.get(task=t5, freelancer=a), company)
+        services.apply(t5, a, "I built live order queues for two restaurants (polling + Leaflet maps).", ["js", "maps"], "420")
+        t5 = services.choose(t5, Application.objects.get(task=t5, freelancer=a), company)
         hash_5 = _demo_hash(f"t5-{t5.pk}")[:40]
         link_5 = "https://foodtruck-tracking.example.net/demo"  # an unknown domain: the page warns about it
         deliver_hash = _demo_hash(f"t5-deliver-{t5.pk}")

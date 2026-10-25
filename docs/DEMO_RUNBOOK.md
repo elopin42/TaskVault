@@ -2,7 +2,7 @@
 
 The end-to-end task-board demo on Stellar testnet, in escrow mode, with the direct mode as the fallback. Labels are quoted from the templates (English UI; URL paths stay French). The pitch lines are in [`PITCH.md`](PITCH.md); the code map in [`ARCHITECTURE.md`](ARCHITECTURE.md); the Trustless Work reference in [`STELLAR_NOTES.md`](STELLAR_NOTES.md).
 
-> **Amounts:** the Circle faucet gives **10 USDC per address per 24 h**. Keep the live task prices small: the demo project below uses **3 / 5 / 2 USDC**, and only T1 (3 USDC) is funded and paid live. The seeded data uses 300 / 500 / 400 USDC but never touches the chain.
+> **Amounts:** the Circle faucet gives **10 USDC per address per 24 h**. Keep the live task prices small: the demo project below uses **3 / 5 / 2 USDC**, and only T1 (3 USDC) is funded and paid live. The seeded data uses budgets of 300 / 500 / 400 USDC (applicants propose 270–480) but never touches the chain.
 
 ## 0. TL;DR — the demo in 10 lines
 
@@ -79,12 +79,12 @@ LOWBID_PLATFORM_FEE=1
 
 What `seed_demo` creates (display names "Studio Nova (company)", "Yanis (freelancer A)", "Nora (freelancer B)", "TaskVault arbiter"):
 
-- Studio Nova's project "Booking platform for a yoga studio" **at the pitch state**, "Funded" (as a live direct payment leaves it): T1 "Landing page" (300 USDC) paid to A (rating 5, a direct-mode escrow row with a demo hash so the explorer links render — nothing is on chain), T2 "Freighter integration" (500 USDC) open with A (90.0, "Validated" + "Recommended") and B (20.0), T3 "Dashboard" (400 USDC) open with C (Chloé) applying.
+- Studio Nova's project "Booking platform for a yoga studio" **at the pitch state**, "Funded" (as a live direct payment leaves it): T1 "Landing page" (budget 300 USDC; A proposed 285, B 270) paid to A at A's price, 285 USDC — the company picked A although B was cheaper (rating 5, a direct-mode escrow row with a demo hash so the explorer links render — nothing is on chain), T2 "Freighter integration" (budget 500 USDC) open with A (proposes 450, 90.0, "Validated" + "Recommended") and B (proposes 480, 20.0 — the price never enters the score), T3 "Dashboard" (budget 400 USDC) open with C (Chloé, proposes 380, no history so "New account") applying. Every seeded application proposes its own price below the budget, shown on each candidate row.
 - A small trust network: the company follows A, A recommends C, A follows B. Signed in as the company: "Yanis (freelancer A) recommends" on C's row (T3), "Followed by Yanis (freelancer A)" on B's row (T2).
 - A draft project "Brand and showcase website redesign for a bakery" with three open tasks (250 / 600 / 120 USDC) and no candidate.
 - "Mobile app for a food truck" (status "Draft": the disputed escrow holds its funds, but the Menu page's direct row holds nothing until it is paid), the anti-scam showcase:
-  - "Menu page" (350 USDC) chosen B: delivered with a fingerprint on `*.vercel.app` (trusted host, no warning), sent back with "Please fix the mobile layout on the menu page.", delivered again with a new fingerprint → "Delivered", "Revisions requested 1/2", review window running, the history shows 2 deliveries + 1 change request. Direct-mode row: the company can still validate and pay it live (or request one more change).
-  - "Order tracking" (450 USDC) chosen A: an escrow-mode row with a demo contract id and deploy / fund / deliver / dispute hashes, disputed by the company ("The demo does not match the agreed scope.") → "Disputed", funds locked. Its delivery link is on `example.net`, so the page shows "Unknown domain — open with care". The hashes are demo values: nothing exists on chain, so **do not try to resolve it live** — show it on `/litiges/` only.
+  - "Menu page" (budget 350 USDC, B's price 330 USDC) chosen B: delivered with a fingerprint on `*.vercel.app` (trusted host, no warning), sent back with "Please fix the mobile layout on the menu page.", delivered again with a new fingerprint → "Delivered", "Revisions requested 1/2", review window running, the history shows 2 deliveries + 1 change request. Direct-mode row: the company can still validate and pay it live (or request one more change).
+  - "Order tracking" (budget 450 USDC, A's price 420 USDC, the amount locked) chosen A: an escrow-mode row with a demo contract id and deploy / fund / deliver / dispute hashes, disputed by the company ("The demo does not match the agreed scope.") → "Disputed", funds locked. Its delivery link is on `example.net`, so the page shows "Unknown domain — open with care". The hashes are demo values: nothing exists on chain, so **do not try to resolve it live** — show it on `/litiges/` only.
 - The arbiter wallet: `LOWBID_DEMO_ARBITER`, else `LOWBID_DISPUTE_RESOLVER` (else `LOWBID_PLATFORM_ADDRESS`), else a random key. `/litiges/` opens only for the wallet equal to `LOWBID_DISPUTE_RESOLVER` (or the platform address): to show the desk, set `LOWBID_DISPUTE_RESOLVER` to a Freighter account you own, restart, `make seed`, and connect that account. The seed prints a warning when the two differ.
 
 > **Seed with random wallets before the recording.** The score's history is per company: if `LOWBID_DEMO_CLIENT` / `LOWBID_DEMO_FREELANCE1` / `LOWBID_DEMO_FREELANCE2` point at your real Freighter accounts, the seed gives A a paid, 5-star task with **your** company, and in the live project A would already score 100 on T1. For the live run, leave those three variables empty (random actors fill the lists). Seed **with** your real wallets only to prepare the fallback screen (§4.3), and run `make seed` again (it flushes projects and ratings) before recording.
@@ -258,7 +258,7 @@ Read the message in the panel (`[data-last-error]`), fix the cause with §1.11, 
 ### 4.3 Everything is down (network, testnet, Horizon)
 
 - Play the rehearsal clip from §1.9.
-- Or show the seeded pitch state (seed with your real wallets, `make seed`): Studio Nova's project with T1 "Paid", T2's candidates A 90.0 "Validated" + "Recommended" vs B 20.0. Say plainly that the T1 payment shown is seeded demo data.
+- Or show the seeded pitch state (seed with your real wallets, `make seed`): Studio Nova's project with T1 "Paid", T2's candidates A 90.0 "Validated" + "Recommended" at 450 USDC vs B 20.0 at 480 USDC (budget 500). Say plainly that the T1 payment shown is seeded demo data.
 
 ---
 

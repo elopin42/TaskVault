@@ -82,7 +82,8 @@
     <!-- Shared JS: lowbid-base.js (toasts, Lowbid.api) then lowbid-ui.js (confirm modal,
          identicons, sparklines, polling helper). Vendored Freighter API
          (UMD global `freighterApi`) + Stellar SDK (global `StellarSdk`) load next,
-         then the wallet module that uses them. Not deferred: page scripts in
+         then the wallet module that uses them, then the trust network (follow / sponsor,
+         delegated on document: profile + candidate rows). Not deferred: page scripts in
          extra_js may call window.Lowbid at parse time. -->
     <script src="{% static 'js/lowbid-base.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
     <script src="{% static 'js/lowbid-ui.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
@@ -90,6 +91,7 @@
     <script src="{% static 'vendor/stellar-sdk.min.js' %}?v={{ LOWBID_ASSET_VERSION }}" defer></script>
     <script src="{% static 'js/lowbid-wallet.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
     <script src="{% static 'js/lowbid-pay.js' %}?v={{ LOWBID_ASSET_VERSION }}" defer></script>
+    <script src="{% static 'js/lowbid-network.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

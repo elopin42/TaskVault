@@ -72,6 +72,7 @@ __all__ = [
     "unlink_github",
     "verify_github",
     "wallet_badges",
+    "wallets_with_history",
 ]
 
 
@@ -246,6 +247,20 @@ def has_history(wallet) -> bool:
     if wallet is None:
         return False
     return _confirmed_escrows().filter(Q(task__project__company=wallet) | Q(task__assigned_to=wallet)).exists()
+
+
+def wallets_with_history(wallet_ids) -> set[int]:
+    """The subset of `wallet_ids` for which `has_history` is True, in ONE query (candidate rows)."""
+    ids = {int(pk) for pk in wallet_ids if pk is not None}
+    if not ids:
+        return set()
+    pairs = _confirmed_escrows().filter(Q(task__project__company_id__in=ids) | Q(task__assigned_to_id__in=ids)).values_list(
+        "task__project__company_id", "task__assigned_to_id"
+    )
+    found: set[int] = set()
+    for company_id, assignee_id in pairs:
+        found.update(pk for pk in (company_id, assignee_id) if pk in ids)
+    return found
 
 
 def wallet_badges(wallet) -> list[dict]:

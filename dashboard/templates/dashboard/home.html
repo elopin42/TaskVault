@@ -72,8 +72,8 @@
               <div class="ui-network-feed-body">
                 {% include "components/wallet.html" with address=it.actor.stellar_address name=it.actor.display_name %}
                 {% if it.kind == 'recommendation' %}
-                  recommends {% include "components/wallet.html" with address=it.target.stellar_address name=it.target.display_name %}
-                  {% if it.message %}<p class="ui-network-quote">{{ it.message }}</p>{% endif %}
+                  sponsors {% include "components/wallet.html" with address=it.target.stellar_address name=it.target.display_name %}
+                  {% if it.message %}<p class="ui-network-quote">“{{ it.message }}”</p>{% endif %}
                 {% elif it.kind == 'follow' %}
                   started following {% include "components/wallet.html" with address=it.target.stellar_address name=it.target.display_name %}
                 {% else %}

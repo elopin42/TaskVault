@@ -25,11 +25,12 @@
   </div>
 </div>
 
-<section class="ui-panel ui-network-panel mb-6" id="network-panel" aria-label="Trust network">
+<section class="ui-panel ui-network-panel mb-6" id="network-panel" aria-labelledby="network-panel-title">
+  <div class="ui-panel-head"><div><h2 class="ui-panel-title" id="network-panel-title">Sponsorship</h2></div></div>
   <ul class="ui-network-counts">
     <li class="ui-network-count"><span class="ui-network-count-value" data-followers-count>{{ net.followers_count }}</span><span class="ui-network-count-label">Followers</span></li>
     <li class="ui-network-count"><span class="ui-network-count-value" data-following-count>{{ net.following_count }}</span><span class="ui-network-count-label">Following</span></li>
-    <li class="ui-network-count"><span class="ui-network-count-value" data-recommendations-count>{{ net.recommendations_count }}</span><span class="ui-network-count-label">Recommendations</span></li>
+    <li class="ui-network-count"><span class="ui-network-count-value" data-recommendations-count>{{ net.recommendations_count }}</span><span class="ui-network-count-label">Sponsors</span></li>
   </ul>
   {% if net.known_followers %}
     {% with n=net.known_followers|length %}
@@ -44,12 +45,12 @@
       {% if net.viewer_follows %}<i class="fa-solid fa-check" aria-hidden="true"></i> Following{% else %}<i class="fa-solid fa-user-plus" aria-hidden="true"></i> Follow{% endif %}
     </button>
     <button type="button" class="ui-btn" data-recommend data-recommended="{{ net.viewer_recommendation|yesno:'1,0' }}" aria-controls="recommend-form" aria-expanded="false">
-      <i class="fa-solid fa-user-group" aria-hidden="true"></i> {% if net.viewer_recommendation %}Edit recommendation{% else %}Recommend{% endif %}
+      <i class="fa-solid fa-user-group" aria-hidden="true"></i> {% if net.viewer_recommendation %}Edit sponsorship{% else %}Sponsor{% endif %}
     </button>
     <button type="button" class="ui-btn ui-btn-ghost" data-unrecommend data-unrecommend-url="{% url 'network:unrecommend' profile.stellar_address %}" data-name="{{ profile }}"{% if not net.viewer_recommendation %} hidden{% endif %}>Withdraw</button>
   </div>
   <form id="recommend-form" class="ui-network-form" hidden>
-    <label class="ui-label" for="recommend-message">Your recommendation (optional)</label>
+    <label class="ui-label" for="recommend-message">Why do you sponsor them? (optional)</label>
     <textarea id="recommend-message" class="ui-textarea" maxlength="280" placeholder="What did they do well?">{{ net.viewer_recommendation.message|default:"" }}</textarea>
     <div class="ui-network-form-foot">
       <span class="ui-network-counter" data-recommend-counter>0 / 280</span>
@@ -58,7 +59,7 @@
   </form>
   {% elif not is_me %}
   <div class="ui-network-actions">
-    <p class="ui-network-known">Connect your wallet to follow or recommend this wallet.</p>
+    <p class="ui-network-known">Connect your wallet to follow or sponsor this wallet.</p>
     <button type="button" class="ui-btn ui-btn-primary" data-wallet-connect data-next="{{ request.path }}"><i class="fa-solid fa-wallet" aria-hidden="true"></i> Connect my wallet</button>
   </div>
   {% endif %}
@@ -128,8 +129,8 @@
   {% endif %}
 </section>
 
-<section class="ui-section" id="recommendations" aria-label="Recommendations received">
-  {% include "components/section_head.html" with title="Recommendations received" icon="fa-user-group" %}
+<section class="ui-section" id="recommendations" aria-label="Sponsored by">
+  {% include "components/section_head.html" with title="Sponsored by" icon="fa-user-group" %}
   {% if net.recommendations %}
   <div class="ui-panel">
     <ol class="ui-timeline">
@@ -146,7 +147,7 @@
     </ol>
   </div>
   {% else %}
-    {% include "components/empty_state.html" with icon="fa-user-group" title="No recommendations yet" desc="Recommendations from other wallets will show up here." %}
+    {% include "components/empty_state.html" with icon="fa-user-group" title="No sponsors yet" desc="Wallets that sponsor this one will show up here, with their quote." %}
   {% endif %}
 </section>
 
@@ -171,5 +172,4 @@
 {% endblock %}
 
 {% block extra_js %}<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
-<script src="{% static 'js/lowbid-reputation.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
-<script src="{% static 'js/lowbid-network.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}
+<script src="{% static 'js/lowbid-reputation.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

@@ -1,4 +1,4 @@
-"""JSON endpoints of the trust network, called by `Lowbid.api` from the profile page.
+"""JSON endpoints of the trust network, called by `Lowbid.api` from the profile page and the candidate rows (Sponsor button).
 Rules live in services.py; this module only maps NetworkError codes to HTTP.
 """
 
@@ -97,7 +97,7 @@ def recommend_view(request: HttpRequest, address: str) -> JsonResponse:
         services.recommend(viewer, target, data.get("message", ""))
     except NetworkError as err:
         return _error_response(err)
-    return _state(viewer, target, "Recommendation saved.")
+    return _state(viewer, target, f"You now sponsor {services.wallet_name(target)}.")
 
 
 @require_POST
@@ -109,4 +109,4 @@ def unrecommend_view(request: HttpRequest, address: str) -> JsonResponse:
         services.unrecommend(viewer, target)
     except NetworkError as err:
         return _error_response(err)
-    return _state(viewer, target, "Recommendation withdrawn.")
+    return _state(viewer, target, "Sponsorship withdrawn.")

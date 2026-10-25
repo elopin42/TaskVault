@@ -113,12 +113,26 @@ def _company_signals(wallet, items, get_company_id) -> None:
 
 
 def _candidate_rows(task: Task, wallet) -> list[dict]:
-    """Ranked rows (score desc, oldest first) with the badges precomputed so templates stay dumb."""
+    """Ranked rows (score desc, oldest first) with the badges precomputed so templates stay dumb.
+
+    Network reads (badges, the sponsor's quote, `viewer_sponsors`) and `new_account` are display only:
+    they never touch the score or the order.
+    """
+    from network.models import Recommendation  # local: the candidate helpers own their extra reads
+    from reputation import services as reputation
+
     apps = list(task.applications.select_related("freelancer").order_by("-score", "created_at", "pk"))
     rec_pk = recommended_pk(apps) if task.is_open else None
     company_id = task.project.company_id
     wanted = set(task.tags or [])
-    net = network.signals(wallet, [app.freelancer_id for app in apps])  # one-hop badges only: never the order
+    freelancer_ids = [app.freelancer_id for app in apps]
+    net = network.signals(wallet, freelancer_ids)  # one-hop badges only: never the order
+    with_history = reputation.wallets_with_history(freelancer_ids) if apps else set()  # one query for all rows
+    sponsored: set[int] = set()
+    if wallet is not None and apps:
+        sponsored = set(
+            Recommendation.objects.filter(author=wallet, subject_id__in=freelancer_ids).values_list("subject_id", flat=True)
+        )
     rows = []
     for rank, app in enumerate(apps, start=1):
         history = company_history(company_id, app.freelancer_id)
@@ -145,6 +159,9 @@ def _candidate_rows(task: Task, wallet) -> list[dict]:
                 "choose_url": reverse("projects:task_choose", kwargs={"pk": task.pk, "app_pk": app.pk}),
                 "network": sig,
                 "network_class": NETWORK_ROW_CLASS.get(sig.level if sig else "", ""),
+                "new_account": app.freelancer_id not in with_history,
+                "can_sponsor": wallet is not None and app.freelancer_id != wallet.pk,
+                "viewer_sponsors": app.freelancer_id in sponsored,
             }
         )
     return rows
@@ -153,6 +170,7 @@ def _candidate_rows(task: Task, wallet) -> list[dict]:
 def _fingerprint(task: Task, rows: list[dict]) -> str:
     ids = ",".join(
         f"{r['app'].pk}:{r['fmt']['score']}:{dec_str(r['app'].price)}:{r['network'].level if r['network'] else ''}"
+        f":{int(r['viewer_sponsors'])}:{int(r['new_account'])}"
         for r in rows
     )
     return f"{task.status}:{len(rows)}:{task.assigned_to_id or 0}:{ids}"
@@ -188,6 +206,8 @@ def _candidate_json(row: dict) -> dict:
         "status": app.status,
         "created_at": app.created_at.isoformat(),
         "network": row["network"].as_json() if row["network"] else None,
+        "new_account": row["new_account"],
+        "sponsoring": row["viewer_sponsors"],
     }
 
 
@@ -292,6 +312,8 @@ def project_detail(request: HttpRequest, pk: int) -> HttpResponse:
             if task.is_open and task.app_count:
                 candidate_blocks.append(_candidates_context(task, wallet))
     pending_total = sum(t.pending_count for t in tasks)
+    # The companies' maxima vs the amounts that move (project.total_amount = sum of prices, [data-kpi-total]).
+    total_budget = sum((t.budget for t in tasks), Decimal("0"))
     to_validate = [t for t in tasks if t.status == Task.Status.DELIVERED]
     funding = payments.project_funding(project, wallet)
     for task in tasks:  # escrow status per row (project_funding already loaded every Escrow)
@@ -313,6 +335,8 @@ def project_detail(request: HttpRequest, pk: int) -> HttpResponse:
             "show_fund": is_company and len(tasks) >= 1 and project.status not in (Project.Status.CLOSED, Project.Status.CANCELLED),
             "candidate_blocks": candidate_blocks,
             "pending_total": pending_total,
+            "total_budget": total_budget,
+            "budget_differs": total_budget != project.total_amount,
             "to_validate": to_validate,
             "tag_list": _project_tags(project),
         },

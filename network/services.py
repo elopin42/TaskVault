@@ -5,6 +5,8 @@ Signals for a viewer V looking at a target T go through the wallets V follows, O
   strong    someone V follows recommends T   → "Yanis recommends" / "Yanis and 2 others recommend"
   weak      someone V follows follows T      → "Followed by Yanis" / "Followed by Yanis and 1 other"
   following V follows T directly             → "Following"
+The strong signal also carries the recommenders' messages (`quotes`, `quote`): the candidate row shows the first
+non-empty one as the sponsor's quote. The UI calls a recommendation a "sponsorship"; the code keeps "recommend".
 An anonymous viewer, or T == V, gets no badge at all.
 
 Reads `accounts.models` and `projects.models` only; `projects` never imports this module at module level.
@@ -135,6 +137,23 @@ class NetworkSignal:
     recommenders: list[WalletUser] = field(default_factory=list)  # strong: V follows them, they recommend T
     followers: list[WalletUser] = field(default_factory=list)  # weak: V follows them, they follow T
     following: bool = False  # V follows T directly
+    quotes: list[tuple[WalletUser, str]] = field(default_factory=list)  # (recommender, message), same order as recommenders
+
+    @property
+    def _first_quote(self) -> tuple[WalletUser, str] | None:
+        return next(((w, m) for w, m in self.quotes if m), None)
+
+    @property
+    def quote(self) -> str:
+        """The first non-empty recommendation message among the recommenders (by name), else ""."""
+        first = self._first_quote
+        return first[1] if first else ""
+
+    @property
+    def quote_author(self) -> WalletUser | None:
+        """Who wrote `quote` (None when there is no quote)."""
+        first = self._first_quote
+        return first[0] if first else None
 
     @property
     def level(self) -> str:
@@ -177,6 +196,8 @@ class NetworkSignal:
             "recommends": [{"address": w.stellar_address, "name": wallet_name(w)} for w in self.recommenders],
             "followed_by": [{"address": w.stellar_address, "name": wallet_name(w)} for w in self.followers],
             "following": self.following,
+            "quote": self.quote,
+            "quote_by": wallet_name(self.quote_author) if self.quote_author else "",
         }
 
     def __bool__(self) -> bool:
@@ -224,11 +245,12 @@ def signals(viewer: WalletUser | None, targets: Iterable) -> dict[int, NetworkSi
             result[pk].following = True
 
     recs = Recommendation.objects.filter(author_id__in=followed, subject_id__in=ids).values_list(
-        "author_id", "subject_id"
+        "author_id", "subject_id", "message"
     )
-    for author_id, subject_id in recs:
+    for author_id, subject_id, message in recs:
         if subject_id != viewer.pk:
             result[subject_id].recommenders.append(followed[author_id])
+            result[subject_id].quotes.append((followed[author_id], (message or "").strip()))
 
     hops = Follow.objects.filter(follower_id__in=followed, followed_id__in=ids).values_list(
         "follower_id", "followed_id"
@@ -240,6 +262,7 @@ def signals(viewer: WalletUser | None, targets: Iterable) -> dict[int, NetworkSi
     for sig in result.values():
         sig.recommenders.sort(key=_name_key)
         sig.followers.sort(key=_name_key)
+        sig.quotes.sort(key=lambda pair: _name_key(pair[0]))
     return result
 
 

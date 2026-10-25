@@ -277,6 +277,17 @@ class PayerProfileTests(TestCase):
             self.assertNotIn("new-account", [b["key"] for b in services.wallet_badges(wallet)])
         self.assertFalse(services.has_history(None))
 
+    def test_wallets_with_history_matches_has_history_in_one_query(self):
+        make_task(self.company, self.f1)  # no confirmed hash
+        paid_task(self.company, self.f2)
+        ids = [self.company.pk, self.f1.pk, self.f2.pk]
+        with self.assertNumQueries(1):
+            found = services.wallets_with_history(ids)
+        self.assertEqual(found, {pk for pk in ids if services.has_history(WalletUser.objects.get(pk=pk))})
+        self.assertEqual(found, {self.company.pk, self.f2.pk})
+        with self.assertNumQueries(0):
+            self.assertEqual(services.wallets_with_history([]), set())
+
     def test_github_badge(self):
         GithubIdentity.objects.create(
             wallet=self.f1, github_id=7, github_login="octo", gist_id=GIST_ID,

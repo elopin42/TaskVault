@@ -743,6 +743,8 @@ a.ui-next-card:hover { border-color: var(--hover-border); }
 .ui-netbadges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; vertical-align: middle; }
 .ui-netbadge { border: 1px solid transparent; max-width: 100%; }
 .ui-netbadge i { font-size: 0.9em; }
+/* Inside a page title (profile header) the h1's display tracking / weight must not leak into the chip. */
+.ui-page-title .ui-netbadge { letter-spacing: normal; font-weight: 600; }
 .ui-netbadge.is-strong    { background: var(--info-soft); border-color: var(--info); color: var(--ui-badge-info-text); }
 .ui-netbadge.is-weak      { background: var(--surface-soft); border-color: var(--border-strong); border-style: dashed; color: var(--muted); }
 .ui-netbadge.is-following { background: transparent; border-color: var(--border); color: var(--text); }

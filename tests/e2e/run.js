@@ -18,8 +18,11 @@
  * the chained payment FAILS gracefully (company account unknown on Horizon → error message in
  * [data-pay-error], HTTP 200 {ok:false}) → the fake Horizon "friendbots" the wallets, A adds the
  * USDC trustline, the company resumes the payment from the panel button → T1 paid, hash + explorer
- * link shown → A and B apply to T2 → A is top with "Validated" + "Recommended" (90 vs 20). Plus the
- * kanban, dashboard, profile, list filters, mobile (no horizontal scroll), dark-only theme and logout.
+ * link shown → A and B apply to T2 → A is top with "Validated" + "Recommended" (90 vs 20) → trust
+ * network: the company follows A (now "Yanis"), A recommends B → the company sees "Yanis recommends"
+ * on B's row while the scores and the order stay the same (16-reseau-recommande, 17-profil-reseau,
+ * the recommendation lands in the company's "In your network" feed). Plus the kanban, dashboard,
+ * profile, list filters, mobile (no horizontal scroll), dark-only theme and logout.
  */
 "use strict";
 
@@ -557,6 +560,137 @@ async function main() {
       await mc.close();
     });
 
+    await step("6b. trust network: company follows A, A recommends B → the company sees “Yanis recommends” on B; scores unchanged", async () => {
+      if (!horizon) { log("      skipped (no fake Horizon: T2 has no candidates)"); return; }
+      const RECO = "Nora shipped our Stellar integration in a week, SEP-53 and trustlines included.";
+      // the scores and the order BEFORE any network action: the network never touches them
+      await cp.goto(`/taches/${taskIds[1]}/`);
+      await cp.locator('[data-candidates][data-count="2"]').waitFor();
+      const before = await cp.locator(".cand-row [data-score]").allInnerTexts();
+      assert(before.length === 2 && before[0].trim() === "90.0" && before[1].trim() === "20.0", `scores before: ${JSON.stringify(before)}`);
+      assert(await cp.locator("[data-network-badge]").count() === 0, "no network badge before the company follows anyone");
+
+      // A names himself "Yanis" (the badge carries a name, never the bare word "Recommended")
+      await pa.goto(`/profil/${fa.address}/`);
+      await pa.locator("#edit-name").waitFor();
+      assert(await pa.locator("#network-panel [data-follow]").count() === 0, "a wallet cannot follow itself (no button on its own profile)");
+      await pa.fill("#edit-name input#display_name", "Yanis");
+      await pa.locator("#edit-name button[type=submit]").click();
+      await pa.locator(".ui-alert-ok").waitFor();
+
+      // company follows A from A's profile
+      await cp.goto(`/profil/${fa.address}/`);
+      await cp.locator("#network-panel").waitFor();
+      const follow = cp.locator("#network-panel [data-follow]");
+      assert(await follow.count() === 1, "Follow button on A's profile");
+      assert((await follow.getAttribute("data-following")) === "0", "not following A yet");
+      assert((await cp.locator("[data-followers-count]").innerText()).trim() === "0", "A has 0 followers");
+      await follow.click();
+      await cp.locator('#network-panel [data-follow][data-following="1"]').waitFor();
+      await cp.locator(".lb-toast", { hasText: /Following/ }).waitFor();
+      assert(/Following/.test(await follow.innerText()), `button reads Following, got "${await follow.innerText()}"`);
+      assert((await cp.locator("[data-followers-count]").innerText()).trim() === "1", "A now has 1 follower");
+      await cp.reload();
+      await cp.locator('#network-panel [data-follow][data-following="1"]').waitFor();
+      assert(await cp.locator('.ui-page-header [data-network-badge="following"]').count() === 1, "A's header carries the Following badge for the company");
+
+      // A recommends B from B's profile
+      await pa.goto(`/profil/${fb.address}/`);
+      await pa.locator("#network-panel").waitFor();
+      assert(await pa.locator("#recommend-form[hidden]").count() === 1, "recommend form hidden until asked");
+      assert(await pa.locator("#recommendations .ui-timeline-item").count() === 0, "B has no recommendation yet");
+      await pa.locator("#network-panel [data-recommend]").click();
+      await pa.locator("#recommend-form:not([hidden])").waitFor();
+      await pa.fill("#recommend-message", RECO);
+      assert((await pa.locator("[data-recommend-counter]").innerText()).trim() === `${RECO.length} / 280`, `live counter, got "${await pa.locator("[data-recommend-counter]").innerText()}"`);
+      await pa.locator("[data-recommend-submit]").click();
+      await pa.locator(".lb-toast", { hasText: /Recommendation saved/ }).waitFor();
+      // the JS updates the counters, then reloads so the list of received recommendations refreshes
+      await pa.locator("#recommendations .ui-timeline-item", { hasText: RECO }).waitFor({ timeout: 10000 });
+      assert((await pa.locator("[data-recommendations-count]").innerText()).trim() === "1", "B has 1 recommendation");
+      assert(/Edit recommendation/.test(await pa.locator("#network-panel [data-recommend]").innerText()), "button reads Edit recommendation");
+      assert(await pa.locator("#network-panel [data-unrecommend]:not([hidden])").count() === 1, "Withdraw offered after recommending");
+      // refusals: yourself (400 self) and anonymous (401)
+      const self = await api(pa, `/profil/${fa.address}/recommander/`, { message: "x" });
+      assert(self.status === 400 && self.json.error === "self", `recommending yourself → 400 self, got ${self.status} ${JSON.stringify(self.json)}`);
+      const selfFollow = await api(pa, `/profil/${fa.address}/suivre/`, {});
+      assert(selfFollow.status === 400 && selfFollow.json.error === "self", `following yourself → 400 self, got ${selfFollow.status}`);
+      const anon = await api(pn, `/profil/${fb.address}/recommander/`, { message: "x" });
+      assert(anon.status === 401 && anon.json.error === "wallet_required", `anonymous → 401 wallet_required, got ${anon.status}`);
+      const tooLong = await api(pa, `/profil/${fb.address}/recommander/`, { message: "x".repeat(281) });
+      assert(tooLong.status === 400 && tooLong.json.error === "invalid", `281 chars → 400 invalid, got ${tooLong.status}`);
+
+      // the company's view of T2: same order, same scores, one-hop badges
+      await cp.goto(`/taches/${taskIds[1]}/`);
+      await cp.locator('[data-candidates][data-count="2"]').waitFor();
+      const rows = cp.locator(".cand-row");
+      assert((await rows.nth(0).getAttribute("data-freelancer")) === fa.address, "A still ranks first");
+      assert((await rows.nth(1).getAttribute("data-freelancer")) === fb.address, "B still ranks second");
+      assert((await rows.nth(0).locator("[data-score]").innerText()).trim() === "90.0", "A still 90.0");
+      assert((await rows.nth(1).locator("[data-score]").innerText()).trim() === "20.0", "B still 20.0");
+      assert(await rows.nth(0).locator('[data-badge="valide"]').count() === 1 && await rows.nth(0).locator("[data-recommended]").count() === 1, "A keeps Validated + Recommended");
+      assert(await rows.nth(1).locator("[data-recommended]").count() === 0, "B is still not Recommended (score badge)");
+      const badgeB = rows.nth(1).locator('[data-network-badge="recommends"]');
+      assert(await badgeB.count() === 1, "B's row carries the one-hop network badge");
+      const badgeText = (await badgeB.innerText()).trim();
+      assert(/recommends$/.test(badgeText) && badgeText.includes("Yanis"), `badge reads "Yanis recommends", got "${badgeText}"`);
+      assert(badgeText !== "Recommended", "the network badge is never the bare word Recommended");
+      assert(/Yanis/.test(await badgeB.getAttribute("title")), "badge title lists the recommender");
+      assert(await rows.nth(1).evaluate((el) => el.classList.contains("is-network-strong")), "B's row is highlighted as a strong signal");
+      assert(await rows.nth(0).locator('[data-network-badge="following"]').count() === 1, "A's row says Following (the company follows A directly)");
+      assert(await rows.nth(0).locator('[data-network-badge="recommends"]').count() === 0, "nobody the company follows recommends A");
+      assert(await cp.locator("[data-choose]").count() === 2, "Choose still offered on both rows");
+      const json = await api(cp, `/taches/${taskIds[1]}/candidats.json`, undefined, "GET");
+      const cands = json.json.candidates;
+      assert(json.status === 200 && cands[0].score === "90.0" && cands[1].score === "20.0", `scores unchanged in candidats.json: ${JSON.stringify(cands.map((c) => c.score))}`);
+      assert(cands[0].network && cands[0].network.following === true && cands[0].network.level === "following", `A's network JSON: ${JSON.stringify(cands[0].network)}`);
+      assert(cands[1].network && cands[1].network.level === "strong" && cands[1].network.recommends.length === 1 && cands[1].network.recommends[0].name === "Yanis", `B's network JSON: ${JSON.stringify(cands[1].network)}`);
+      // the freelances see no network badge on each other's rows (B follows nobody; A sees their own row as T == V)
+      await pb.goto(`/taches/${taskIds[1]}/`);
+      await pb.locator('[data-candidates][data-count="2"]').waitFor();
+      assert(await pb.locator("[data-network-badge]").count() === 0, "B (follows nobody) sees no network badge");
+      await shot(cp, "16-reseau-recommande");
+      await noHorizontalScroll(cp, "desktop task T2 network badges");
+
+      // B's public profile, seen by the company: the header badge + the recommendation received
+      await cp.goto(`/profil/${fb.address}/`);
+      await cp.locator("#network-panel").waitFor();
+      assert(await cp.locator('.ui-page-header [data-network-badge="recommends"]').count() === 1, "B's header carries \"Yanis recommends\"");
+      assert(/Yanis recommends/.test(await cp.locator(".ui-page-header").innerText()), "header badge names Yanis");
+      assert(await cp.locator("[data-known-followers]").count() === 0, "nobody the company follows follows B");
+      assert((await cp.locator("[data-followers-count]").innerText()).trim() === "0" && (await cp.locator("[data-recommendations-count]").innerText()).trim() === "1", "B: 0 followers, 1 recommendation");
+      assert(await cp.locator("#recommendations .ui-timeline-item").count() === 1, "one recommendation listed");
+      assert((await cp.locator("#recommendations .ui-timeline-item").innerText()).includes(RECO) && /Yanis/.test(await cp.locator("#recommendations .ui-timeline-item").innerText()), "the recommendation shows the message and its author");
+      assert((await cp.locator("#network-panel [data-follow]").getAttribute("data-following")) === "0", "the company does not follow B");
+      await shot(cp, "17-profil-reseau");
+      await noHorizontalScroll(cp, "desktop profile network");
+
+      // the company's dashboard: A's recommendation of B is in the one-hop feed (the company follows A)
+      await cp.goto("/tableau-de-bord/");
+      await cp.locator("#network-feed").waitFor();
+      const feedItem = cp.locator('#network-feed [data-feed-kind="recommendation"]');
+      assert(await feedItem.count() === 1, "one recommendation in the network feed");
+      const feedText = await feedItem.innerText();
+      assert(/Yanis/.test(feedText) && feedText.includes(fb.short) && feedText.includes(RECO), `feed item: Yanis recommends B with the message, got "${feedText.replace(/\s+/g, " ").slice(0, 160)}"`);
+      await noHorizontalScroll(cp, "desktop dashboard network feed");
+      // B's dashboard: follows nobody → empty state
+      await pb.goto("/tableau-de-bord/");
+      await pb.locator("#network-feed").waitFor();
+      assert(await pb.locator("#network-feed .empty-state").count() === 1, "B's network feed is the empty state");
+
+      // phone: the badges wrap inside the candidate rows, no horizontal scroll
+      const mc = await mobileClone(browser, ctx.company, company);
+      const mcp = track(await mc.newPage(), "mobile company network");
+      await mcp.goto(`/taches/${taskIds[1]}/`);
+      await mcp.locator('[data-candidates][data-count="2"]').waitFor();
+      assert(await mcp.locator('[data-network-badge="recommends"]').count() === 1, "mobile: network badge rendered");
+      await noHorizontalScroll(mcp, "mobile task T2 network badges");
+      await mcp.goto(`/profil/${fb.address}/`);
+      await mcp.locator("#network-panel").waitFor();
+      await noHorizontalScroll(mcp, "mobile profile network");
+      await mc.close();
+    });
+
     // 7 ------------------------------------------------------------------------------------------
     await step("7. list / search / tag chips, My projects, dashboard to-do + KPIs, public profile (note 5.0, name edit)", async () => {
       await pn.goto("/projets/");
@@ -603,6 +737,7 @@ async function main() {
       assert(/5\.0\/5/.test(await pa.locator("[data-avg-note]").innerText()), "A's average note is 5.0/5 on the dashboard");
       if (horizon) assert(await pa.locator("[data-todo-list] .ui-next-card", { hasText: "Freighter integration" }).count() >= 1, "A's to-do lists the pending application");
 
+      // (with the fake Horizon, 6b already named A "Yanis": this re-saves the same name through the same form)
       await pa.goto(`/profil/${fa.address}/`);
       await pa.locator("#edit-name").waitFor();
       await pa.fill("#edit-name input#display_name", "Yanis");

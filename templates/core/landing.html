@@ -77,35 +77,77 @@
 </div>
 {% endif %}
 
-<section class="ui-section lb-chain" aria-labelledby="chain-title">
-  <div class="lb-chain-head">
-    <h2 id="chain-title" class="lb-section-title">Four blocks, two signers, zero chasing.</h2>
+{% comment %}
+  Scroll story: the 3D « project cube » (CSS 3D, scrubbed by anime.js in lowbid-landing.js) on the left,
+  four steps on the right. One project, split into tasks; freelancers take the part they want and bid;
+  the chosen one gets the funds locked; delivery releases them. The cube content is a worked example
+  (core.views.STORY_TASKS), not database rows.
+{% endcomment %}
+<section class="ui-section lb-story" aria-labelledby="story-title" data-story>
+  <div class="lb-story-head">
+    <h2 id="story-title" class="lb-section-title">One project. Everyone takes the part they want.</h2>
+    <p class="lb-story-sub">A company posts a project cut into fixed-price tasks. Freelancers pick the part they want and make their best offer. The one chosen for each task is paid in {{ asset_code }}, from funds locked before the work starts.</p>
   </div>
-  <div class="lb-steps">
-    <article class="lb-step">
-      <div class="lb-step-head"><span>BLOCK 01</span><span>COMPANY</span></div>
-      <h3 class="lb-step-title">Split</h3>
-      <p class="lb-step-desc">One project, fixed-price tasks.</p>
-      <code class="lb-step-call">off-chain</code>
-    </article>
-    <article class="lb-step">
-      <div class="lb-step-head"><span>BLOCK 02</span><span>COMPANY</span></div>
-      <h3 class="lb-step-title">Choose</h3>
-      <p class="lb-step-desc">Freelancers apply, the company chooses.</p>
-      <code class="lb-step-call">off-chain</code>
-    </article>
-    <article class="lb-step is-signal">
-      <div class="lb-step-head"><span>BLOCK 03</span><span>SIGNATURE ×2</span></div>
-      <h3 class="lb-step-title">Lock</h3>
-      <p class="lb-step-desc">One escrow per task, funded before the work.</p>
-      <code class="lb-step-call">deploy · fund</code>
-    </article>
-    <article class="lb-step theme-coffre">
-      <div class="lb-step-head"><span>BLOCK 04</span><span>SIGNATURE ×3</span></div>
-      <h3 class="lb-step-title">Deliver, release</h3>
-      <p class="lb-step-desc">The freelancer delivers, the company validates, the funds go out.</p>
-      <code class="lb-step-call">deliver · approve · release</code>
-    </article>
+  <div class="lb-story-grid" data-story-grid>
+    <div class="lb-scene-wrap" aria-hidden="true">
+      <div class="lb-scene" data-scene>
+        <div class="lb-cube" data-cube>
+          {% for t in story_tasks %}
+          <div class="lb-slab" data-slab style="--i: {{ forloop.counter0 }}">
+            <div class="lb-face is-front">
+              <span class="lb-face-no">TASK 0{{ forloop.counter }}</span>
+              <span class="lb-face-title" data-face-title>{{ t.title }}</span>
+              <span class="lb-face-price">{{ t.price }} {{ asset_code }}</span>
+              <span class="lb-face-lock" data-face-lock><i class="fa-solid fa-lock" aria-hidden="true"></i></span>
+              <span class="lb-face-glow" data-face-glow></span>
+            </div>
+            <div class="lb-face is-right">
+              <span class="lb-face-release" data-face-release><i class="fa-solid fa-check" aria-hidden="true"></i> RELEASED · {{ t.price }} {{ asset_code }}</span>
+              <span class="lb-face-release-sub" data-face-release>deliver · approve · release</span>
+            </div>
+            <div class="lb-face is-back"><span class="lb-face-no">ESCROW · TRUSTLESS WORK</span></div>
+            <div class="lb-face is-left"><span class="lb-face-no">0{{ forloop.counter }}</span></div>
+            <div class="lb-face is-top"></div>
+            <div class="lb-face is-bottom"></div>
+            <div class="lb-bids">
+              {% for b in t.bids %}
+              <span class="lb-bid{% if forloop.first %} is-chosen{% endif %}" data-bid="{% if forloop.first %}chosen{% else %}other{% endif %}" data-identicon="story-{{ forloop.parentloop.counter }}-{{ forloop.counter }}">
+                <span class="ui-identicon"></span><span class="lb-bid-name">{{ b.name }}</span><span class="lb-bid-score">{{ b.score }}</span>
+              </span>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <p class="lb-scene-caption"><span class="lb-scene-caption-no" data-scene-no>01</span><span data-scene-caption>Split</span></p>
+    </div>
+    <ol class="lb-story-steps">
+      <li class="lb-step" data-story-step>
+        <div class="lb-step-head"><span>BLOCK 01</span><span>COMPANY</span></div>
+        <h3 class="lb-step-title">Split</h3>
+        <p class="lb-step-desc">One project, cut into fixed-price tasks. Each task is a part anyone can take.</p>
+        <code class="lb-step-call">off-chain</code>
+      </li>
+      <li class="lb-step" data-story-step>
+        <div class="lb-step-head"><span>BLOCK 02</span><span>FREELANCERS · COMPANY</span></div>
+        <h3 class="lb-step-title">Bid</h3>
+        <p class="lb-step-desc">Freelancers pick the part they want and make their offer: skills, pitch, track record. A score ranks them; the company chooses one per task.</p>
+        <code class="lb-step-call">off-chain</code>
+      </li>
+      <li class="lb-step is-signal" data-story-step>
+        <div class="lb-step-head"><span>BLOCK 03</span><span>SIGNATURE ×2</span></div>
+        <h3 class="lb-step-title">Lock</h3>
+        <p class="lb-step-desc">One escrow per task, funded before the work starts. The freelancer sees the money is there.</p>
+        <code class="lb-step-call">deploy · fund</code>
+      </li>
+      <li class="lb-step theme-coffre" data-story-step>
+        <div class="lb-step-head"><span>BLOCK 04</span><span>SIGNATURE ×3</span></div>
+        <h3 class="lb-step-title">Deliver, release</h3>
+        <p class="lb-step-desc">The freelancer delivers, the company validates and rates, the funds go out. No invoice, no chasing.</p>
+        <code class="lb-step-call">deliver · approve · release</code>
+      </li>
+    </ol>
   </div>
 </section>
 
@@ -127,4 +169,8 @@
 </section>
 {% endblock %}
 
-{% block extra_js %}<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}
+{% block extra_js %}
+<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
+<script src="{% static 'vendor/anime.umd.min.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
+<script src="{% static 'js/lowbid-landing.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
+{% endblock %}

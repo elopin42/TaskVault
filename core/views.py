@@ -112,6 +112,17 @@ def hero_receipt() -> dict | None:
     }
 
 
+# Decorative content of the landing's scroll story (the 3D "project cube" in core/landing.html): one
+# project split into four fixed-price tasks, three bids per task, the chosen one first. Not read from
+# the database: the figures are a worked example, the live numbers live in landing_stats().
+STORY_TASKS = (
+    {"title": "Brand & logo", "price": "350", "bids": ({"name": "Freelancer A", "score": 92}, {"name": "Freelancer B", "score": 64}, {"name": "Freelancer C", "score": 48})},
+    {"title": "Landing page", "price": "450", "bids": ({"name": "Freelancer D", "score": 88}, {"name": "Freelancer E", "score": 71}, {"name": "Freelancer F", "score": 55})},
+    {"title": "Soroban contract", "price": "900", "bids": ({"name": "Freelancer G", "score": 96}, {"name": "Freelancer H", "score": 60}, {"name": "Freelancer I", "score": 44})},
+    {"title": "QA & launch", "price": "300", "bids": ({"name": "Freelancer J", "score": 80}, {"name": "Freelancer K", "score": 68}, {"name": "Freelancer L", "score": 52})},
+)
+
+
 def landing(request: HttpRequest) -> HttpResponse:
     from projects.models import Project  # local import: core must stay importable without the domain apps
 
@@ -136,6 +147,7 @@ def landing(request: HttpRequest) -> HttpResponse:
             "stats": landing_stats(),
             "tape": tape_loop(ledger_tape()),
             "receipt": hero_receipt(),
+            "story_tasks": STORY_TASKS,
         },
     )
 

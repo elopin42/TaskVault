@@ -26,7 +26,7 @@ Lowbid/
 ├── static/
 │   ├── css/  lowbid-tokens.css  lowbid-components.css  tailwind.src.css  tailwind.css (BUILT, committed)
 │   ├── js/   lowbid-base.js  lowbid-ui.js  lowbid-wallet.js  lowbid-pay.js  lowbid-projects.js
-│   ├── vendor/  fontawesome/  freighter-api.js (→ window.freighterApi)  stellar-sdk.min.js (→ window.StellarSdk)
+│   ├── vendor/  fontawesome/  freighter-api.js (→ window.freighterApi)  stellar-sdk.min.js (→ window.StellarSdk)  anime.umd.min.js (→ window.anime, landing only)
 │   └── img/favicon.svg
 ├── tests/e2e/              # run.js (Playwright scenario), fake-freighter.js, fake-horizon.js
 ├── data/                   # db.sqlite3 (gitignored), e2e.sqlite3 + e2e-server.log during make e2e
@@ -50,7 +50,7 @@ make css          # npm ci + tailwind build  (commit static/css/tailwind.css!)
 make css-check    # rebuild and fail when the committed tailwind.css is stale (= CI tailwind-in-sync)
 make check        # lint + test + css-check — the pre-commit gate
 make seed         # python manage.py seed_demo --flush (3 wallets, the pitch-state project, a draft project)
-make vendor       # re-copy Font Awesome / freighter-api / stellar-sdk from node_modules
+make vendor       # re-copy Font Awesome / freighter-api / stellar-sdk / anime.js from node_modules
 make e2e          # Playwright end-to-end (see E2E below); `make shots` is an alias
 ```
 

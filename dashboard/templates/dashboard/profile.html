@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static lowbid_extras %}
+{% load static lowbid_extras reputation_extras %}
 {% block title %}{{ profile.display_name|default:profile.short_address }} · Profile · TaskVault{% endblock %}
 {% block meta_description %}Public profile of wallet {{ profile.short_address }} on TaskVault: projects posted, tasks completed, average rating.{% endblock %}
 
@@ -9,11 +9,13 @@
     <p class="ui-meta mb-2"><a href="{% url 'projects:project_list' %}" class="ui-link"><i class="fa-solid fa-arrow-left text-[10px]" aria-hidden="true"></i> Projects</a> · Public profile</p>
     <h1 class="ui-page-title flex flex-wrap items-center gap-3">
       {% include "components/wallet.html" with address=profile.stellar_address name=profile.display_name|default:"Anonymous wallet" size="xl" copy=True nolink=True keep=6 you=is_me %}
+      <span class="flex flex-wrap items-center gap-1.5 text-sm font-normal" data-reputation-badges>{% reputation_badges profile %}</span>
     </h1>
     <p class="ui-page-sub flex flex-wrap items-center gap-x-3 gap-y-1">
       <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> member since {{ stats.member_since|date:"M j, Y" }}</span>
       {% if stats.last_login %}<span><i class="fa-regular fa-clock" aria-hidden="true"></i> last login <span data-time-ago="{{ stats.last_login|date:'c' }}">{{ stats.last_login|date:"M j H:i" }}</span></span>{% endif %}
       {% if stats.avg_note is not None %}<span class="ui-badge ui-badge-ok" data-avg-note="{{ stats.avg_note|stringformat:".1f" }}"><i class="fa-solid fa-star" aria-hidden="true"></i> {{ stats.avg_note|stringformat:".1f" }}/5 · {{ stats.ratings_count }} rating{{ stats.ratings_count|pluralize }}</span>{% endif %}
+      {% company_rating_badge profile %}
     </p>
   </div>
   <div class="ui-page-actions">
@@ -34,6 +36,7 @@
     <button type="submit" class="ui-btn ui-btn-primary"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save</button>
   </form>
 </section>
+{% github_panel profile %}
 {% endif %}
 
 <section class="ui-kpi-band mb-6" aria-label="Public figures">
@@ -46,6 +49,8 @@
     {% include "components/kpi.html" with label="Average rating" value="—" hint="no ratings received" icon="fa-star" attr="data-kpi-note" %}
   {% endif %}
 </section>
+
+{% payer_profile_panel profile %}
 
 <section class="ui-section !mt-0" aria-labelledby="projects-title">
   {% include "components/section_head.html" with title="Projects posted" icon="fa-diagram-project" %}
@@ -103,4 +108,5 @@
 {% endif %}
 {% endblock %}
 
-{% block extra_js %}<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
+<script src="{% static 'js/lowbid-reputation.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>{% endblock %}

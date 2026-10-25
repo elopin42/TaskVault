@@ -1,0 +1,42 @@
+{% comment %}
+{% rate_company_panel task wallet %}: once the task is settled (paid / resolved) its freelancer rates the company
+once (#rate-company-panel form[data-rate-company][data-url] + [data-company-rate] stars + #rate-company-comment +
+[data-rate-company-submit]); afterwards, and for everyone else, the given note reads [data-company-rating].
+{% endcomment %}
+{% if show %}
+<section class="ui-panel ui-form-scope" id="rate-company-panel">
+  <div class="ui-panel-head">
+    <div>
+      <h2 class="ui-panel-title"><i class="fa-solid fa-building" style="color: var(--icon-accent)" aria-hidden="true"></i> {% if can_rate %}Rate the company{% else %}The company, rated by its freelancer{% endif %}</h2>
+      {% if can_rate %}<p class="ui-panel-sub">Public, once per task. It shows on the company's profile and never changes candidate scores.</p>{% endif %}
+    </div>
+  </div>
+  {% if can_rate %}
+    <form class="ui-form-grid" novalidate data-rate-company data-url="{{ rate_url }}">
+      <fieldset class="ui-field ui-field-wide">
+        <legend class="ui-label">Rating</legend>
+        <div class="ui-stars" role="radiogroup" aria-label="Rating of the company from 1 to 5">
+          {% for n in "12345" %}
+            <input type="radio" name="company_note" id="company-rate-{{ n }}" value="{{ n }}" data-company-rate="{{ n }}"{% if n == "5" %} checked{% endif %}>
+            <label for="company-rate-{{ n }}" title="{{ n }}/5"><i class="fa-solid fa-star" aria-hidden="true"></i><span class="sr-only">{{ n }} out of 5</span></label>
+          {% endfor %}
+        </div>
+        <span class="ui-help" data-company-rate-help>5/5 — excellent</span>
+        <span class="ui-error" data-error-for="note" hidden></span>
+      </fieldset>
+      <div class="ui-field ui-field-wide">
+        <label for="rate-company-comment" class="ui-label">Comment <span class="normal-case font-normal">(optional, 280 chars)</span></label>
+        <textarea id="rate-company-comment" name="comment" class="ui-textarea" rows="2" maxlength="280" placeholder="Clear brief, quick validation, paid on time…" style="min-height: 64px"></textarea>
+      </div>
+      <div class="ui-field-wide">
+        <span class="ui-error" data-error-for="_" hidden></span>
+        <div class="ui-sticky-actions">
+          <button type="submit" class="ui-btn ui-btn-primary" data-rate-company-submit><i class="fa-solid fa-star" aria-hidden="true"></i> Rate the company</button>
+        </div>
+      </div>
+    </form>
+  {% else %}
+    <div class="ui-alert ui-alert-ok" data-company-rating="{{ rating.note }}"><i class="fa-solid fa-star" aria-hidden="true"></i><span>{% if is_assignee %}You rated the company{% else %}The freelancer rated the company{% endif %} <strong class="text-strong">{{ rating.note }}/5</strong>{% if rating.comment %} — "{{ rating.comment }}"{% endif %}</span></div>
+  {% endif %}
+</section>
+{% endif %}

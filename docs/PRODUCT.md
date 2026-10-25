@@ -116,6 +116,29 @@ R25–R29 are not used (the delivery rules started at R30); R50+ and R60+ are re
 
 Payment refusals (`/pay/…`) answer HTTP **200** `{ok: false, error, message}` with the codes `not_chosen · forbidden · wrong_state · wrong_mode · unknown_step · tampered · provider · stellar · invalid · not_assigned`. For disputes: `forbidden` (not a party / not the arbiter), `wrong_state` (outside the R37 windows, or not disputed for resolve), `wrong_mode` (direct mode, R42), `invalid` (reason empty or > 280, `freelance_pct` outside 0–100), `tampered` (replayed transaction).
 
+### Reputation
+
+Computed by `reputation/services.py`; nothing here feeds the score (§4).
+
+- **R50** *Company rating.* Once a task is settled (status `paid`, or `resolved` once disputes exist), its chosen freelance can rate the company once: an integer from 1 to 5 (`invalid`, 400), an optional comment cut at 280 characters. Anyone else is refused (`forbidden`, 403), a task not settled yet too (`wrong_state`, 409), a second rating of the same task as well (`duplicate`, 409, also a database constraint). The rating is public: the task page shows it to everyone, the company's profile shows "Rated by freelancers 4.5/5 · 3 ratings" once there is one.
+- **R51** Company ratings, the payer profile and the badges below never change a score, « Validated » (R9) or « Recommended » (R8).
+- **R52** *Payer profile.* The "Payer profile" panel of a wallet that posted at least one project is computed **only** from escrow rows whose payout is confirmed on chain: a release hash (escrow mode) or a payment hash on a row in status `paid` (direct mode; a pending hash kept after a Horizon timeout does not count). A task marked paid without such a row counts for nothing. The panel is hidden for a wallet that never posted a project.
+- **R53** Its figures: tasks paid, distinct freelances paid, total paid, average delay between delivery and payment (informational only), disputes lost, deposits forfeited. Every figure lists the stellar.expert links of the transactions behind it, labelled "task #N", so each number can be checked on chain.
+- **R54** *Reliable payer.* The badge needs at least `LOWBID_RELIABLE_PAYER_MIN_PARTNERS` (default 3) distinct freelances paid with a confirmed transaction, no dispute lost and no deposit forfeited (both are always 0 until disputes and project deposits exist).
+- **R55** *New account.* A wallet with no task paid with a confirmed transaction, in either role (company payer or freelance payee), carries "New account" on its profile; the chosen candidate row of a task shows "No history" for the same reason. Both are hints, never a refusal.
+- **R56** *Verified GitHub — the proof.* The wallet signs `lowbid:<its G… address>` with Freighter (`signMessage`, the same schemes as the login, R1) and publishes a **public** gist (any file name) whose content holds the two lines `lowbid:<G…>` and `signature: <base64 signature>`. The profile page signs and fills these two lines for its owner.
+- **R57** The gist is given as `https://gist.github.com/<login>/<32 hex>` or as its bare 32-hex id (`invalid`, 400). It must exist (`not_found`, 404) and be public (`not_public`, 400); the message line must be exactly the wallet's and the signature valid for it (`bad_signature`, 400); the gist owner's GitHub account must be at least `LOWBID_GITHUB_MIN_AGE_DAYS` (default 365) days old (`too_recent`, 400). One GitHub account per wallet and one wallet per GitHub account (`already_used`, 409, when the account is linked to another wallet; `duplicate`, 409, when this wallet already has one). A GitHub failure stores nothing and answers `provider` (502). The optional `LOWBID_GITHUB_TOKEN` only raises GitHub's rate limit; it is never rendered nor logged.
+- **R58** Only the owner (the session wallet) links or unlinks its GitHub account (`not_found`, 404, when there is nothing to unlink); the "Verified GitHub" badge links to `https://github.com/<login>`.
+- **R59** Every reputation endpoint acts as the session wallet: an address in the request body is ignored. Badges and panels are pure reads (no network call when a page renders).
+
+| Code | HTTP (reputation) | Meaning |
+|------|-------------------|---------|
+| `forbidden` | 403 | not the task's freelance |
+| `wrong_state`, `duplicate`, `already_used` | 409 | task not settled / already rated or linked / GitHub account taken |
+| `invalid`, `not_public`, `bad_signature`, `too_recent` | 400 | bad input or proof |
+| `not_found` | 404 | no such gist / GitHub account / link |
+| `provider` | 502 | GitHub unreachable or unreadable |
+
 ## 4. The score
 
 Deterministic, no AI (`projects/scoring.py`). For an application by freelance F on a task of company C:
@@ -233,6 +256,8 @@ The site is dark only and responsive down to phone width; below 1024 px a signed
 | `/tableau-de-bord/` | signed in | Dashboard: to-do list (choose, fund, validate, pay, deliver, add tasks to an empty draft, waiting on the other side), KPIs as company and as freelance, recent activity | `10-tableau-de-bord.png`, `mobile-tableau-de-bord.png` |
 | `/litiges/` | the arbiter wallet only (403 otherwise) | Disputes desk: KPIs (open, resolved, the arbiter address), one card per open dispute (project, task, amount, fingerprint, delivery link, history, reason, who opened it, stellar.expert links) with the split form `#resolve-form-<task>` (slider `[data-freelance-pct]` 0–100, live preview of both amounts, "Resolve the dispute" behind a confirm dialog), then the resolved disputes with their split | — |
 | `/profil/<address>/` | everyone | Public profile: identicon, display name (editable by its owner, up to 80 characters), member since / last login, projects posted, tasks paid, earned, average rating, latest projects and tasks, ratings received | `11-profil.png` |
+
+Reputation additions: the profile header carries the badges "Reliable payer", "New account", "Verified GitHub" and "Rated by freelancers x/5"; a "Payer profile" panel (wallets that posted a project) lists the confirmed on-chain figures with their stellar.expert links; the owner gets a "Verified GitHub" panel (sign the proof in Freighter, paste the gist URL, unlink). On a settled task the freelance gets a "Rate the company" panel under the payment panel; the chosen candidate row shows "No history" for a wallet without a confirmed payout.
 
 ## 7. Out of scope for the hackathon
 

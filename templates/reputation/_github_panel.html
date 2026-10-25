@@ -1,0 +1,37 @@
+{% comment %}
+{% github_panel wallet %}: the owner's GitHub proof (profile page, owner only). Not linked: step 1 [data-github-sign]
+signs github_message() in Freighter and fills #github-proof with the two gist lines; step 2 #github-gist +
+[data-github-submit]. Linked: the login + [data-github-unlink] (Lowbid.confirm). URLs ride on data-url.
+{% endcomment %}
+<section class="ui-panel mb-6" id="github-verify" aria-labelledby="github-verify-title">
+  <div class="ui-panel-head">
+    <div>
+      <h2 class="ui-panel-title" id="github-verify-title"><i class="fa-brands fa-github" aria-hidden="true"></i> Verified GitHub</h2>
+      <p class="ui-panel-sub">Prove this wallet belongs to a GitHub account at least {{ min_age_days }} days old: one GitHub account per wallet.</p>
+    </div>
+  </div>
+  {% if identity %}
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="text-sm" data-github-login="{{ identity.github_login }}"><i class="fa-solid fa-circle-check" style="color: var(--success)" aria-hidden="true"></i> Linked to <a href="{{ identity.profile_url }}" class="ui-link font-semibold" target="_blank" rel="noopener noreferrer nofollow">{{ identity.github_login }}</a> since {{ identity.verified_at|date:"M j, Y" }}</p>
+      <button type="button" class="ui-btn ui-btn-sm" data-github-unlink data-url="{{ unlink_url }}"><i class="fa-solid fa-link-slash" aria-hidden="true"></i> Unlink</button>
+    </div>
+  {% else %}
+    <div class="ui-form-grid">
+      <div class="ui-field ui-field-wide">
+        <span class="ui-label">1 · Sign the proof</span>
+        <div><button type="button" class="ui-btn ui-btn-primary" data-github-sign data-url="{{ message_url }}" data-address="{{ wallet.stellar_address }}"><i class="fa-solid fa-signature" aria-hidden="true"></i> Sign the proof in Freighter</button></div>
+        <label for="github-proof" class="sr-only">The two lines to paste into a public gist</label>
+        <textarea id="github-proof" class="ui-textarea font-mono text-xs break-all" rows="3" readonly placeholder="lowbid:G…&#10;signature: …" style="min-height: 72px"></textarea>
+        <span class="ui-help">Paste exactly these two lines into a <strong class="text-strong">public</strong> gist (any file name) on <a href="https://gist.github.com" class="ui-link" target="_blank" rel="noopener noreferrer">gist.github.com</a>. <button type="button" class="ui-link" data-github-copy hidden><i class="fa-regular fa-copy" aria-hidden="true"></i> Copy</button></span>
+      </div>
+      <div class="ui-field ui-field-wide">
+        <label for="github-gist" class="ui-label">2 · The gist URL</label>
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="github-gist" class="ui-input flex-1 min-w-0" type="url" inputmode="url" autocomplete="off" placeholder="https://gist.github.com/<login>/<id>">
+          <button type="button" class="ui-btn" data-github-submit data-url="{{ verify_url }}"><i class="fa-solid fa-check" aria-hidden="true"></i> Verify</button>
+        </div>
+        <span class="ui-error" data-error-for="gist" hidden></span>
+      </div>
+    </div>
+  {% endif %}
+</section>

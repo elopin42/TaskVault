@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     "projects",
     "payments",
     "dashboard",
+    "reputation",
 ]
 
 MIDDLEWARE = [
@@ -180,7 +181,7 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 30
 
 # Bump whenever css/lowbid-*.css or js/lowbid-*.js changes (30-day static cache).
-LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-links"
+LOWBID_ASSET_VERSION = os.environ.get("LOWBID_ASSET_VERSION", "").strip() or "20261025-reputation"
 
 # --- Stellar ------------------------------------------------------------------
 
@@ -224,6 +225,14 @@ LOWBID_MAX_REVISIONS = _int("LOWBID_MAX_REVISIONS", 2)
 LOWBID_TRUSTED_LINK_HOSTS = _csv(
     "LOWBID_TRUSTED_LINK_HOSTS", ""
 ) or ["github.com", "gitlab.com", "vercel.app", "netlify.app"]
+
+# --- Reputation ---------------------------------------------------------------
+# GitHub-verified wallets: the gist owner's account must be at least this old (days).
+LOWBID_GITHUB_MIN_AGE_DAYS = _int("LOWBID_GITHUB_MIN_AGE_DAYS", 365)
+# "Reliable payer": distinct freelances paid with a confirmed on-chain transaction.
+LOWBID_RELIABLE_PAYER_MIN_PARTNERS = _int("LOWBID_RELIABLE_PAYER_MIN_PARTNERS", 3)
+# Optional GitHub token (raises the API rate limit); never rendered, never logged.
+LOWBID_GITHUB_TOKEN = os.environ.get("LOWBID_GITHUB_TOKEN", "").strip()
 
 # --- Logging ------------------------------------------------------------------
 # Structured key=value lines on stdout; level from DJANGO_LOG_LEVEL (default INFO).

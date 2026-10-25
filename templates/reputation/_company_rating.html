@@ -1,0 +1,3 @@
+{% comment %}
+How freelancers rated this company ({% company_rating_badge wallet %}): nothing when no rating yet.
+{% endcomment %}{% if summary.count %}<span class="ui-badge ui-badge-info" data-company-avg="{{ summary.avg }}" title="Average rating the company received from the freelancers it paid"><i class="fa-solid fa-building" aria-hidden="true"></i> Rated by freelancers {{ summary.avg }}/5 · {{ summary.count }} rating{{ summary.count|pluralize }}</span>{% endif %}

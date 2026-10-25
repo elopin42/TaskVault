@@ -1,0 +1,4 @@
+{% comment %}
+Reputation badges of one wallet ({% reputation_badges wallet %}, reputation.services.wallet_badges):
+[data-badge="reliable-payer"] (ok) · [data-badge="new-account"] (neutral) · [data-badge="github-verified"] (info, links to the GitHub profile).
+{% endcomment %}{% for b in badges %}{% if b.href %}<a href="{{ b.href }}" class="ui-badge ui-badge-{{ b.tone }}" data-badge="{{ b.key }}" title="{{ b.title }}" target="_blank" rel="noopener noreferrer nofollow">{% else %}<span class="ui-badge ui-badge-{{ b.tone }}" data-badge="{{ b.key }}" title="{{ b.title }}">{% endif %}<i class="{% if b.key == 'reliable-payer' %}fa-solid fa-shield-halved{% elif b.key == 'github-verified' %}fa-brands fa-github{% else %}fa-solid fa-seedling{% endif %}" aria-hidden="true"></i> {{ b.label }}{% if b.href %}</a>{% else %}</span>{% endif %}{% if not forloop.last %} {% endif %}{% endfor %}

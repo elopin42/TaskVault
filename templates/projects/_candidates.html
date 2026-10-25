@@ -1,4 +1,4 @@
-{% load lowbid_extras %}
+{% load lowbid_extras reputation_extras %}
 {% comment %}
 Ranked candidates of one task. Rendered in task_detail / project_detail AND returned as `html` by
 candidats.json so the page swaps it in place. Context: task, rows (see views._candidate_rows),
@@ -14,7 +14,7 @@ viewer_is_company, task_open, can_choose. ({# #} comments are single-line in Dja
         {% include "components/wallet.html" with address=r.app.freelancer.stellar_address name=r.app.freelancer.display_name %}
         {% if r.is_mine %}<span class="ui-badge ui-badge-neutral">You</span>{% endif %}
         {% if r.validated %}<span class="ui-badge ui-badge-ok badge-validated" data-badge="valide" title="Has already delivered for this company with an average rating ≥ 3"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Validated</span>{% endif %}
-        {% if r.is_chosen %}<span class="ui-badge ui-badge-brand"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Chosen</span>
+        {% if r.is_chosen %}<span class="ui-badge ui-badge-brand"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Chosen</span> {% history_signal r.app.freelancer %}
         {% elif r.is_rejected %}<span class="ui-badge ui-badge-neutral">Not selected</span>
         {% elif r.recommended %}<span class="ui-badge ui-badge-brand" data-recommended title="Best score among the candidates"><i class="fa-solid fa-star" aria-hidden="true"></i> Recommended</span>{% endif %}
       </div>

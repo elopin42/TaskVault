@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static lowbid_extras payments_extras %}
+{% load static lowbid_extras payments_extras reputation_extras %}
 {% block title %}{{ task.title }} · {{ project.title }} · TaskVault{% endblock %}
 {% block meta_description %}{{ task.title }} — {{ task.price|usdc }} task of the project "{{ project.title }}".{% endblock %}
 
@@ -198,6 +198,7 @@
     {% else %}
       {# Non-open task: the payment panel drives deliver (freelance) → validate + rate (company) → pay. #}
       {% escrow_panel task wallet %}
+      {% rate_company_panel task wallet %}
       {% if task.status == 'taken' and not is_assignee and not viewer_is_company %}
         <div class="ui-alert ui-alert-info"><i class="fa-solid fa-user-check" aria-hidden="true"></i><span>A freelancer has been chosen for this task.{% if my_application %} Your application was not selected.{% endif %}</span></div>
       {% elif task.status == 'taken' and viewer_is_company and task.revision_count %}
@@ -255,4 +256,5 @@
   };
 </script>
 <script src="{% static 'js/lowbid-projects.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
+<script src="{% static 'js/lowbid-reputation.js' %}?v={{ LOWBID_ASSET_VERSION }}"></script>
 {% endblock %}

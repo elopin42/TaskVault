@@ -1,0 +1,31 @@
+{% load lowbid_extras %}
+{% comment %}
+{% payer_profile_panel wallet %}: the company side of a wallet, computed only from confirmed on-chain payouts
+(reputation.services.payer_profile). Hidden for a wallet that never posted a project. Every figure lists the
+stellar.expert transactions behind it ([data-payer-links]).
+{% endcomment %}
+{% if show %}
+<section class="ui-panel mb-6" id="payer-profile" aria-labelledby="payer-profile-title" data-reliable="{{ profile.reliable_payer|yesno:'1,0' }}">
+  <div class="ui-panel-head">
+    <div>
+      <h2 class="ui-panel-title" id="payer-profile-title"><i class="fa-solid fa-shield-halved" style="color: var(--icon-accent)" aria-hidden="true"></i> Payer profile</h2>
+      <p class="ui-panel-sub">Computed only from confirmed Stellar transactions.</p>
+    </div>
+    {% if profile.reliable_payer %}<span class="ui-badge ui-badge-ok" title="At least {{ profile.min_partners }} distinct freelancers paid on chain, no dispute lost, no deposit forfeited"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Reliable payer</span>{% else %}<span class="ui-meta">"Reliable payer" from {{ profile.min_partners }} distinct freelancers paid</span>{% endif %}
+  </div>
+  <dl class="ui-facts">
+    {% for f in figures %}
+      <dt>{{ f.label }}</dt>
+      <dd data-payer-figure="{{ f.key }}">
+        <span class="ui-num">{% if f.key == 'paid_total' %}{{ f.value|usdc }}{% elif f.key == 'avg_delay_days' %}{% if f.value is None %}—{% else %}{{ f.value }} day{{ f.value|pluralize }}{% endif %}{% else %}{{ f.value }}{% endif %}</span>
+        {% if f.links %}
+          <span class="flex flex-wrap justify-end gap-x-2 gap-y-0.5 mt-0.5 text-xs font-normal" data-payer-links>
+            {% for l in f.links %}<a href="{{ l.url }}" class="ui-link" target="_blank" rel="noopener noreferrer" title="{{ l.tx }}">{{ l.label }}</a>{% endfor %}
+          </span>
+        {% endif %}
+      </dd>
+    {% endfor %}
+  </dl>
+  <p class="ui-meta mt-3">The average delay is informational: it does not change the badge.</p>
+</section>
+{% endif %}

@@ -4,6 +4,7 @@
     /auth/       accounts (wallet challenge / verify / logout)
     /pay/        payments (Trustless Work escrow per task, direct payment fallback, trustline)
     /tableau-de-bord/  /profil/<addr>/   dashboard (signed-in home, public wallet profile)
+    /taches/<pk>/noter-entreprise/  /profil/github/…   reputation (company ratings, GitHub proof)
     /django-admin/  Django admin (staff only, debugging aid)
 """
 
@@ -17,6 +18,7 @@ urlpatterns = [
     path("", include("core.urls")),
     path("", include("projects.urls")),
     path("", include("dashboard.urls")),
+    path("", include("reputation.urls")),
 ]
 
 handler400 = "core.views.error_400"

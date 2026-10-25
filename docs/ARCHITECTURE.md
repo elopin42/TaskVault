@@ -101,6 +101,7 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 | `projects` | the task board: models, `services.py` (every rule + the payment hooks), `scoring.py`, pages + JSON endpoints, `seed_demo` | `/projets/…`, `/taches/…`, `/mes-projets/` |
 | `payments` | `Escrow` (1-1 `Task`), `services.py`, `trustless_work.py`, `stellar.py`, `{% escrow_panel task wallet %}` | `/pay/…` |
 | `dashboard` | no models; `services.py` holds the view-models and `set_display_name` (the profile rename). `home` (`@wallet_required`): to-do list (`todo_items`, built from `payments.services.next_action()` and the projects data, `act` items first), KPIs as company and as freelance, recent activity. `profile` (public, 404 for an unknown wallet): identicon, display name (≤80, POST by its owner only, else 403), projects posted, tasks paid, earned, average rating, latest projects and tasks, ratings received | `/tableau-de-bord/`, `/profil/<address>/` |
+| `reputation` | `CompanyRating` (1-1 `Task`: the freelance rates the company once the task is settled), `GithubIdentity` (1-1 `WalletUser`, unique `github_id`), `services.py` (`rate_company`, `company_rating_summary`, `payer_profile` from confirmed on-chain payouts only, `wallet_badges`, `has_history`, `verify_github` / `unlink_github` against api.github.com, merge hooks `_disputes_lost` / `_deposits_forfeited`), inclusion tags `{% load reputation_extras %}` (`reputation_badges`, `company_rating_badge`, `payer_profile_panel`, `rate_company_panel`, `history_signal`, `github_panel`) so the projects / dashboard views stay unchanged, `static/js/lowbid-reputation.js`. Never feeds `projects.scoring` | `/taches/<pk>/noter-entreprise/`, `/profil/github/…` |
 
 ### Routes
 
@@ -127,6 +128,10 @@ with `STELLAR_HORIZON_URL` pointed at `tests/e2e/fake-horizon.js` (started by `r
 | `GET /pay/project/<pk>/pending.json` | `project_pending` → `{ok, project, mode, total, funded, can_fund, hint, tasks[]}`: the tasks "Fund the project" chains | `payments:project_pending` | wallet (company) |
 | `GET /pay/<task_pk>/` | `task_pay` → 302 to the task page `#paiement` | `payments:task_pay` | public |
 | `GET /tableau-de-bord/`, `GET/POST /profil/<address>/` | `dashboard.views.home` / `profile` | `dashboard:home` / `dashboard:profile` | wallet / public |
+| `POST /taches/<pk>/noter-entreprise/` | `reputation.views.rate_company` ← `{note, comment}` → `{ok, note, avg, count, message}` | `reputation:rate_company` | wallet (assignee) |
+| `GET /profil/github/message/` | `github_message` → `{ok, message}` (`lowbid:<G…>` of the session wallet) | `reputation:github_message` | wallet |
+| `POST /profil/github/verifier/` | `github_verify` ← `{gist}` → `{ok, login, verified_at, message}` | `reputation:github_verify` | wallet |
+| `POST /profil/github/retirer/` | `github_unlink` → `{ok, message}` | `reputation:github_unlink` | wallet |
 
 Projects refusals are 4xx `{ok:false, error, message}` (`ERROR_STATUS` in `projects/views.py`: 403 `forbidden`
 `own_task` `not_assigned`, 409 `wrong_state` `duplicate` `too_many_revisions`, 400 `invalid` `bad_tags`, any other code 400; an unknown

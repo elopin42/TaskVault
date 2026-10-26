@@ -1,0 +1,11 @@
+<speak>
+<prosody rate="108%">Built on Stellar.</prosody>
+<break time="300ms"/>
+<prosody rate="108%">Freighter is the identity and the signature.</prosody>
+<break time="300ms"/>
+<prosody rate="108%"><say-as interpret-as="characters">USDC</say-as> settles in five seconds, for under a cent.</prosody>
+<break time="300ms"/>
+<prosody rate="108%">Trustless Work escrows run on Soroban.</prosody>
+<break time="300ms"/>
+<prosody rate="108%">Every step signed by you, public on <sub alias="stellar dot expert">stellar.expert</sub>.</prosody>
+</speak>

@@ -1,0 +1,11 @@
+<speak>
+<prosody rate="108%">Once a freelancer is chosen, the money moves first.</prosody>
+<break time="300ms"/>
+<prosody rate="108%">Two signatures in Freighter, and the task's <say-as interpret-as="characters">USDC</say-as> is vaulted in a Trustless Work escrow on Soroban.</prosody>
+<break time="300ms"/>
+<prosody rate="108%">Not with the freelancer.</prosody>
+<break time="200ms"/>
+<prosody rate="108%">Not with us.</prosody>
+<break time="300ms"/>
+<prosody rate="108%">Locked before the first line of code.</prosody>
+</speak>

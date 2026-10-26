@@ -1,0 +1,9 @@
+<speak>
+<prosody rate="108%">A company splits a project into tasks, each with a budget.</prosody>
+<break time="300ms"/>
+<prosody rate="108%">Freelancers apply with their own price, a message, and their skills.</prosody>
+<break time="300ms"/>
+<prosody rate="108%">The company picks one per task, helped by a simple, explainable score.</prosody>
+<break time="300ms"/>
+<prosody rate="108%">The price never enters the score.</prosody>
+</speak>

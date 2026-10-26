@@ -9,7 +9,7 @@ There is **no GSD workflow** in this repo. Edit files directly, run `make check`
 - Python 3.13 · Django 5.2 (server-rendered templates, function views, no DRF) · SQLite by default (`data/db.sqlite3`, moved by `LOWBID_SQLITE_PATH`), PostgreSQL when `DJANGO_DB_HOST` is set · whitenoise for static files · gunicorn in Docker.
 - Frontend: **self-hosted Tailwind v3** compiled into the committed `static/css/tailwind.css`, two hand-written CSS files (`lowbid-tokens.css`, `lowbid-components.css`), vanilla JS (`static/js/lowbid-*.js`). Vendored under `static/vendor/`: Font Awesome, `@stellar/freighter-api` (global `freighterApi`), `@stellar/stellar-sdk` (global `StellarSdk`), anime.js v4 (`anime.umd.min.js`, global `anime`, landing only). **Nothing loads from a CDN.**
 - Stellar: the Freighter wallet is the identity (SEP-53 `signMessage` login). The payment asset is `STELLAR_ASSET_CODE` / `STELLAR_ASSET_ISSUER` (default: Circle testnet USDC; `XLM` with an empty issuer means native XLM, which forces direct mode). Trustless Work v1 REST runs the escrow; Horizon serves balances, trustlines and direct payments. Python side: `stellar-sdk`.
-- Tests: Django test runner (`manage.py test`, 501 tests, network mocked) and a Playwright e2e run with a simulated Freighter and a fake Horizon (`make e2e`). Linter: ruff (baseline rules only, see `ruff.toml`).
+- Tests: Django test runner (`manage.py test`, 531 tests, network mocked) and a Playwright e2e run with a simulated Freighter and a fake Horizon (`make e2e`). Linter: ruff (baseline rules only, see `ruff.toml`).
 
 ## Commands
 
